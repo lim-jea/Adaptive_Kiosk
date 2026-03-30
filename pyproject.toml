@@ -1,0 +1,18 @@
+[project]
+name = "adaptive-kiosk"
+version = "1.0.0"
+description = "카메라 기반 사용자 인식 + 음료 추천 + 주문 관리 지능형 키오스크 API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "mysql-connector-python>=8.0.0",
+    "PyJWT>=2.8.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+    "aiomysql>=0.3.2",
+    "cryptography>=44.0.0",
+]
