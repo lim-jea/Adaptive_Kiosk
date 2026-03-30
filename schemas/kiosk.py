@@ -5,17 +5,8 @@ from pydantic import BaseModel, Field
 
 class KioskRegisterRequest(BaseModel):
     """키오스크 등록 요청"""
-    name: str = Field(..., min_length=1, max_length=100, examples=["1층 로비 키오스크"])
+    name: str = Field(..., min_length=10, max_length=100, examples=["1층 로비 키오스크"])
     location: Optional[str] = Field(None, max_length=200, examples=["서울 강남점 1층 입구"])
-
-
-class KioskRegisterResponse(BaseModel):
-    """등록 후 API 키 반환"""
-    id: int
-    name: str
-    location: Optional[str] = None
-    api_key: str
-
 
 class KioskVerifyRequest(BaseModel):
     """키오스크 기기 확인"""

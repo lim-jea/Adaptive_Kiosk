@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List, Union
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from models.session import KioskSession
 from schemas.session import SessionUpdate
 
@@ -15,21 +14,42 @@ async def create_session(db: AsyncSession, kiosk_id: int) -> KioskSession:
     return session
 
 
-async def get_session_by_uuid(db: AsyncSession, session_uuid: str) -> Optional[KioskSession]:
-    result = await db.execute(
-        select(KioskSession).where(KioskSession.session_uuid == session_uuid)
-    )
+async def get_session(
+    db: AsyncSession,
+    session_uuid: Optional[str] = None,
+    active_only: bool = True,
+    as_list: bool = False,
+) -> Union[Optional[KioskSession], List[KioskSession]]:
+    """
+    내부용 세션 조회.
+    - session_uuid 지정 시: 단건 조회
+    - session_uuid 미지정 + as_list=True: 목록 조회
+    외부 API는 get_session 사용.
+    """
+    query = select(KioskSession)
+
+    if session_uuid is not None:
+        # 특정 UUID가 있으면 해당 세션 우선 조회
+        query = query.where(KioskSession.session_uuid == session_uuid)
+    elif not as_list:
+        # 단건 조회(as_list=False) + UUID 미지정이면 최신 세션 1건 조회
+        query = query.order_by(KioskSession.started_at.desc()).limit(1)
+
+    status_filter = (KioskSession.status == "active") if active_only else True
+    query = query.where(status_filter)
+
+    result = await db.execute(query)
+    if as_list:
+        return result.scalars().all()
     return result.scalar_one_or_none()
 
-
-async def get_session(db: AsyncSession, session_id: int) -> Optional[KioskSession]:
-    """내부용 (FK 참조 등). 외부 API는 get_session_by_uuid 사용."""
-    result = await db.execute(select(KioskSession).where(KioskSession.id == session_id))
-    return result.scalar_one_or_none()
-
-
+async def get_session_list(db: AsyncSession) -> List[KioskSession]:
+    """내부용 (FK 참조 등). 외부 API는 get_session 사용."""
+    sessions = await get_session(db, session_uuid=None, active_only=False, as_list=True)
+    return sessions if isinstance(sessions, list) else []
+    
 async def update_session_by_uuid(db: AsyncSession, session_uuid: str, data: SessionUpdate) -> Optional[KioskSession]:
-    session = await get_session_by_uuid(db, session_uuid)
+    session = await get_session(db, session_uuid=session_uuid)
     if not session:
         return None
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -40,7 +60,7 @@ async def update_session_by_uuid(db: AsyncSession, session_uuid: str, data: Sess
 
 
 async def end_session_by_uuid(db: AsyncSession, session_uuid: str, reason: str = "completed") -> Optional[KioskSession]:
-    session = await get_session_by_uuid(db, session_uuid)
+    session = await get_session(db, session_uuid=session_uuid)
     if not session:
         return None
     session.ended_at = datetime.now(timezone.utc)

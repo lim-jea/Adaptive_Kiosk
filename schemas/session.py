@@ -10,6 +10,12 @@ class SessionGetRequest(BaseModel):
     session_uuid: str = Field(..., min_length=32, max_length=32)
 
 
+class SessionListRequest(BaseModel):
+    """세션 목록 조회 요청"""
+    active_only: bool = True
+    as_list: bool = False  # 단일 조회 vs 목록 조회 구분 (내부용)
+
+
 class SessionEndRequest(BaseModel):
     """세션 종료 요청"""
     reason: Literal["completed", "timeout", "cancelled"] = Field(

@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from models.order import Order, OrderItem, OrderItemOption
 from crud.menu import get_menu_by_id, get_option_item_by_id
-from crud.session import get_session_by_uuid
+from crud.session import get_session
 from schemas.order import OrderCreateRequest, OrderItemResponse, OrderItemOptionResponse, OrderResponse
 
 
@@ -30,7 +30,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
     total_price = 0
 
     # session_uuid → 내부 session_id 변환
-    session = await get_session_by_uuid(db, data.session_uuid)
+    session = await get_session(db, session_uuid=data.session_uuid)
     if not session:
         raise HTTPException(status_code=400, detail="Invalid session_uuid")
 

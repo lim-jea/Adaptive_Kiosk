@@ -11,7 +11,6 @@ from crud.kiosk import (
 )
 from schemas.kiosk import (
     KioskRegisterRequest,
-    KioskRegisterResponse,
     KioskVerifyRequest,
     KioskResponse,
 )
@@ -30,7 +29,7 @@ async def get_current_kiosk(
     return kiosk
 
 
-@router.post("/register", response_model=KioskRegisterResponse)
+@router.post("/register", response_model=KioskResponse)
 async def register(
     data: KioskRegisterRequest,
     db: AsyncSession = Depends(get_db),
@@ -38,11 +37,13 @@ async def register(
 ):
     """키오스크 등록 + API 키 발급. 관리자 인증 필요."""
     kiosk = await register_kiosk(db, name=data.name, location=data.location)
-    return KioskRegisterResponse(
+    return KioskResponse(
         id=kiosk.id,
         name=kiosk.name,
         location=kiosk.location,
-        api_key=kiosk.api_key,
+        is_active=kiosk.is_active,
+        registered_at=kiosk.registered_at,
+        last_seen_at=kiosk.last_seen_at,
     )
 
 
@@ -54,6 +55,13 @@ async def verify(data: KioskVerifyRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid or inactive API key")
     return kiosk
 
+@router.post("/is-active", response_model=bool)
+async def is_active(data: KioskVerifyRequest, db: AsyncSession = Depends(get_db)):
+    """키오스크가 활성화되어 있는지 확인."""
+    kiosk = await get_kiosk_by_api_key(db, data.api_key)
+    if not kiosk:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return kiosk.is_active
 
 @router.get("", response_model=List[KioskResponse])
 async def list_kiosks(
