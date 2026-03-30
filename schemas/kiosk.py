@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class KioskRegister(BaseModel):
+class KioskRegisterRequest(BaseModel):
     """키오스크 등록 요청"""
-    name: str
-    location: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100, examples=["1층 로비 키오스크"])
+    location: Optional[str] = Field(None, max_length=200, examples=["서울 강남점 1층 입구"])
 
 
 class KioskRegisterResponse(BaseModel):
@@ -18,8 +18,8 @@ class KioskRegisterResponse(BaseModel):
 
 
 class KioskVerifyRequest(BaseModel):
-    """키오스크 기기 확인 (API 키로 인증)"""
-    api_key: str
+    """키오스크 기기 확인"""
+    api_key: str = Field(..., min_length=64, max_length=64, examples=["a1b2c3d4..."])
 
 
 class KioskResponse(BaseModel):

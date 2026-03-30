@@ -6,11 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from fastapi.responses import JSONResponse
 
-from core.database import Base, get_engine, initialize_connection_pool
+from core.database import Base, get_engine, get_session_factory, initialize_connection_pool
 import secrets
 from core.config import settings
 from core.security import http_basic
 from api.v1.router import v1_router
+from scripts.seed_menu import seed_menu_data
+from scripts.seed_sample import seed_sample_data  # 테스트용 예시 데이터 (프로덕션 전 삭제)
 
 # 모델 임포트 (Base.metadata에 테이블 등록)
 import models  # noqa: F401
@@ -30,6 +32,14 @@ async def lifespan(app: FastAPI):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("Database tables created successfully.")
+
+            # 시드 데이터 삽입 (카테고리, 메뉴, 옵션)
+            factory = get_session_factory()
+            if factory:
+                async with factory() as db:
+                    await seed_menu_data(db)
+                async with factory() as db:
+                    await seed_sample_data(db)  # 테스트용 예시 데이터 (프로덕션 전 삭제)
     except Exception as e:
         logger.warning("Database initialization skipped: %s", e)
     yield

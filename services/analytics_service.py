@@ -46,8 +46,11 @@ async def get_recommendation_analytics(db: AsyncSession) -> RecommendationAnalyt
 
 async def get_order_analytics(db: AsyncSession) -> OrderAnalytics:
     total = (await db.execute(select(func.count(Order.id)))).scalar() or 0
-    avg_time = (await db.execute(
-        select(func.avg(Order.total_time_seconds)).where(Order.total_time_seconds.isnot(None))
+    revenue = (await db.execute(
+        select(func.coalesce(func.sum(Order.total_price), 0))
+    )).scalar() or 0
+    avg_price = (await db.execute(
+        select(func.avg(Order.total_price))
     )).scalar() or 0.0
     rec_used = (await db.execute(
         select(func.count(Order.id)).where(Order.used_recommendation == True)
@@ -55,7 +58,8 @@ async def get_order_analytics(db: AsyncSession) -> OrderAnalytics:
 
     return OrderAnalytics(
         total_orders=total,
-        avg_order_time_seconds=round(float(avg_time), 2),
+        total_revenue=int(revenue),
+        avg_order_price=round(float(avg_price), 0),
         recommendation_used_count=rec_used,
         recommendation_used_rate=round(rec_used / total, 4) if total > 0 else 0.0,
     )
