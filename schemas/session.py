@@ -18,6 +18,7 @@ class SessionUpdate(BaseModel):
 
 class SessionResponse(BaseModel):
     id: int
+    kiosk_id: int
     started_at: datetime
     ended_at: Optional[datetime] = None
     is_simple_mode: bool

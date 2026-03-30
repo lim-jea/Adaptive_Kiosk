@@ -7,8 +7,8 @@ from models.session import KioskSession
 from schemas.session import SessionUpdate
 
 
-async def create_session(db: AsyncSession) -> KioskSession:
-    session = KioskSession()
+async def create_session(db: AsyncSession, kiosk_id: int) -> KioskSession:
+    session = KioskSession(kiosk_id=kiosk_id)
     db.add(session)
     await db.commit()
     await db.refresh(session)

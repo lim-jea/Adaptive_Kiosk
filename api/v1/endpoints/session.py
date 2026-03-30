@@ -4,14 +4,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from crud.session import create_session, get_session, update_session, end_session
 from schemas.session import SessionUpdate, SessionResponse
+from models.kiosk import Kiosk
+from api.v1.endpoints.kiosk import get_current_kiosk
 
 router = APIRouter(prefix="/sessions", tags=["Session"])
 
 
 @router.post("", response_model=SessionResponse)
-async def start_session(db: AsyncSession = Depends(get_db)):
-    """새 키오스크 세션을 시작합니다 (사용자가 카메라 앞에 접근 시)."""
-    return await create_session(db)
+async def start_session(
+    kiosk: Kiosk = Depends(get_current_kiosk),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    새 키오스크 세션을 시작합니다.
+    X-API-Key 헤더로 키오스크를 인증하고, 해당 키오스크의 세션으로 기록합니다.
+    """
+    return await create_session(db, kiosk_id=kiosk.id)
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
