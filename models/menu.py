@@ -15,7 +15,7 @@ class Menu(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+    category = Column(String(50), ForeignKey("categories.name"), nullable=False)
     price = Column(Integer, nullable=False)
     emoji = Column(String(10), nullable=True)
     cal = Column(Integer, nullable=True)

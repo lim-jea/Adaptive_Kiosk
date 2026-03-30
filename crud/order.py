@@ -5,14 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.order import Order, OrderItem, OrderItemOption
-from crud.menu import get_menu_by_id, get_option_item_by_id
+from crud.menu import get_menu_by_name, get_option_item_by_id
 from crud.session import get_session
 from schemas.order import OrderCreateRequest, OrderItemResponse, OrderItemOptionResponse, OrderResponse
 
 
-async def calculate_unit_price(db: AsyncSession, menu_id: int, option_item_ids: list[int]) -> int:
+async def calculate_unit_price(db: AsyncSession, menu_name: str, option_item_ids: list[int]) -> int:
     """서버 사이드 단가 재계산"""
-    menu = await get_menu_by_id(db, menu_id)
+    menu = await get_menu_by_name(db, menu_name)
     if not menu:
         raise HTTPException(status_code=400, detail=f"Menu ID {menu_id} not found")
     if not menu.is_available:
@@ -49,11 +49,11 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         server_unit_price = await calculate_unit_price(db, item.menu_id, option_ids)
 
         # 메뉴 이름 조회
-        menu = await get_menu_by_id(db, item.menu_id)
+        menu = await get_menu_by_name(db, item.menu_name)
 
         order_item = OrderItem(
             order_id=order.id,
-            menu_id=item.menu_id,
+            menu_id=menu.id if menu else None,
             quantity=item.quantity,
             unit_price=server_unit_price,
             from_recommendation=item.from_recommendation,
@@ -82,7 +82,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
 
         response_items.append(OrderItemResponse(
             id=order_item.id,
-            menu_id=item.menu_id,
+            menu_id=menu.id if menu else None,
             menu_name=menu.name if menu else "",
             quantity=item.quantity,
             unit_price=server_unit_price,
@@ -121,7 +121,7 @@ async def get_order_by_uuid(db: AsyncSession, order_uuid: str) -> Optional[Order
 
     response_items = []
     for item in order.items:
-        menu = await get_menu_by_id(db, item.menu_id)
+        menu = await get_menu_by_name(db, item.menu_name) if item.menu_id else None 
         response_items.append(OrderItemResponse(
             id=item.id,
             menu_id=item.menu_id,

@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud.menu import get_menus_by_category_name, get_all_menus
+from crud.menu import get_all_menus, get_all_menus
 
 
 async def get_recommendations(
@@ -22,7 +22,7 @@ async def get_recommendations(
     현재는 DB 기반 단순 추천이며, 추후 CF 모델로 교체 예정.
     """
     # your_picks: 선호 카테고리 내 메뉴
-    category_menus = await get_menus_by_category_name(db, preferred_category)
+    category_menus = await get_all_menus(db, category_name=preferred_category)
     your_picks = [
         {
             "menu_id": menu.id,

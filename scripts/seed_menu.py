@@ -156,12 +156,13 @@ async def seed_menu_data(db: AsyncSession):
 
     # 2. 메뉴 생성
     for m in MENUS:
-        cat_id = cat_map.get(m["category"])
+        cat_name = m["category"]
+        cat_id = cat_map.get(cat_name)
         if not cat_id:
             continue
         menu = Menu(
             name=m["name"],
-            category_id=cat_id,
+            category=cat_name,
             price=m["price"],
             emoji=m.get("emoji"),
             cal=m.get("cal"),
@@ -200,7 +201,7 @@ async def seed_menu_data(db: AsyncSession):
 
     for menu in all_menus:
         # 메뉴의 카테고리 이름 조회
-        cat_result = await db.execute(select(Category).where(Category.id == menu.category_id))
+        cat_result = await db.execute(select(Category).where(Category.name == menu.category))
         cat = cat_result.scalar_one_or_none()
         if not cat:
             continue

@@ -1,85 +1,89 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.menu import Menu, Category, OptionGroup, OptionItem, MenuOptionGroup
 
 
-async def get_all_categories(db: AsyncSession) -> List[Category]:
-    result = await db.execute(select(Category).order_by(Category.display_order))
-    return list(result.scalars().all())
-
-
-async def get_category_by_id(db: AsyncSession, category_id: int) -> Optional[Category]:
-    result = await db.execute(select(Category).where(Category.id == category_id))
+async def get_category(
+    db: AsyncSession,
+    category_name: Optional[str] = None,
+    name: Optional[str] = None,
+) -> Union[Optional[Category], List[Category]]:
+    query = select(Category)
+    if category_name is not None:
+        query = query.where(Category.name == category_name)
+    elif name is not None:
+        query = query.where(Category.name == name)
+    else:
+        query = query.order_by(Category.display_order)
+        return list((await db.execute(query)).scalars().all())
+    result = await db.execute(query)
     return result.scalar_one_or_none()
 
 
-async def get_category_by_name(db: AsyncSession, name: str) -> Optional[Category]:
-    result = await db.execute(select(Category).where(Category.name == name))
-    return result.scalar_one_or_none()
-
-
-async def get_all_menus(db: AsyncSession, category_id: Optional[int] = None) -> List[dict]:
+async def get_all_menus(db: AsyncSession, category_name: Optional[str] = None) -> List[dict]:
     """메뉴 목록 반환 (category_name 포함)"""
-    query = select(Menu, Category.name.label("category_name")).join(
-        Category, Menu.category_id == Category.id
+    query = select(
+        Menu,
+        Category.id.label("category_id"),
+        Category.name.label("category_name"),
+    ).join(
+        Category, Menu.category == Category.name
     ).where(Menu.is_available == True)
-    if category_id:
-        query = query.where(Menu.category_id == category_id)
+    if category_name:
+        query = query.where(Category.name == category_name) 
     result = await db.execute(query)
     rows = result.all()
     return [
         {
             **{c.key: getattr(row[0], c.key) for c in Menu.__table__.columns},
-            "category_name": row[1],
+            "category_id": row[1],
+            "category_name": row[2],
         }
         for row in rows
     ]
 
 
-async def get_menus_by_category_name(db: AsyncSession, category_name: str) -> List[dict]:
-    category = await get_category_by_name(db, category_name)
-    if not category:
-        return []
-    return await get_all_menus(db, category_id=category.id)
-
 
 async def search_menus(db: AsyncSession, name: str) -> List[dict]:
     """메뉴 이름 검색 (부분 일치)"""
-    query = select(Menu, Category.name.label("category_name")).join(
-        Category, Menu.category_id == Category.id
+    query = select(
+        Menu,
+        Category.id.label("category_id"),
+        Category.name.label("category_name"),
+    ).join(
+        Category, Menu.category == Category.name
     ).where(Menu.is_available == True, Menu.name.contains(name))
     result = await db.execute(query)
     rows = result.all()
     return [
         {
             **{c.key: getattr(row[0], c.key) for c in Menu.__table__.columns},
-            "category_name": row[1],
+            "category_id": row[1],
+            "category_name": row[2],
         }
         for row in rows
     ]
 
-
-async def get_menu_by_id(db: AsyncSession, menu_id: int) -> Optional[Menu]:
-    result = await db.execute(select(Menu).where(Menu.id == menu_id))
+async def get_menu_by_name(db: AsyncSession, menu_name: str) -> Optional[Menu]:
+    result = await db.execute(select(Menu).where(Menu.name == menu_name, Menu.is_available == True))
     return result.scalar_one_or_none()
 
-
-async def get_menu_detail(db: AsyncSession, menu_id: int) -> Optional[dict]:
+async def get_menu_detail(db: AsyncSession, menu_name: str) -> Optional[dict]:
     """메뉴 상세 + 옵션 그룹/아이템 포함 + category_name 포함"""
-    menu = await get_menu_by_id(db, menu_id)
+    menu = await get_menu_by_name(db, menu_name)
     if not menu:
         return None
 
     # 카테고리 이름
-    cat = await get_category_by_id(db, menu.category_id)
+    cat = await get_category(db, category_name=menu.category)
     category_name = cat.name if cat else ""
 
     # 옵션 그룹
     mog_result = await db.execute(
         select(MenuOptionGroup)
-        .where(MenuOptionGroup.menu_id == menu_id)
+        .where(MenuOptionGroup.menu_id == menu.id)
         .order_by(MenuOptionGroup.display_order)
     )
     menu_option_groups = mog_result.scalars().all()
@@ -109,7 +113,7 @@ async def get_menu_detail(db: AsyncSession, menu_id: int) -> Optional[dict]:
     return {
         "id": menu.id,
         "name": menu.name,
-        "category_id": menu.category_id,
+        "category_id": cat.id if cat else 0,
         "category_name": category_name,
         "price": menu.price,
         "emoji": menu.emoji,

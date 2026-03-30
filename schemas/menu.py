@@ -6,12 +6,12 @@ from pydantic import BaseModel, Field
 
 class MenuListRequest(BaseModel):
     """메뉴 목록 조회 요청"""
-    category_id: Optional[int] = Field(None, gt=0, description="카테고리 ID로 필터링")
+    category_name: Optional[str] = Field(None, description="카테고리 이름으로 필터링")
 
 
 class MenuDetailRequest(BaseModel):
     """메뉴 상세 조회 요청"""
-    menu_id: int = Field(..., gt=0)
+    menu_name: str = Field(..., description="메뉴 이름으로 조회")
 
 
 # ─── Response ───
