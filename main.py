@@ -60,12 +60,13 @@ app.add_middleware(
 )
 
 
-# ─── Docs 보호 미들웨어 (기존 설정 유지) ───
-PROTECTED_DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
+# ─── Docs 보호 미들웨어 ───
+# /docs, /redoc 진입 시에만 인증. /openapi.json은 인증 후 브라우저 캐시로 접근하므로 제외.
+PROTECTED_DOC_PATHS = {"/docs", "/docs/", "/redoc", "/redoc/"}
 
 @app.middleware("http")
 async def docs_protect_middleware(request: Request, call_next):
-    if request.url.path.startswith(PROTECTED_DOC_PATHS):
+    if request.url.path in PROTECTED_DOC_PATHS:
         try:
             credentials = await http_basic(request)
             if not (

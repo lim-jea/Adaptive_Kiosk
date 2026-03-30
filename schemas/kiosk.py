@@ -17,8 +17,8 @@ class KioskRegisterResponse(BaseModel):
     api_key: str
 
 
-class KioskLoginRequest(BaseModel):
-    """키오스크 로그인 (API 키로 인증)"""
+class KioskVerifyRequest(BaseModel):
+    """키오스크 기기 확인 (API 키로 인증)"""
     api_key: str
 
 

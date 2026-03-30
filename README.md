@@ -22,7 +22,7 @@
 | Framework | FastAPI (async) |
 | ORM | SQLAlchemy 2.0 (async) |
 | DB | MySQL (aiomysql) |
-| Auth | JWT (PyJWT) + HTTP Basic Auth (Swagger) + API Key (키오스크) |
+| Auth | HTTP Basic Auth (Swagger/관리자) + API Key (키오스크) |
 | AI | Google Gemini Flash Lite (음성 주문 시나리오 처리) |
 | 패키지 관리 | uv |
 
@@ -39,23 +39,21 @@ uv sync
 `.env` 파일을 프로젝트 루트에 생성:
 
 ```env
-KIOSK_USERNAME=   # Swagger 문서 접근 계정
-KIOSK_PASSWORD=   # Swagger 문서 접근 비밀번호
+KIOSK_USERNAME=        # Swagger 문서 및 관리자 API 접근 계정
+KIOSK_PASSWORD=        # Swagger 문서 및 관리자 API 접근 비밀번호
 
-DATABASE_CONN=   # 
-user:pass@host:port/dbname
+DATABASE_CONN=         # DB 연결 URL (mysql+aiomysql://user:pass@host:port/dbname)
 
-JWT_SECRET_KEY=  # JWT 시크릿 키
-JWT_ALGORITHM=HS256
-
-GENAI_API_KEY=   # Google Gemini API 키 (음성 주문용)
+GENAI_API_KEY=         # Google Gemini API 키 (음성 주문용)
 ```
 
 ### 3. DB 생성
 
 MySQL에서 데이터베이스 생성:
 
-
+```sql
+CREATE DATABASE fastapi_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
 
 테이블은 서버 시작 시 자동 생성됩니다.
 
@@ -67,70 +65,79 @@ uv run uvicorn main:app --reload --port 5000
 
 ### 5. API 문서 확인
 
-http://localhost:5000/docs 접속 후 `.env`에 설정한 계정으로 로그인.
+http://localhost:5000/docs 접속 후 `KIOSK_USERNAME`/`KIOSK_PASSWORD`로 로그인.
+
+## 인증 구조
+
+| 대상 | 인증 방식 | 설명 |
+|------|-----------|------|
+| Swagger 문서 (`/docs`, `/redoc`) | HTTP Basic Auth | KIOSK_USERNAME/PASSWORD |
+| 관리자 API (analytics, kiosk register/list) | HTTP Basic Auth | 동일 계정 |
+| 키오스크 API (sessions, vision, order 등) | X-API-Key 헤더 | 키오스크 등록 시 발급된 API 키 |
+| 공개 API (health, kiosk verify, 개별 조회) | 인증 없음 | |
 
 ## API 엔드포인트
 
 ### Kiosk (키오스크 관리)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/kiosks/register` | 키오스크 등록 (API 키 발급) |
-| POST | `/api/v1/kiosks/login` | 키오스크 로그인 |
-| GET | `/api/v1/kiosks` | 전체 키오스크 목록 |
-| GET | `/api/v1/kiosks/{id}` | 키오스크 상세 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/kiosks/register` | Basic Auth | 키오스크 등록 (API 키 발급) |
+| POST | `/api/v1/kiosks/verify` | 없음 | 키오스크 기기 확인 (API 키 검증) |
+| GET | `/api/v1/kiosks` | Basic Auth | 전체 키오스크 목록 |
+| GET | `/api/v1/kiosks/{id}` | 없음 | 키오스크 상세 |
 
 ### Session (세션)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/sessions` | 세션 시작 (X-API-Key 필수) |
-| GET | `/api/v1/sessions/{id}` | 세션 조회 |
-| PATCH | `/api/v1/sessions/{id}` | 세션 업데이트 |
-| POST | `/api/v1/sessions/{id}/end` | 세션 종료 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/sessions` | X-API-Key | 세션 시작 (kiosk_id 자동 기록) |
+| GET | `/api/v1/sessions/{id}` | 없음 | 세션 조회 |
+| PATCH | `/api/v1/sessions/{id}` | 없음 | 세션 업데이트 |
+| POST | `/api/v1/sessions/{id}/end` | 없음 | 세션 종료 |
 
 ### Vision (비전)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/vision/{session_id}` | 비전 결과 수신 + 간편모드 판단 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/vision/{session_id}` | 없음 | 비전 결과 수신 + 간편모드 판단 |
 
 ### Voice (음성 주문)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/voice/{session_id}/start` | 음성 주문 시작 (TTS 안내) |
-| POST | `/api/v1/voice/process` | STT 결과 처리 (패턴 매칭/Gemini) |
-| GET | `/api/v1/voice/{session_id}/history` | 대화 이력 조회 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/voice/{session_id}/start` | 없음 | 음성 주문 시작 (TTS 안내) |
+| POST | `/api/v1/voice/process` | 없음 | STT 결과 처리 (패턴 매칭/Gemini) |
+| GET | `/api/v1/voice/{session_id}/history` | 없음 | 대화 이력 조회 |
 
 ### Recommendation (추천)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/recommendations/request` | 추천 요청 |
-| POST | `/api/v1/recommendations/click` | 추천 클릭 로그 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/recommendations/request` | 없음 | 추천 요청 |
+| POST | `/api/v1/recommendations/click` | 없음 | 추천 클릭 로그 |
 
 ### Order (주문)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| POST | `/api/v1/orders` | 주문 생성 |
-| GET | `/api/v1/orders/{id}` | 주문 조회 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| POST | `/api/v1/orders` | 없음 | 주문 생성 |
+| GET | `/api/v1/orders/{id}` | 없음 | 주문 조회 |
 
 ### Menu (메뉴)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/v1/menus` | 메뉴 목록 |
-| GET | `/api/v1/menus/categories` | 카테고리 목록 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/api/v1/menus` | 없음 | 메뉴 목록 |
+| GET | `/api/v1/menus/categories` | 없음 | 카테고리 목록 |
 
 ### Analytics (분석)
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/api/v1/analytics/sessions` | 세션 통계 |
-| GET | `/api/v1/analytics/recommendations` | 추천 통계 |
-| GET | `/api/v1/analytics/orders` | 주문 통계 |
+| 메서드 | 경로 | 인증 | 설명 |
+|--------|------|------|------|
+| GET | `/api/v1/analytics/sessions` | Basic Auth | 세션 통계 |
+| GET | `/api/v1/analytics/recommendations` | Basic Auth | 추천 통계 |
+| GET | `/api/v1/analytics/orders` | Basic Auth | 주문 통계 |
 
 ## 프로젝트 구조
 
