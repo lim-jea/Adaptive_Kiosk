@@ -23,10 +23,10 @@ uv sync
 `.env` 파일을 프로젝트 루트에 생성:
 
 ```env
-DOCS_USERNAME="capstone"
-DOCS_PASSWORD="capstone123"
+KIOSK_USERNAME= put your kiosk username here
+KIOSK_PASSWORD= put your kiosk password here
 
-DATABASE_CONN="mysql+aiomysql://root:root@127.0.0.1:3306/fastapi_db"
+DATABASE_CONN= put your database here
 
 JWT_SECRET_KEY="your-secret-key"
 JWT_ALGORITHM="HS256"
@@ -36,9 +36,6 @@ JWT_ALGORITHM="HS256"
 
 MySQL에서 데이터베이스 생성:
 
-```sql
-CREATE DATABASE fastapi_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
 
 테이블은 서버 시작 시 자동 생성됩니다.
 
