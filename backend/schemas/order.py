@@ -10,7 +10,7 @@ class SelectedOptionRequest(BaseModel):
 
 class OrderItemRequest(BaseModel):
     """주문 아이템 1건"""
-    menu_id: int = Field(..., gt=0, examples=[3])
+    menu_name: str = Field(..., min_length=1, examples=["아이스 아메리카노"])
     quantity: int = Field(default=1, ge=1, le=99, examples=[2])
     unit_price: int = Field(..., ge=0, examples=[5000], description="프런트 계산값 (서버에서 재검증)")
     from_recommendation: bool = Field(default=False)
@@ -33,8 +33,7 @@ class OrderItemOptionResponse(BaseModel):
 
 class OrderItemResponse(BaseModel):
     id: int
-    menu_id: int
-    menu_name: str = ""
+    menu_name: str
     quantity: int
     unit_price: int
     from_recommendation: bool

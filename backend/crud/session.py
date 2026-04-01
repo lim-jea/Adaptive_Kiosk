@@ -17,20 +17,22 @@ async def create_session(db: AsyncSession, kiosk_id: int) -> KioskSession:
 async def get_session(
     db: AsyncSession,
     session_uuid: Optional[str] = None,
+    session_id: Optional[int] = None,
     active_only: bool = True,
     as_list: bool = False,
 ) -> Union[Optional[KioskSession], List[KioskSession]]:
     """
-    내부용 세션 조회.
-    - session_uuid 지정 시: 단건 조회
-    - session_uuid 미지정 + as_list=True: 목록 조회
-    외부 API는 get_session 사용.
+    세션 조회.
+    - session_uuid 지정 시: UUID로 단건 조회
+    - session_id 지정 시: 내부 ID로 단건 조회
+    - 둘 다 미지정 + as_list=True: 목록 조회
     """
     query = select(KioskSession)
 
     if session_uuid is not None:
-        # 특정 UUID가 있으면 해당 세션 우선 조회
         query = query.where(KioskSession.session_uuid == session_uuid)
+    elif session_id is not None:
+        query = query.where(KioskSession.id == session_id)
     elif not as_list:
         # 단건 조회(as_list=False) + UUID 미지정이면 최신 세션 1건 조회
         query = query.order_by(KioskSession.started_at.desc()).limit(1)

@@ -11,10 +11,10 @@ from schemas.order import OrderCreateRequest, OrderItemResponse, OrderItemOption
 
 
 async def calculate_unit_price(db: AsyncSession, menu_name: str, option_item_ids: list[int]) -> int:
-    """서버 사이드 단가 재계산"""
+    """서버 사이드 단가 재계산: 메뉴 기본가 + 선택 옵션 추가금"""
     menu = await get_menu_by_name(db, menu_name)
     if not menu:
-        raise HTTPException(status_code=400, detail=f"Menu ID {menu_id} not found")
+        raise HTTPException(status_code=400, detail=f"Menu '{menu_name}' not found")
     if not menu.is_available:
         raise HTTPException(status_code=400, detail=f"Menu '{menu.name}' is not available")
     total = menu.price
@@ -45,15 +45,15 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
     response_items = []
 
     for item in data.items:
+        # 메뉴 존재 확인 + 가격 재계산
         option_ids = [opt.option_item_id for opt in item.selected_options]
-        server_unit_price = await calculate_unit_price(db, item.menu_id, option_ids)
+        server_unit_price = await calculate_unit_price(db, item.menu_name, option_ids)
 
-        # 메뉴 이름 조회
         menu = await get_menu_by_name(db, item.menu_name)
 
         order_item = OrderItem(
             order_id=order.id,
-            menu_id=menu.id if menu else None,
+            menu_id=menu.id,
             quantity=item.quantity,
             unit_price=server_unit_price,
             from_recommendation=item.from_recommendation,
@@ -61,7 +61,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         db.add(order_item)
         await db.flush()
 
-        # 옵션 스냅샷 저장 + 응답 구성
+        # 옵션 스냅샷 저장
         option_responses = []
         for opt in item.selected_options:
             oi = await get_option_item_by_id(db, opt.option_item_id)
@@ -82,8 +82,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
 
         response_items.append(OrderItemResponse(
             id=order_item.id,
-            menu_id=menu.id if menu else None,
-            menu_name=menu.name if menu else "",
+            menu_name=menu.name,
             quantity=item.quantity,
             unit_price=server_unit_price,
             from_recommendation=item.from_recommendation,
@@ -115,16 +114,18 @@ async def get_order_by_uuid(db: AsyncSession, order_uuid: str) -> Optional[Order
         return None
 
     # session_uuid 조회
-    from crud.session import get_session
-    session = await get_session(db, order.session_id)
+    session = await get_session(db, session_id=order.session_id)
     session_uuid = session.session_uuid if session else ""
 
     response_items = []
     for item in order.items:
-        menu = await get_menu_by_name(db, item.menu_name) if item.menu_id else None 
+        # menu_id → menu_name 조회
+        from models.menu import Menu
+        menu_result = await db.execute(select(Menu).where(Menu.id == item.menu_id))
+        menu = menu_result.scalar_one_or_none()
+
         response_items.append(OrderItemResponse(
             id=item.id,
-            menu_id=item.menu_id,
             menu_name=menu.name if menu else "",
             quantity=item.quantity,
             unit_price=item.unit_price,

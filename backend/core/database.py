@@ -1,4 +1,5 @@
 import logging
+import ssl
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import AsyncAdaptedQueuePool
@@ -17,25 +18,22 @@ class DatabaseConnectionError(Exception):
 
 Base = declarative_base()
 
-# 모듈 내부 상태 (외부에서 직접 import하지 않고 함수로 접근)
 _engine = None
 _async_session_factory = None
 
 
 def get_engine():
-    """현재 엔진을 반환합니다."""
     return _engine
 
 
 def get_session_factory():
-    """현재 세션 팩토리를 반환합니다."""
     return _async_session_factory
 
 
 async def initialize_connection_pool():
     """
     SQLAlchemy async 엔진(커넥션 풀)을 초기화합니다.
-    애플리케이션 시작 시(lifespan) 한 번 호출되어야 합니다.
+    서버 시작 시(lifespan) 한 번 호출됩니다.
     """
     global _engine, _async_session_factory
 
@@ -49,21 +47,32 @@ async def initialize_connection_pool():
         raise ValueError(msg)
 
     try:
+        # SSL: 클라우드 DB (Aiven 등) 자동 감지
+        connect_args = {}
+        if "aivencloud" in settings.DATABASE_CONN or "tidbcloud" in settings.DATABASE_CONN or "ssl" in settings.DATABASE_CONN.lower():
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            connect_args["ssl"] = ssl_ctx
+
         _engine = create_async_engine(
             settings.DATABASE_CONN,
             poolclass=AsyncAdaptedQueuePool,
-            pool_size=32,
-            max_overflow=20,
-            pool_timeout=30,
-            pool_recycle=1800,
+            # ─── 커넥션 풀 튜닝 ───
+            pool_size=5,            # 유지할 기본 연결 수 (클라우드 무료는 동시 연결 제한)
+            max_overflow=5,         # 초과 시 임시 연결
+            pool_timeout=30,        # 연결 대기 최대 시간
+            pool_recycle=600,       # 10분마다 연결 재활용 (클라우드 idle timeout 대비)
+            pool_pre_ping=True,     # 사용 전 연결 유효성 체크 (끊긴 연결 자동 복구)
+            connect_args=connect_args,
         )
 
-        # 테스트 연결 후 명시적으로 풀 정리하여 aiomysql GC 경고 방지
+        # 풀 워밍업: 서버 시작 시 연결을 미리 만들어둠
         async with _engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info(
             "SQLAlchemy Async Connection Pool initialized successfully. "
-            "(pool_size=32, max_overflow=20, pool_timeout=30s)"
+            "(pool_size=5, max_overflow=5, pool_pre_ping=True)"
         )
 
         _async_session_factory = async_sessionmaker(
@@ -81,9 +90,7 @@ async def initialize_connection_pool():
 
 
 async def get_db():
-    """
-    FastAPI Depends용 async DB 세션 제너레이터.
-    """
+    """FastAPI Depends용 async DB 세션 제너레이터."""
     factory = get_session_factory()
     if factory is None:
         await initialize_connection_pool()

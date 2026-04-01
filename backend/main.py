@@ -1,5 +1,11 @@
+import asyncio
+import sys
 import logging
 from contextlib import asynccontextmanager
+
+# Windows + aiomysql + SSL 호환을 위해 SelectorEventLoop 사용
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware

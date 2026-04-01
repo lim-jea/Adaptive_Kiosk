@@ -34,14 +34,14 @@ async def seed_sample_data(db: AsyncSession):
     logger.info(f"Sample kiosks registered: {kiosk2.name} (api_key: {kiosk2.api_key[:16]}...)")
     logger.info(f"Sample kiosks registered: {kiosk3.name} (api_key: {kiosk3.api_key[:16]}...)")
 
-    # ─── 세션 3개 생성 (키오스크 1에서) ───
+    # ─── 세션 3개 생성 ───
     session1 = KioskSession(kiosk_id=kiosk1.id)
     session2 = KioskSession(kiosk_id=kiosk1.id, is_simple_mode=True, estimated_age_group="60대", estimated_gender="female")
     session3 = KioskSession(kiosk_id=kiosk2.id)
     db.add_all([session1, session2, session3])
     await db.flush()
 
-    # ─── 메뉴 ID 조회 ───
+    # ─── 메뉴 조회 ───
     americano = (await db.execute(select(Menu).where(Menu.name == "아이스 아메리카노"))).scalar_one_or_none()
     latte = (await db.execute(select(Menu).where(Menu.name == "따뜻한 카페라떼"))).scalar_one_or_none()
     smoothie = (await db.execute(select(Menu).where(Menu.name == "딸기 스무디"))).scalar_one_or_none()
@@ -51,10 +51,13 @@ async def seed_sample_data(db: AsyncSession):
         await db.commit()
         return
 
-    # 옵션 아이템 조회
-    large_option = (await db.execute(select(OptionItem).where(OptionItem.name == "Large"))).scalar_one_or_none()
+    # 옵션 아이템 조회 (시드 데이터 기준: Tall, Grande, Venti)
+    grande_option = (await db.execute(select(OptionItem).where(OptionItem.name == "Grande"))).scalar_one_or_none()
+    ice_option = (await db.execute(select(OptionItem).where(OptionItem.name == "ICE"))).scalar_one_or_none()
+    hot_option = (await db.execute(select(OptionItem).where(OptionItem.name == "HOT"))).scalar_one_or_none()
+    tall_option = (await db.execute(select(OptionItem).where(OptionItem.name == "Tall"))).scalar_one_or_none()
 
-    # ─── 주문 1: 아이스 아메리카노 2잔 (Large) ───
+    # ─── 주문 1: 아이스 아메리카노 2잔 (Grande + ICE) ───
     order1 = Order(session_id=session1.id, total_price=10000, used_recommendation=False)
     db.add(order1)
     await db.flush()
@@ -63,46 +66,80 @@ async def seed_sample_data(db: AsyncSession):
         order_id=order1.id,
         menu_id=americano.id,
         quantity=2,
-        unit_price=5000,  # 4500 + 500(Large)
+        unit_price=5000,  # 4500 + 500(Grande)
         from_recommendation=False,
     )
     db.add(order1_item)
     await db.flush()
 
-    if large_option:
+    if grande_option:
         db.add(OrderItemOption(
             order_item_id=order1_item.id,
-            option_item_id=large_option.id,
-            option_name="Large",
+            option_item_id=grande_option.id,
+            option_name="Grande",
             extra_price=500,
         ))
+    if ice_option:
+        db.add(OrderItemOption(
+            order_item_id=order1_item.id,
+            option_item_id=ice_option.id,
+            option_name="ICE",
+            extra_price=0,
+        ))
 
-    # ─── 주문 2: 따뜻한 카페라떼 1잔 (Regular) ───
+    # ─── 주문 2: 따뜻한 카페라떼 1잔 (Tall + HOT) ───
     order2 = Order(session_id=session2.id, total_price=5000, used_recommendation=True)
     db.add(order2)
     await db.flush()
 
-    db.add(OrderItem(
+    order2_item = OrderItem(
         order_id=order2.id,
         menu_id=latte.id,
         quantity=1,
         unit_price=5000,
         from_recommendation=True,
-    ))
+    )
+    db.add(order2_item)
+    await db.flush()
 
-    # ─── 주문 3: 딸기 스무디 1잔 ───
+    if tall_option:
+        db.add(OrderItemOption(
+            order_item_id=order2_item.id,
+            option_item_id=tall_option.id,
+            option_name="Tall",
+            extra_price=0,
+        ))
+    if hot_option:
+        db.add(OrderItemOption(
+            order_item_id=order2_item.id,
+            option_item_id=hot_option.id,
+            option_name="HOT",
+            extra_price=0,
+        ))
+
+    # ─── 주문 3: 딸기 스무디 1잔 (Tall) ───
     if smoothie:
         order3 = Order(session_id=session3.id, total_price=5500, used_recommendation=False)
         db.add(order3)
         await db.flush()
 
-        db.add(OrderItem(
+        order3_item = OrderItem(
             order_id=order3.id,
             menu_id=smoothie.id,
             quantity=1,
             unit_price=5500,
             from_recommendation=False,
-        ))
+        )
+        db.add(order3_item)
+        await db.flush()
+
+        if tall_option:
+            db.add(OrderItemOption(
+                order_item_id=order3_item.id,
+                option_item_id=tall_option.id,
+                option_name="Tall",
+                extra_price=0,
+            ))
 
     await db.commit()
 
