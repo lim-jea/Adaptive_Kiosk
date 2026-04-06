@@ -19,6 +19,7 @@ from core.security import http_basic
 from api.v1.router import v1_router
 from scripts.seed_menu import seed_menu_data
 from scripts.seed_sample import seed_sample_data  # 테스트용 예시 데이터 (프로덕션 전 삭제)
+from services.face_service import face_service
 
 # 모델 임포트 (Base.metadata에 테이블 등록)
 import models  # noqa: F401
@@ -30,6 +31,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 시작/종료 시 실행되는 이벤트"""
+    # 얼굴 분석 모델 로드 (mock 모드 가능)
+    try:
+        await face_service.load_models()
+    except Exception as e:
+        logger.warning("Face service load failed: %s", e)
+
     try:
         await initialize_connection_pool()
         # DB 연결 성공 시 테이블 자동 생성
@@ -58,13 +65,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ─── CORS 미들웨어 (기존 설정 유지) ───
+# ─── CORS 미들웨어 ───
 origins = [
     "http://localhost:3000",
     "http://localhost:3001",
+    "http://localhost:5000",
+    "http://localhost:5173",  # Vite 기본 포트 (프런트엔드)
     "http://localhost:8000",
     "http://localhost:8080",
-    "http://localhost:5000",
 ]
 
 app.add_middleware(

@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 전체 화면 높이 보장 (키오스크 세로형 UI) */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* 터치 디바이스 탭 하이라이트 제거 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}

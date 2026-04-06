@@ -1,4 +1,13 @@
-from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class AnalyticsRangeRequest(BaseModel):
+    """분석 기간 필터"""
+    start_date: Optional[datetime] = Field(None, description="시작 시각 (포함)")
+    end_date: Optional[datetime] = Field(None, description="종료 시각 (미포함)")
+    kiosk_id: Optional[int] = Field(None, description="특정 키오스크만 필터")
 
 
 class SessionAnalytics(BaseModel):
@@ -18,7 +27,7 @@ class RecommendationAnalytics(BaseModel):
 
 class OrderAnalytics(BaseModel):
     total_orders: int
-    total_revenue: int                   # 총 매출
-    avg_order_price: float               # 평균 주문 금액
+    total_revenue: int
+    avg_order_price: float
     recommendation_used_count: int
     recommendation_used_rate: float

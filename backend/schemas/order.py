@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
+from core.enums import OrderStatus
 
 
 class SelectedOptionRequest(BaseModel):
@@ -22,6 +23,12 @@ class OrderCreateRequest(BaseModel):
     session_uuid: str = Field(..., min_length=32, max_length=32)
     items: List[OrderItemRequest] = Field(..., min_length=1, description="최소 1개 아이템 필요")
     used_recommendation: bool = Field(default=False)
+
+
+class OrderListRequest(BaseModel):
+    status: Optional[OrderStatus] = None
+    skip: int = Field(0, ge=0)
+    limit: int = Field(100, ge=1, le=1000)
 
 
 class OrderItemOptionResponse(BaseModel):

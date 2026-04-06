@@ -13,7 +13,7 @@ from models.kiosk import Kiosk
 from models.session import KioskSession
 from models.order import Order, OrderItem, OrderItemOption
 from models.menu import Menu, OptionItem
-from crud.kiosk import register_kiosk
+from crud.kiosk import create_kiosk
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +26,20 @@ async def seed_sample_data(db: AsyncSession):
         return
 
     # ─── 키오스크 3대 등록 ───
-    kiosk1 = await register_kiosk(db, name="1층 로비 키오스크", location="서울 강남점 1층 입구")
-    kiosk2 = await register_kiosk(db, name="2층 매장 키오스크", location="서울 강남점 2층 매장 내부")
-    kiosk3 = await register_kiosk(db, name="3층 휴게실 키오스크", location="서울 강남점 3층 직원 휴게실")
+    kiosk1 = await create_kiosk(db, name="1층 로비 키오스크", location="서울 강남점 1층 입구")
+    kiosk2 = await create_kiosk(db, name="2층 매장 키오스크", location="서울 강남점 2층 매장 내부")
+    kiosk3 = await create_kiosk(db, name="3층 휴게실 키오스크", location="서울 강남점 3층 직원 휴게실")
 
-    logger.info(f"Sample kiosks registered: {kiosk1.name} (api_key: {kiosk1.api_key[:16]}...)")
-    logger.info(f"Sample kiosks registered: {kiosk2.name} (api_key: {kiosk2.api_key[:16]}...)")
-    logger.info(f"Sample kiosks registered: {kiosk3.name} (api_key: {kiosk3.api_key[:16]}...)")
+    logger.info("=" * 80)
+    logger.info("[TEST KIOSK API KEYS — copy one to frontend/.env VITE_KIOSK_API_KEY]")
+    logger.info(f"  {kiosk1.name}: {kiosk1.api_key}")
+    logger.info(f"  {kiosk2.name}: {kiosk2.api_key}")
+    logger.info(f"  {kiosk3.name}: {kiosk3.api_key}")
+    logger.info("=" * 80)
 
     # ─── 세션 3개 생성 ───
     session1 = KioskSession(kiosk_id=kiosk1.id)
-    session2 = KioskSession(kiosk_id=kiosk1.id, is_simple_mode=True, estimated_age_group="60대", estimated_gender="female")
+    session2 = KioskSession(kiosk_id=kiosk1.id, is_simple_mode=True, estimated_age_group="노년", estimated_gender="female")
     session3 = KioskSession(kiosk_id=kiosk2.id)
     db.add_all([session1, session2, session3])
     await db.flush()

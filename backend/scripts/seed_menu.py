@@ -24,37 +24,38 @@ CATEGORIES = [
 ]
 
 # ─── 메뉴 ───
+# 컬럼: icon_emoji, calories, serving_temperature, is_caffeinated, sweetness_level, bitterness_level
 MENUS = [
     # 커피
-    {"name": "에스프레소", "category": "커피", "price": 4000, "emoji": "☕", "cal": 5, "temp": "hot"},
-    {"name": "따뜻한 아메리카노", "category": "커피", "price": 4500, "emoji": "☕", "cal": 10, "temp": "hot"},
-    {"name": "아이스 아메리카노", "category": "커피", "price": 4500, "emoji": "☕", "cal": 10, "temp": "cold"},
-    {"name": "따뜻한 카페라떼", "category": "커피", "price": 5200, "emoji": "🥛", "cal": 120, "temp": "hot"},
-    {"name": "아이스 카페라떼", "category": "커피", "price": 5200, "emoji": "🥛", "cal": 110, "temp": "cold"},
-    {"name": "카푸치노", "category": "커피", "price": 5200, "emoji": "☕", "cal": 100, "temp": "hot"},
-    {"name": "콜드브루", "category": "커피", "price": 5200, "emoji": "🖤", "cal": 10, "temp": "cold"},
-    {"name": "콜드브루 라떼", "category": "커피", "price": 5800, "emoji": "🖤", "cal": 110, "temp": "cold"},
-    {"name": "드립 커피", "category": "커피", "price": 5000, "emoji": "☕", "cal": 10, "temp": "hot"},
+    {"name": "에스프레소", "category": "커피", "price": 4000, "icon_emoji": "☕", "calories": 5, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 5},
+    {"name": "따뜻한 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
+    {"name": "아이스 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
+    {"name": "따뜻한 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 120, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 2},
+    {"name": "아이스 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 2},
+    {"name": "카푸치노", "category": "커피", "price": 5200, "icon_emoji": "☕", "calories": 100, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 3},
+    {"name": "콜드브루", "category": "커피", "price": 5200, "icon_emoji": "🖤", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
+    {"name": "콜드브루 라떼", "category": "커피", "price": 5800, "icon_emoji": "🖤", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 3},
+    {"name": "드립 커피", "category": "커피", "price": 5000, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
     # 달콤한 커피
-    {"name": "바닐라 라떼", "category": "달콤한커피", "price": 5900, "emoji": "🍦", "cal": 200, "temp": "both"},
-    {"name": "카라멜 마끼아또", "category": "달콤한커피", "price": 6200, "emoji": "🍮", "cal": 250, "temp": "both"},
+    {"name": "바닐라 라떼", "category": "달콤한커피", "price": 5900, "icon_emoji": "🍦", "calories": 200, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 4, "bitterness_level": 2},
+    {"name": "카라멜 마끼아또", "category": "달콤한커피", "price": 6200, "icon_emoji": "🍮", "calories": 250, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 5, "bitterness_level": 2},
     # 블렌디드
-    {"name": "프라푸치노", "category": "블렌디드", "price": 6500, "emoji": "🍫", "cal": 350, "temp": "cold"},
-    {"name": "말차 프라페", "category": "블렌디드", "price": 6300, "emoji": "🍵", "cal": 300, "temp": "cold"},
+    {"name": "프라푸치노", "category": "블렌디드", "price": 6500, "icon_emoji": "🍫", "calories": 350, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 5, "bitterness_level": 1},
+    {"name": "말차 프라페", "category": "블렌디드", "price": 6300, "icon_emoji": "🍵", "calories": 300, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 4, "bitterness_level": 2},
     # 티
-    {"name": "녹차 라떼", "category": "티", "price": 5800, "emoji": "🍵", "cal": 160, "temp": "both"},
-    {"name": "캐모마일 티", "category": "티", "price": 4900, "emoji": "🌼", "cal": 5, "temp": "hot"},
+    {"name": "녹차 라떼", "category": "티", "price": 5800, "icon_emoji": "🍵", "calories": 160, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 2, "bitterness_level": 2},
+    {"name": "캐모마일 티", "category": "티", "price": 4900, "icon_emoji": "🌼", "calories": 5, "serving_temperature": "hot", "is_caffeinated": False, "sweetness_level": 0, "bitterness_level": 1},
     # 달콤한 티
-    {"name": "복숭아 아이스티", "category": "달콤한티", "price": 5200, "emoji": "🍑", "cal": 80, "temp": "cold"},
-    {"name": "자몽 허니 블랙 티", "category": "달콤한티", "price": 5700, "emoji": "🍊", "cal": 90, "temp": "cold"},
+    {"name": "복숭아 아이스티", "category": "달콤한티", "price": 5200, "icon_emoji": "🍑", "calories": 80, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
+    {"name": "자몽 허니 블랙 티", "category": "달콤한티", "price": 5700, "icon_emoji": "🍊", "calories": 90, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 3, "bitterness_level": 1},
     # 에이드/주스
-    {"name": "레몬에이드", "category": "에이드", "price": 6000, "emoji": "🍋", "cal": 120, "temp": "cold"},
-    {"name": "자몽에이드", "category": "에이드", "price": 6200, "emoji": "🍊", "cal": 110, "temp": "cold"},
+    {"name": "레몬에이드", "category": "에이드", "price": 6000, "icon_emoji": "🍋", "calories": 120, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
+    {"name": "자몽에이드", "category": "에이드", "price": 6200, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
     # 스무디
-    {"name": "딸기 스무디", "category": "스무디", "price": 6500, "emoji": "🍓", "cal": 260, "temp": "cold"},
-    {"name": "망고 스무디", "category": "스무디", "price": 6500, "emoji": "🥭", "cal": 250, "temp": "cold"},
+    {"name": "딸기 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🍓", "calories": 260, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 5, "bitterness_level": 0},
+    {"name": "망고 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥭", "calories": 250, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 5, "bitterness_level": 0},
     # 주스
-    {"name": "오렌지 주스", "category": "주스", "price": 5800, "emoji": "🍊", "cal": 110, "temp": "cold"},
+    {"name": "오렌지 주스", "category": "주스", "price": 5800, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
 ]
 
 # ─── 옵션 그룹 + 아이템 ───
@@ -164,9 +165,13 @@ async def seed_menu_data(db: AsyncSession):
             name=m["name"],
             category=cat_name,
             price=m["price"],
-            emoji=m.get("emoji"),
-            cal=m.get("cal"),
-            temp=m.get("temp"),
+            icon_emoji=m.get("icon_emoji"),
+            calories=m.get("calories"),
+            serving_temperature=m.get("serving_temperature"),
+            is_caffeinated=m.get("is_caffeinated", False),
+            is_seasonal=m.get("is_seasonal", False),
+            sweetness_level=m.get("sweetness_level"),
+            bitterness_level=m.get("bitterness_level"),
         )
         db.add(menu)
     await db.flush()

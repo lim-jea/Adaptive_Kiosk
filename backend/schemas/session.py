@@ -1,31 +1,26 @@
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional
 from pydantic import BaseModel, Field
+from core.enums import SessionStatus, SessionEndReason
 
 
 # ─── Request ───
 
-class SessionGetRequest(BaseModel):
-    """세션 조회 요청"""
-    session_uuid: str = Field(..., min_length=32, max_length=32)
-
-
 class SessionListRequest(BaseModel):
     """세션 목록 조회 요청"""
-    active_only: bool = True
-    as_list: bool = False  # 단일 조회 vs 목록 조회 구분 (내부용)
+    status: Optional[SessionStatus] = None
+    kiosk_id: Optional[int] = None
+    skip: int = Field(0, ge=0)
+    limit: int = Field(100, ge=1, le=1000)
 
 
-class SessionEndRequest(BaseModel):
-    """세션 종료 요청"""
-    reason: Literal["completed", "timeout", "cancelled"] = Field(
-        default="completed",
-        examples=["completed"],
-    )
-
-
-class SessionUpdate(BaseModel):
-    """세션 상태 갱신 (2단계: 간편모드 전환 등)"""
+class SessionUpdateRequest(BaseModel):
+    """세션 상태 갱신 (PATCH).
+    종료 시: { status: ended, end_reason: completed }
+    간편모드 전환: { is_simple_mode: true, estimated_age_group: ... }
+    """
+    status: Optional[SessionStatus] = None
+    end_reason: Optional[SessionEndReason] = None
     is_simple_mode: Optional[bool] = None
     estimated_age_group: Optional[str] = Field(None, max_length=20)
     estimated_gender: Optional[str] = Field(None, max_length=10)

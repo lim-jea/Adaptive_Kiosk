@@ -1,9 +1,62 @@
-.env
+# ─── Python ───
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Virtual environments ───
 env/
-backend/.venv/
 venv/
+.venv/
+backend/.venv/
+
+# ─── Environment variables / secrets ───
+.env
+.env.local
+.env.*.local
+*.env.zip
+backend/.env
+frontend/.env
+
+# ─── Node.js / Frontend ───
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── IDE / Editors ───
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Logs ───
+*.log
+logs/
+
+# ─── Build outputs ───
+dist/
+build/
+*.tsbuildinfo
+
+# ─── Database / Models ───
+*.sqlite
+*.sqlite3
+*.db
+~/.insightface/
+
+# ─── Project-specific ───
+backend/uv.lock

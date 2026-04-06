@@ -14,12 +14,19 @@ class Menu(Base):
     __tablename__ = "menus"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False)
+    name = Column(String(100), unique=True, nullable=False)
     category = Column(String(50), ForeignKey("categories.name"), nullable=False)
     price = Column(Integer, nullable=False)
-    emoji = Column(String(10), nullable=True)
-    cal = Column(Integer, nullable=True)
-    temp = Column(String(20), nullable=True)  # hot, cold, both
+
+    # ─── 메뉴 속성 (추천 시스템용 구조화 컬럼) ───
+    icon_emoji = Column(String(10), nullable=True)
+    calories = Column(Integer, nullable=True)
+    serving_temperature = Column(String(10), nullable=True)  # hot / cold / both
+    is_caffeinated = Column(Boolean, default=False, nullable=False)
+    is_seasonal = Column(Boolean, default=False, nullable=False)
+    sweetness_level = Column(Integer, nullable=True)         # 0~5
+    bitterness_level = Column(Integer, nullable=True)        # 0~5
+
     description = Column(String(255), nullable=True)
     image_url = Column(String(500), nullable=True)
     is_available = Column(Boolean, default=True, nullable=False)
@@ -29,7 +36,7 @@ class OptionGroup(Base):
     __tablename__ = "option_groups"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), nullable=False)       # "온도", "사이즈", "당도" 등
+    name = Column(String(50), unique=True, nullable=False)  # "온도", "사이즈", "당도" 등
     is_required = Column(Boolean, default=True, nullable=False)
     min_select = Column(Integer, default=1, nullable=False)
     max_select = Column(Integer, default=1, nullable=False)
@@ -40,7 +47,7 @@ class OptionItem(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     group_id = Column(Integer, ForeignKey("option_groups.id"), nullable=False)
-    name = Column(String(50), nullable=False)        # "핫", "아이스", "Regular", "Large"
+    name = Column(String(50), nullable=False)
     extra_price = Column(Integer, default=0, nullable=False)
     is_default = Column(Boolean, default=False, nullable=False)
     is_available = Column(Boolean, default=True, nullable=False)
