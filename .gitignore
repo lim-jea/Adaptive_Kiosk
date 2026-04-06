@@ -20,6 +20,13 @@ backend/.venv/
 .env.local
 .env.*.local
 *.env.zip
+env.zip
+*env*.zip
+*env*.tar
+*env*.tar.gz
+*.pem
+*.key
+*credentials*
 backend/.env
 frontend/.env
 
