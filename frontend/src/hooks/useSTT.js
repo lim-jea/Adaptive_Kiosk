@@ -25,15 +25,23 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
     rec.lang = lang
     rec.continuous = false
     rec.interimResults = true
-    rec.maxAlternatives = 1
+    rec.maxAlternatives = 5  // 후보를 더 많이 받아 가장 긴(상세한) 것 선택
 
     rec.onresult = (event) => {
       let interimText = ''
       let finalText = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const r = event.results[i]
-        if (r.isFinal) finalText += r[0].transcript
-        else interimText += r[0].transcript
+        if (r.isFinal) {
+          // 가장 긴 후보 선택 (보통 더 정확)
+          let best = r[0].transcript
+          for (let k = 1; k < r.length; k++) {
+            if (r[k].transcript.length > best.length) best = r[k].transcript
+          }
+          finalText += best
+        } else {
+          interimText += r[0].transcript
+        }
       }
       if (interimText) setInterim(interimText)
       if (finalText) {
@@ -42,7 +50,11 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
       }
     }
     rec.onerror = (e) => {
-      setError(e.error || 'unknown')
+      // no-speech / aborted / audio-capture 같은 일시 오류는 조용히 처리
+      const transient = ['no-speech', 'aborted', 'audio-capture']
+      if (!transient.includes(e.error)) {
+        setError(e.error || 'unknown')
+      }
       setListening(false)
     }
     rec.onend = () => {

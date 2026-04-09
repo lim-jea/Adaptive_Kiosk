@@ -201,13 +201,95 @@ backend/
 │       ├── recommendation.py     # (2단계)
 │       └── voice.py              # (2단계)
 │
+├── data/
+│   ├── canned_responses.json     # 음성 주문 시나리오 / 템플릿 / 조각 매뉴얼
+│   └── tts_cache/                # Gemini TTS WAV 영구 캐시 (gitignore)
+│
 ├── scripts/
 │   ├── seed_menu.py              # 카테고리/메뉴/옵션 초기 데이터
-│   └── seed_sample.py            # 테스트용 키오스크 3대 + 샘플 주문
+│   ├── seed_sample.py            # 테스트용 키오스크 3대 + 샘플 주문
+│   └── prewarm_tts.py            # 음성 조각/시나리오 일괄 합성 + 캐시 관리
 │
 └── docs/
     ├── 백엔드 구조 설명.md
     └── 프로젝트 전체 정리.md
+```
+
+---
+
+## 음성 주문 TTS 캐시 관리
+
+음성 주문 응답은 같은 Gemini 클라이언트에서 **2.5 Flash TTS**로 합성됩니다. 매 요청마다 합성하면 느리고 비싸기 때문에 자주 쓰이는 문구를 미리 합성해 **`backend/data/tts_cache/{sha256}.wav`**에 영구 저장하고, 런타임에서는 디스크 캐시 → 라이브 합성 순으로 조회합니다.
+
+### 캐시 대상
+
+[`data/canned_responses.json`](data/canned_responses.json) 파일이 합성 대상의 단일 출처입니다.
+
+| 섹션 | 설명 |
+|---|---|
+| `scenarios` | stage + 정규식으로 매칭되는 즉시 응답 (인사/취소/긍정/카테고리 선택 등). `response_text`를 그대로 합성. |
+| `templates` | `{menu}`, `{option}` 슬롯을 가진 문장. DB의 메뉴/옵션을 읽어 모든 조합으로 확장. |
+| `fragments` | 단어 단위 조각(메뉴 이름, 옵션 이름, 한국어 숫자, 연결구). 런타임에 PCM을 이어붙여 임의 조합 응답 생성. |
+
+`fragments`에는 한국어 숫자(`일`~`구`, `십`/`백`/`천`/`만`/`십만`/`백만`)가 포함되어 있어 가격 안내(`총 사천오백원입니다.`) 같은 동적 응답도 Gemini TTS 호출 없이 조각 합성으로 만들 수 있습니다.
+
+### `scripts/prewarm_tts.py` 사용법
+
+> ⚠️ **반드시 가상환경에서 실행하세요.** 시스템 Python으로 실행하면 `ModuleNotFoundError: sqlalchemy` 가 납니다.
+
+```bash
+# uv 사용 (권장 — 활성화 필요 없음)
+uv run python -m scripts.prewarm_tts
+
+# 또는 가상환경 활성화 후
+.venv\Scripts\Activate.ps1   # PowerShell
+python -m scripts.prewarm_tts
+```
+
+| 명령 | 동작 |
+|---|---|
+| `python -m scripts.prewarm_tts` | 디스크 캐시에 없는 항목만 합성. 두 번째 실행부터는 거의 즉시 끝남. |
+| `python -m scripts.prewarm_tts --list` | 합성 대상 텍스트만 출력. `[✓]`는 캐시 hit, `[ ]`는 합성 필요. |
+| `python -m scripts.prewarm_tts --force` | 이미 캐시된 항목까지 전부 다시 합성 (음성/모델 변경 시). |
+| `python -m scripts.prewarm_tts --clean` | `data/tts_cache/` 통째로 삭제. 시연/테스트 후 정리용. |
+
+### 권장 시연 흐름
+
+```bash
+# 1. 시연 전 한 번
+uv run python -m scripts.prewarm_tts --list   # 어떤 게 새로 만들어질지 확인
+uv run python -m scripts.prewarm_tts          # 약 60-80개 음성 합성, 1-3분 소요
+
+# 2. 시연 동안은 서버가 디스크 캐시 hit으로 즉시 응답
+uv run uvicorn main:app --reload
+
+# 3. 시연 종료 후 정리
+uv run python -m scripts.prewarm_tts --clean
+```
+
+### 시나리오 / 조각 추가
+
+`data/canned_responses.json` 편집 후 다음 prewarm 실행 시 자동으로 디스크에 추가됩니다.
+
+- **새 정형 응답**: `scenarios` 배열에 항목 추가 (id, match, response). `response_text`는 변경 시 sha256이 바뀌어 새로 합성됩니다.
+- **새 템플릿**: `templates` 배열에 `{ "id": "...", "expand": "menus|options", "text": "{menu} ..." }` 추가.
+- **새 조각**: `fragments.static` 배열에 짧은 문자열 추가. 런타임 조합용.
+
+### 동작 우선순위 (런타임)
+
+```
+사용자 발화
+  ↓
+[1] match_canned (시나리오 정규식)         → 디스크 캐시 hit, ~5ms
+  ↓ miss
+[2] match_pattern (코드 패턴)              → 즉시
+  ↓ miss
+[3] match_menu_name (메뉴 이름 직접 언급)  → 즉시
+  ↓ miss
+[4] Gemini chat (시나리오/템플릿/조각 매뉴얼 주입)
+     ↓ AI 응답
+   audio_segments 있음? → compose_audio_from_segments (조각 PCM concat) → 즉시
+   없음?               → synthesize_speech(text) → 디스크 hit 또는 Gemini TTS 호출
 ```
 
 ---

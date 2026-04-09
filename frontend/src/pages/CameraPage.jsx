@@ -14,6 +14,9 @@ export default function CameraPage() {
   const [progress, setProgress] = useState(0)            // 진행 바 (0~100)
   const [camError, setCamError] = useState(null)         // 카메라 에러 메시지
 
+  const secureContext = typeof window !== 'undefined' ? window.isSecureContext : true
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+
   // 컴포넌트 마운트 시 카메라 시작
   useEffect(() => {
     startCamera().catch((err) => {
@@ -23,6 +26,16 @@ export default function CameraPage() {
     // 언마운트 시 카메라 정리
     return () => {
       stopCamera()
+    }
+  }, [startCamera, stopCamera])
+
+  const handleRetryCamera = useCallback(async () => {
+    setCamError(null)
+    stopCamera()
+    try {
+      await startCamera()
+    } catch (err) {
+      setCamError(err.message)
     }
   }, [startCamera, stopCamera])
 
@@ -111,18 +124,33 @@ export default function CameraPage() {
 
       {/* 에러 메시지 */}
       {(camError || error) && (
-        <div className="mt-4 px-4 py-3 bg-red-900 text-red-200 rounded-xl text-sm text-center max-w-xs">
-          {camError || (
-            error === 'not_allowed'
-              ? '카메라 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.'
-              : error === 'not_found'
-                ? '카메라를 찾을 수 없습니다. 장치 연결을 확인해주세요.'
-                : error === 'not_readable'
-                  ? '카메라가 다른 앱에서 사용 중입니다. 다른 앱을 종료 후 다시 시도해주세요.'
-                  : error === 'insecure_context'
-                    ? 'HTTPS 또는 localhost 환경에서만 카메라를 사용할 수 있습니다.'
-                    : '카메라 초기화 중 알 수 없는 오류가 발생했습니다.'
-          )}
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <div className="px-4 py-3 bg-red-900 text-red-200 rounded-xl text-sm text-center max-w-xs">
+            {camError || (
+              error === 'not_allowed'
+                ? '카메라 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.'
+                : error === 'not_found'
+                  ? '카메라를 찾을 수 없습니다. 장치 연결을 확인해주세요.'
+                  : error === 'not_readable'
+                    ? '카메라가 다른 앱에서 사용 중입니다. 다른 앱을 종료 후 다시 시도해주세요.'
+                    : error === 'insecure_context'
+                      ? 'HTTPS 또는 localhost 환경에서만 카메라를 사용할 수 있습니다.'
+                      : '카메라 초기화 중 알 수 없는 오류가 발생했습니다.'
+            )}
+          </div>
+
+          <button
+            onClick={handleRetryCamera}
+            disabled={isCapturing}
+            className="text-sm px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white disabled:opacity-60"
+          >
+            카메라 다시 연결
+          </button>
+
+          <div className="text-xs text-gray-400 text-center">
+            <div>접속 주소: {currentOrigin}</div>
+            <div>보안 컨텍스트: {secureContext ? '예' : '아니오'}</div>
+          </div>
         </div>
       )}
 

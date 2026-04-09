@@ -9,7 +9,14 @@ import api from '../utils/api'
 import { useSTT } from './useSTT'
 import { useTTS } from './useTTS'
 
-export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart = false }) {
+export function useVoiceOrder({
+  sessionUuid,
+  cartSnapshot,
+  selectedCategory,
+  selectedMenuName,
+  onAction,
+  autoStart = false,
+}) {
   const [status, setStatus] = useState('idle') // idle | starting | listening | thinking | speaking | error | ended
   const [persona, setPersona] = useState('unknown')
   const [stage, setStage] = useState('greeting')
@@ -19,13 +26,17 @@ export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart =
 
   const onActionRef = useRef(onAction)
   const cartSnapshotRef = useRef(cartSnapshot)
+  const selectedCategoryRef = useRef(selectedCategory)
+  const selectedMenuNameRef = useRef(selectedMenuName)
   const handleAIResponseRef = useRef(null)
   const startedRef = useRef(false)
 
   useEffect(() => { onActionRef.current = onAction }, [onAction])
   useEffect(() => { cartSnapshotRef.current = cartSnapshot }, [cartSnapshot])
+  useEffect(() => { selectedCategoryRef.current = selectedCategory }, [selectedCategory])
+  useEffect(() => { selectedMenuNameRef.current = selectedMenuName }, [selectedMenuName])
 
-  const tts = useTTS({ rate: 1.0 })
+  const tts = useTTS()
 
   const dispatchActions = useCallback((actions) => {
     for (const a of actions || []) {
@@ -51,10 +62,12 @@ export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart =
         session_uuid: sessionUuid,
         content: text,
         cart_snapshot: cart,
+        selected_category: selectedCategoryRef.current || null,
+        selected_menu_name: selectedMenuNameRef.current || null,
       })
       setPersona(data.persona)
       setStage(data.current_stage)
-      await handleAIResponseRef.current?.(data.response)
+      await handleAIResponseRef.current?.(data.response, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
       setStatus('error')
@@ -64,7 +77,7 @@ export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart =
   const stt = useSTT({ onFinal: sendMessage })
 
   // stt가 준비된 뒤에 handleAIResponse 정의 — 안전하게 stt.start() 호출 가능
-  const handleAIResponse = useCallback(async (resp) => {
+  const handleAIResponse = useCallback(async (resp, audioB64) => {
     if (!resp) return
     setStage(resp.next_stage || 'greeting')
     setLastResponseText(resp.response_text || '')
@@ -72,7 +85,7 @@ export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart =
 
     if (resp.response_text) {
       setStatus('speaking')
-      await tts.speak(resp.response_text)
+      await tts.speak(resp.response_text, audioB64)
     }
 
     if (resp.end_conversation) {
@@ -100,7 +113,7 @@ export function useVoiceOrder({ sessionUuid, cartSnapshot, onAction, autoStart =
       const { data } = await api.post('/api/v1/voice/start', { session_uuid: sessionUuid })
       setPersona(data.persona)
       setStage(data.current_stage)
-      await handleAIResponseRef.current?.(data.greeting)
+      await handleAIResponseRef.current?.(data.greeting, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
       setStatus('error')

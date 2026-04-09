@@ -17,7 +17,16 @@ export default function KioskPage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [optionMenu, setOptionMenu] = useState(null)
+  const [optionPreview, setOptionPreview] = useState([])  // 음성으로 미리 선택된 옵션 ID
   const [cartOpen, setCartOpen] = useState(false)
+  const [voiceFlash, setVoiceFlash] = useState(null)      // 'category:커피' 등 잠깐 하이라이트
+  const flashTimerRef = useRef(null)
+
+  const flash = useCallback((key) => {
+    setVoiceFlash(key)
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = setTimeout(() => setVoiceFlash(null), 1200)
+  }, [])
 
   // 마운트 시 카테고리 + 메뉴 동시 로드
   useEffect(() => {
@@ -103,18 +112,36 @@ export default function KioskPage() {
       case 'navigate': {
         if (action.target === 'category' && action.category_name) {
           setActiveCategory(action.category_name)
+          flash(`category:${action.category_name}`)
         } else if (action.target === 'menu_list') {
           setActiveCategory('all')
+          flash('category:all')
         } else if (action.target === 'menu_detail' && action.menu_name) {
+          flash(`menu:${action.menu_name}`)
           try {
             const detail = await api.get(`/api/v1/menus/${encodeURIComponent(action.menu_name)}`)
             setOptionMenu(detail.data)
+            setOptionPreview([])
           } catch (e) { console.error(e) }
         } else if (action.target === 'cart') {
           setCartOpen(true)
         } else if (action.target === 'payment') {
-          if (state.cart.length > 0) navigate('/payment')
+          // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
+          if (cartRef.current.length > 0) navigate('/payment')
+          else console.warn('[voice] cart empty, payment navigation skipped')
         }
+        break
+      }
+      case 'option_preview': {
+        // 옵션 모달이 안 떠 있으면 먼저 띄우고 미리 선택만 표시
+        if (!optionMenu || optionMenu.name !== action.menu_name) {
+          try {
+            const detail = await api.get(`/api/v1/menus/${encodeURIComponent(action.menu_name)}`)
+            setOptionMenu(detail.data)
+          } catch (e) { console.error(e) }
+        }
+        setOptionPreview(action.option_item_ids || [])
+        flash(`option:${action.menu_name}`)
         break
       }
       case 'cart_add': {
@@ -147,6 +174,8 @@ export default function KioskPage() {
               optionLabels,
             },
           })
+          setOptionMenu(null)   // 음성으로 옵션 확정 시 모달 닫기
+          setOptionPreview([])
           setCartOpen(true)
         } catch (e) { console.error(e) }
         break
@@ -179,6 +208,8 @@ export default function KioskPage() {
   const voice = useVoiceOrder({
     sessionUuid: state.sessionUuid,
     cartSnapshot: state.cart,
+    selectedCategory: activeCategory === 'all' ? null : activeCategory,
+    selectedMenuName: optionMenu?.name || null,
     onAction: handleVoiceAction,
     autoStart: state.isSimpleMode,
   })
@@ -199,6 +230,7 @@ export default function KioskPage() {
         <CategoryTab
           label="전체"
           active={activeCategory === 'all'}
+          flashing={voiceFlash === 'category:all'}
           onClick={() => setActiveCategory('all')}
         />
         {categories.map((cat) => (
@@ -206,6 +238,7 @@ export default function KioskPage() {
             key={cat.id}
             label={cat.name}
             active={activeCategory === cat.name}
+            flashing={voiceFlash === `category:${cat.name}`}
             onClick={() => setActiveCategory(cat.name)}
           />
         ))}
@@ -292,7 +325,8 @@ export default function KioskPage() {
       {optionMenu && (
         <OptionModal
           menu={optionMenu}
-          onClose={() => setOptionMenu(null)}
+          previewSelections={optionPreview}
+          onClose={() => { setOptionMenu(null); setOptionPreview([]) }}
           onConfirm={handleConfirmOption}
         />
       )}
@@ -300,15 +334,23 @@ export default function KioskPage() {
   )
 }
 
-/** 카테고리 탭 */
-function CategoryTab({ label, active, onClick }) {
+/** 카테고리 탭 — 활성 시 자동 스크롤 + 음성 하이라이트 잠깐 깜빡 */
+function CategoryTab({ label, active, flashing, onClick }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (active && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+    }
+  }, [active])
   return (
     <button
+      ref={ref}
       onClick={onClick}
-      className={`flex-shrink-0 px-5 py-3 text-sm font-medium border-b-2 transition-colors
+      className={`flex-shrink-0 px-5 py-3 text-sm font-medium border-b-2 transition-all
         ${active
           ? 'border-amber-500 text-amber-700'
-          : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          : 'border-transparent text-gray-500 hover:text-gray-700'}
+        ${flashing ? 'bg-amber-100 scale-105' : ''}`}
     >
       {label}
     </button>
@@ -375,7 +417,7 @@ function CartRow({ item, onQtyChange }) {
 }
 
 /** 옵션 선택 모달 — option_groups를 동적으로 렌더링 */
-function OptionModal({ menu, onClose, onConfirm }) {
+function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
   const [selections, setSelections] = useState(() => {
     const init = {}
     for (const g of menu.option_groups || []) {
@@ -384,6 +426,23 @@ function OptionModal({ menu, onClose, onConfirm }) {
     return init
   })
   const [quantity, setQuantity] = useState(1)
+
+  // 음성으로 미리 선택된 옵션 ID들을 모달 상태에 반영 — 음성으로 골라질 때마다 즉시 표시
+  useEffect(() => {
+    if (!previewSelections || previewSelections.length === 0) return
+    setSelections((prev) => {
+      const next = { ...prev }
+      for (const g of menu.option_groups || []) {
+        const idsInGroup = g.items.map((i) => i.id)
+        const previewInGroup = previewSelections.filter((id) => idsInGroup.includes(id))
+        if (previewInGroup.length > 0) {
+          // 단일 선택 그룹이면 마지막 1개로, 다중이면 합집합
+          next[g.id] = g.max_select === 1 ? previewInGroup.slice(-1) : previewInGroup
+        }
+      }
+      return next
+    })
+  }, [previewSelections, menu])
 
   const extraSum = useMemo(() => {
     let sum = 0

@@ -20,6 +20,7 @@ from api.v1.router import v1_router
 from scripts.seed_menu import seed_menu_data
 from scripts.seed_sample import seed_sample_data  # 테스트용 예시 데이터 (프로덕션 전 삭제)
 from services.face_service import face_service
+from services.chat_service import prewarm_tts_cache
 
 # 모델 임포트 (Base.metadata에 테이블 등록)
 import models  # noqa: F401
@@ -55,6 +56,10 @@ async def lifespan(app: FastAPI):
                     await seed_sample_data(db)  # 테스트용 예시 데이터 (프로덕션 전 삭제)
     except Exception as e:
         logger.warning("Database initialization skipped: %s", e)
+
+    # TTS 프리워밍 — 시나리오 + 템플릿×DB 메뉴/옵션 조합을 미리 합성해 디스크 캐시에 적재
+    # 백그라운드로 띄워서 서버 부팅을 막지 않음
+    asyncio.create_task(prewarm_tts_cache(get_session_factory()))
     yield
 
 

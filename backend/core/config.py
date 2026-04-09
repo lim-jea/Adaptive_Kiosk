@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     # Google Gemini (음성 주문용)
     GENAI_API_KEY: str = ""
+    # Gemini TTS — preview가 실제 동작하는 모델명. GA명은 아직 없음.
+    GENAI_TTS_MODEL: str = "gemini-2.5-flash-preview-tts"
 
     model_config = {
         "env_file": ".env",

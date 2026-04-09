@@ -1,5 +1,5 @@
 // 랜딩 페이지 — 키오스크 시작 화면
-// "시작하기" 버튼 클릭 시 세션 시작(X-API-Key) + 카메라 권한 요청 → CameraPage 이동
+// "시작하기" 버튼 클릭 시 세션 시작(X-API-Key) 후 CameraPage 이동
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -24,22 +24,13 @@ export default function LandingPage() {
       dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
       sessionStorage.setItem('session_uuid', session_uuid)
 
-      // 카메라 권한 사전 요청
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false,
-      })
-      // 권한 확인 후 스트림 즉시 정리 (CameraPage에서 다시 시작)
-      stream.getTracks().forEach((t) => t.stop())
-
       navigate('/camera')
     } catch (err) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setError('카메라 권한이 필요합니다. 브라우저 설정에서 카메라 접근을 허용해주세요.')
-      } else if (err.name === 'NotFoundError') {
-        setError('카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.')
+      const status = err?.response?.status
+      if (status === 401 || status === 403) {
+        setError('키오스크 인증 정보가 올바르지 않습니다. 프론트엔드 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.')
       } else {
-        setError('카메라를 시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
+        setError('시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
       }
     } finally {
       setLoading(false)
@@ -93,7 +84,7 @@ export default function LandingPage() {
           w-full max-w-xs
         "
       >
-        {loading ? '카메라 시작 중...' : '시작하기'}
+        {loading ? '시작 중...' : '시작하기'}
       </button>
 
       {/* 하단 안내 */}

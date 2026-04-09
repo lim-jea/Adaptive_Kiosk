@@ -1,5 +1,6 @@
 # ─── Python ───
 __pycache__/
+backend/data/tts_cache/
 *.pyc
 *.pyo
 *.pyd
