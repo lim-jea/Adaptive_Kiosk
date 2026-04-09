@@ -1,10 +1,12 @@
 // 키오스크 메인 페이지 — 메뉴 동적 로드 + 옵션 모달 + 장바구니
 // 메뉴/카테고리/옵션은 모두 백엔드 API에서 동적으로 가져옴
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
+import { useVoiceOrder } from '../hooks/useVoiceOrder'
+import VoiceOverlay from '../components/VoiceOverlay'
 
 export default function KioskPage() {
   const navigate = useNavigate()
@@ -90,6 +92,96 @@ export default function KioskPage() {
   const handleBack = useCallback(() => {
     navigate('/')
   }, [navigate])
+
+  // ─── 음성 주문 통합 ─────────────────────────────────────────────────
+  // 액션 핸들러는 비동기 fetch 도중 cart가 바뀌어도 항상 최신 cart를 보도록 ref 사용
+  const cartRef = useRef(state.cart)
+  useEffect(() => { cartRef.current = state.cart }, [state.cart])
+
+  const handleVoiceAction = useCallback(async (action) => {
+    switch (action.type) {
+      case 'navigate': {
+        if (action.target === 'category' && action.category_name) {
+          setActiveCategory(action.category_name)
+        } else if (action.target === 'menu_list') {
+          setActiveCategory('all')
+        } else if (action.target === 'menu_detail' && action.menu_name) {
+          try {
+            const detail = await api.get(`/api/v1/menus/${encodeURIComponent(action.menu_name)}`)
+            setOptionMenu(detail.data)
+          } catch (e) { console.error(e) }
+        } else if (action.target === 'cart') {
+          setCartOpen(true)
+        } else if (action.target === 'payment') {
+          if (state.cart.length > 0) navigate('/payment')
+        }
+        break
+      }
+      case 'cart_add': {
+        try {
+          const detail = await api.get(`/api/v1/menus/${encodeURIComponent(action.menu_name)}`)
+          const menu = detail.data
+          const optionItems = []
+          const optionLabels = []
+          let extra = 0
+          for (const g of menu.option_groups || []) {
+            for (const it of g.items || []) {
+              if (action.option_item_ids?.includes(it.id)) {
+                optionItems.push({ option_item_id: it.id })
+                optionLabels.push(it.name)
+                extra += it.extra_price
+              }
+            }
+          }
+          const cartItemId = `${menu.name}_${[...(action.option_item_ids || [])].sort().join('-')}`
+          dispatch({
+            type: ACTIONS.ADD_TO_CART,
+            payload: {
+              cartItemId,
+              menuName: menu.name,
+              displayName: menu.name,
+              basePrice: menu.price,
+              unitPrice: menu.price + extra,
+              quantity: action.quantity || 1,
+              selectedOptions: optionItems,
+              optionLabels,
+            },
+          })
+          setCartOpen(true)
+        } catch (e) { console.error(e) }
+        break
+      }
+      case 'cart_remove': {
+        const item = cartRef.current.find((i) => i.menuName === action.menu_name)
+        if (item) dispatch({ type: ACTIONS.REMOVE_FROM_CART, payload: { cartItemId: item.cartItemId } })
+        break
+      }
+      case 'cart_update': {
+        const item = cartRef.current.find((i) => i.menuName === action.menu_name)
+        if (item) dispatch({
+          type: ACTIONS.UPDATE_CART_QTY,
+          payload: { cartItemId: item.cartItemId, quantity: action.quantity },
+        })
+        break
+      }
+      case 'place_order': {
+        if (cartRef.current.length > 0) navigate('/payment')
+        break
+      }
+      case 'scroll': {
+        window.scrollBy({ top: action.direction === 'down' ? 300 : -300, behavior: 'smooth' })
+        break
+      }
+      default: break
+    }
+  }, [dispatch, ACTIONS, navigate])
+
+  const voice = useVoiceOrder({
+    sessionUuid: state.sessionUuid,
+    cartSnapshot: state.cart,
+    onAction: handleVoiceAction,
+    autoStart: state.isSimpleMode,
+  })
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -192,6 +284,9 @@ export default function KioskPage() {
           </button>
         </div>
       </div>
+
+      {/* 음성 주문 오버레이 */}
+      <VoiceOverlay voice={voice} />
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (

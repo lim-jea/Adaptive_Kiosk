@@ -3,7 +3,7 @@ from models.vision_event import VisionEvent
 from models.recommendation_event import RecommendationEvent
 from models.order import Order, OrderItem, OrderItemOption
 from models.menu import Category, Menu, OptionGroup, OptionItem, MenuOptionGroup
-from models.voice_conversation import VoiceConversation
+from models.chat_message import ChatMessage
 from models.kiosk import Kiosk
 
 __all__ = [
@@ -19,5 +19,5 @@ __all__ = [
     "OptionGroup",
     "OptionItem",
     "MenuOptionGroup",
-    "VoiceConversation",
+    "ChatMessage",
 ]

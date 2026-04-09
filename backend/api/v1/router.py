@@ -7,6 +7,7 @@ from api.v1.endpoints.option import router as option_router
 from api.v1.endpoints.order import router as order_router
 from api.v1.endpoints.analytics import router as analytics_router
 from api.v1.endpoints.face import router as face_router
+from api.v1.endpoints.voice import router as voice_router
 
 v1_router = APIRouter(prefix="/api/v1")
 
@@ -18,9 +19,8 @@ v1_router.include_router(option_router)
 v1_router.include_router(order_router)
 v1_router.include_router(analytics_router)
 v1_router.include_router(face_router)
+v1_router.include_router(voice_router)
 
-# ─── 추후 활성화 (음성 주문 / 추천) ───
+# ─── 추후 활성화 (추천) ───
 # from api.v1.endpoints.recommendation import router as recommendation_router
-# from api.v1.endpoints.voice import router as voice_router
 # v1_router.include_router(recommendation_router)
-# v1_router.include_router(voice_router)

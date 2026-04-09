@@ -15,7 +15,7 @@ export function useCamera() {
   const videoRef = useRef(null)         // <video> 엘리먼트 ref
   const streamRef = useRef(null)        // MediaStream 참조
   const [stream, setStream] = useState(null)
-  const [error, setError] = useState(null)   // 'not_allowed' | 'not_found' | null
+  const [error, setError] = useState(null)   // 'not_allowed' | 'not_found' | 'not_readable' | 'insecure_context' | 'unknown' | null
 
   /**
    * 카메라 스트림 시작
@@ -24,20 +24,43 @@ export function useCamera() {
   const startCamera = useCallback(async () => {
     setError(null)
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',   // 전면 카메라
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-        },
-        audio: false,
-      })
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setError('insecure_context')
+        throw new Error('카메라 API를 사용할 수 없습니다. HTTPS 또는 localhost에서 접속했는지 확인해주세요.')
+      }
+
+      let mediaStream = null
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'user' },   // 전면 카메라 우선
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        })
+      } catch (firstErr) {
+        // 일부 브라우저/기기에서 facingMode 제약으로 실패할 수 있어 일반 카메라로 재시도
+        if (firstErr?.name === 'OverconstrainedError' || firstErr?.name === 'NotFoundError') {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+            },
+            audio: false,
+          })
+        } else {
+          throw firstErr
+        }
+      }
 
       streamRef.current = mediaStream
       setStream(mediaStream)
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
+        // 일부 브라우저는 명시적인 play 호출이 필요함
+        await videoRef.current.play().catch(() => {})
       }
 
       return mediaStream
@@ -51,6 +74,16 @@ export function useCamera() {
       if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setError('not_found')
         throw new Error('카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해주세요.')
+      }
+      // 다른 앱이 카메라를 점유 중이거나 장치 접근이 불안정
+      if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setError('not_readable')
+        throw new Error('카메라를 다른 앱에서 사용 중입니다. Zoom/Teams/브라우저 탭을 종료 후 다시 시도해주세요.')
+      }
+      // 보안 컨텍스트 이슈(HTTP 비보안/정책 제한)
+      if (err.name === 'SecurityError') {
+        setError('insecure_context')
+        throw new Error('브라우저 보안 정책으로 카메라 접근이 차단되었습니다. HTTPS 또는 localhost에서 접속해주세요.')
       }
       // 기타 오류
       setError('unknown')

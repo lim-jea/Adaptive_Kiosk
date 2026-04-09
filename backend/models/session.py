@@ -22,3 +22,8 @@ class KioskSession(Base):
     estimated_gender = Column(String(10), nullable=True)
     help_triggered = Column(Boolean, default=False, nullable=False)
     status = Column(String(20), default="active", nullable=False)  # active / ended / abandoned
+
+    # 음성 주문 관련
+    voice_persona = Column(String(20), nullable=True)            # elderly / child / general / unknown
+    voice_current_stage = Column(String(30), nullable=True)      # greeting / menu_browse / ...
+    voice_attempt_started_at = Column(DateTime, nullable=True)   # 현재 진행 중인 음성 시도의 시작 시각

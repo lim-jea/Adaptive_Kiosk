@@ -112,7 +112,17 @@ export default function CameraPage() {
       {/* 에러 메시지 */}
       {(camError || error) && (
         <div className="mt-4 px-4 py-3 bg-red-900 text-red-200 rounded-xl text-sm text-center max-w-xs">
-          {camError || (error === 'not_allowed' ? '카메라 권한이 거부되었습니다.' : '카메라를 찾을 수 없습니다.')}
+          {camError || (
+            error === 'not_allowed'
+              ? '카메라 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.'
+              : error === 'not_found'
+                ? '카메라를 찾을 수 없습니다. 장치 연결을 확인해주세요.'
+                : error === 'not_readable'
+                  ? '카메라가 다른 앱에서 사용 중입니다. 다른 앱을 종료 후 다시 시도해주세요.'
+                  : error === 'insecure_context'
+                    ? 'HTTPS 또는 localhost 환경에서만 카메라를 사용할 수 있습니다.'
+                    : '카메라 초기화 중 알 수 없는 오류가 발생했습니다.'
+          )}
         </div>
       )}
 
