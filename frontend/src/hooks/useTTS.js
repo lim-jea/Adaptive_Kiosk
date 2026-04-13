@@ -1,9 +1,8 @@
-// TTS 훅 — 1순위 Gemini Flash TTS(서버), 실패 시 브라우저 speechSynthesis 폴백.
+// TTS 훅 — 1순위 인라인 audio_b64, 2순위 브라우저 speechSynthesis.
+// Gemini TTS 백엔드 호출은 현재 비활성(quota 한도)이라 제거.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import api from '../utils/api'
 
-// ─── 브라우저 폴백용 음성 선택 ──────────────────────────────────────────────
 const VOICE_PREFERENCES = [
   /microsoft.*online.*\(natural\)/i,
   /natural/i,
@@ -22,20 +21,15 @@ function pickBestKoreanVoice(voices) {
   return ko[0]
 }
 
-export function useTTS({ lang = 'ko-KR', rate = 0.95, pitch = 1.05 } = {}) {
+export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
   const [speaking, setSpeaking] = useState(false)
   const [browserVoice, setBrowserVoice] = useState(null)
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window
   const audioRef = useRef(null)
 
-  // 브라우저 음성 목록 비동기 로드
   useEffect(() => {
     if (!supported) return
-    const load = () => {
-      const v = window.speechSynthesis.getVoices()
-      const best = pickBestKoreanVoice(v)
-      if (best) setBrowserVoice(best)
-    }
+    const load = () => setBrowserVoice(pickBestKoreanVoice(window.speechSynthesis.getVoices()))
     load()
     window.speechSynthesis.addEventListener?.('voiceschanged', load)
     return () => window.speechSynthesis.removeEventListener?.('voiceschanged', load)
@@ -43,14 +37,13 @@ export function useTTS({ lang = 'ko-KR', rate = 0.95, pitch = 1.05 } = {}) {
 
   useEffect(() => () => {
     if (supported) window.speechSynthesis.cancel()
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
   }, [supported])
 
-  // ─── 인라인 base64 WAV 재생 (가장 빠름 — 별도 HTTP 호출 없음) ──────────────
-  const playAudioBlob = useCallback((blob) => {
+  // base64 WAV → Audio 재생
+  const playBase64 = useCallback((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+    const blob = new Blob([bytes], { type: 'audio/wav' })
     const url = URL.createObjectURL(blob)
     const audio = new Audio(url)
     audioRef.current = audio
@@ -62,31 +55,15 @@ export function useTTS({ lang = 'ko-KR', rate = 0.95, pitch = 1.05 } = {}) {
     })
   }, [])
 
-  const speakBase64 = useCallback(async (b64) => {
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-    const blob = new Blob([bytes], { type: 'audio/wav' })
-    return playAudioBlob(blob)
-  }, [playAudioBlob])
-
-  // ─── 폴백 1: Gemini TTS 별도 호출 ────────────────────────────────────────
-  const speakWithGemini = useCallback(async (text) => {
-    const res = await api.post('/api/v1/voice/tts', { text }, { responseType: 'blob' })
-    return playAudioBlob(res.data)
-  }, [playAudioBlob])
-
-  // ─── 폴백: 브라우저 speechSynthesis ────────────────────────────────────────
-  const speakWithBrowser = useCallback((text) => {
-    if (!supported) return Promise.resolve()
+  // 브라우저 speechSynthesis
+  const speakBrowser = useCallback((text) => {
+    if (!supported || !text) return Promise.resolve()
     return new Promise((resolve) => {
       window.speechSynthesis.cancel()
-      const friendly = text
-        .replace(/([.!?])\s*/g, '$1 ')
-        .replace(/([,;:])\s*/g, '$1 ')
-      const utter = new SpeechSynthesisUtterance(friendly)
+      const utter = new SpeechSynthesisUtterance(text)
       utter.lang = lang
       utter.rate = rate
       utter.pitch = pitch
-      utter.volume = 1.0
       if (browserVoice) utter.voice = browserVoice
       utter.onend = () => { setSpeaking(false); resolve() }
       utter.onerror = () => { setSpeaking(false); resolve() }
@@ -96,28 +73,19 @@ export function useTTS({ lang = 'ko-KR', rate = 0.95, pitch = 1.05 } = {}) {
   }, [supported, lang, rate, pitch, browserVoice])
 
   /**
-   * @param {string} text
-   * @param {string=} audioB64  서버가 인라인으로 보낸 base64 WAV (있으면 즉시 재생)
+   * @param {string} text - TTS 텍스트
+   * @param {string=} audioB64 - 서버가 인라인으로 보낸 base64 WAV (있으면 즉시 재생)
    */
   const speak = useCallback(async (text, audioB64) => {
     if (!text && !audioB64) return
     if (audioB64) {
-      try { return await speakBase64(audioB64) }
-      catch (e) { console.warn('[TTS] inline 재생 실패, fallback', e?.message) }
+      try { return await playBase64(audioB64) } catch {}
     }
-    try {
-      await speakWithGemini(text)
-    } catch (e) {
-      console.warn('[TTS] Gemini 실패, 브라우저 TTS로 폴백', e?.message)
-      await speakWithBrowser(text)
-    }
-  }, [speakBase64, speakWithGemini, speakWithBrowser])
+    await speakBrowser(text)
+  }, [playBase64, speakBrowser])
 
   const cancel = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
     if (supported) window.speechSynthesis.cancel()
     setSpeaking(false)
   }, [supported])

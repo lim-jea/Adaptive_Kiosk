@@ -31,9 +31,13 @@ from services.chat_prompts import GREETING_BY_PERSONA, decide_persona_from_age_g
 from services.chat_service import process_voice_message, synthesize_speech
 
 
-async def _audio_for_response(response):
-    """response_text 전체를 통째로 합성. 디스크 캐시 hit이면 즉시 반환."""
-    return await synthesize_speech(response.response_text)
+async def _audio_b64_for(response) -> str | None:
+    """response_text에 대한 TTS WAV를 base64로 변환. 실패/캐시 미스 시 None."""
+    try:
+        wav = await synthesize_speech(response.response_text)
+        return base64.b64encode(wav).decode("ascii") if wav else None
+    except Exception:
+        return None
 
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
@@ -77,16 +81,13 @@ async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)
         matched_by="cached",
     )
 
-    audio_bytes = await _audio_for_response(greeting)
-    audio_b64 = base64.b64encode(audio_bytes).decode("ascii") if audio_bytes else None
-
     return VoiceStartResponse(
         session_uuid=session.session_uuid,
         persona=persona,  # type: ignore[arg-type]
         current_stage="greeting",
         attempt_started_at=attempt,
         greeting=greeting,
-        audio_b64=audio_b64,
+        audio_b64=await _audio_b64_for(greeting),
     )
 
 
@@ -108,16 +109,16 @@ async def voice_message(req: VoiceMessageRequest, db: AsyncSession = Depends(get
         selected_menu_name=req.selected_menu_name,
     )
 
-    audio_bytes = await _audio_for_response(response)
-    audio_b64 = base64.b64encode(audio_bytes).decode("ascii") if audio_bytes else None
+    # process_voice_message가 session.voice_current_stage를 갱신했으므로 최신 값 반영
+    await db.refresh(session)
 
     return VoiceMessageResponse(
         session_uuid=session.session_uuid,
-        persona=persona,  # type: ignore[arg-type]
+        persona=session.voice_persona or persona,  # type: ignore[arg-type]
         current_stage=session.voice_current_stage or stage,  # type: ignore[arg-type]
         matched_by=matched_by,
         response=response,
-        audio_b64=audio_b64,
+        audio_b64=await _audio_b64_for(response),
     )
 
 

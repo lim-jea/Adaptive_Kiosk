@@ -23,8 +23,15 @@ class JailbreakDetectedError(Exception):
     pass
 
 
+_FILLER_WORDS = frozenset({"어", "음", "으", "아", "에", "엉", "흠", "어어", "음음", "으으"})
+
+
 def sanitize_input(text: str) -> str:
-    return _CTRL_RE.sub("", text or "").strip()
+    cleaned = _CTRL_RE.sub("", text or "").strip()
+    # 필러 사운드(의미 없는 감탄사)는 빈 문자열로 처리
+    if cleaned in _FILLER_WORDS:
+        return ""
+    return cleaned
 
 
 def check_jailbreak(text: str) -> None:

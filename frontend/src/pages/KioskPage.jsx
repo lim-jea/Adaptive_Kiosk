@@ -118,10 +118,10 @@ export default function KioskPage() {
           flash('category:all')
         } else if (action.target === 'menu_detail' && action.menu_name) {
           flash(`menu:${action.menu_name}`)
+          setOptionPreview([])  // 이전 메뉴의 preview 잔여 제거
           try {
             const detail = await api.get(`/api/v1/menus/${encodeURIComponent(action.menu_name)}`)
             setOptionMenu(detail.data)
-            setOptionPreview([])
           } catch (e) { console.error(e) }
         } else if (action.target === 'cart') {
           setCartOpen(true)
@@ -181,7 +181,9 @@ export default function KioskPage() {
         break
       }
       case 'cart_remove': {
-        const item = cartRef.current.find((i) => i.menuName === action.menu_name)
+        // 같은 메뉴가 다른 옵션으로 여러 개 있을 때: 가장 최근에 담은 것(마지막)부터 삭제
+        const candidates = cartRef.current.filter((i) => i.menuName === action.menu_name)
+        const item = candidates[candidates.length - 1]
         if (item) dispatch({ type: ACTIONS.REMOVE_FROM_CART, payload: { cartItemId: item.cartItemId } })
         break
       }
@@ -319,7 +321,7 @@ export default function KioskPage() {
       </div>
 
       {/* 음성 주문 오버레이 */}
-      <VoiceOverlay voice={voice} />
+      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (

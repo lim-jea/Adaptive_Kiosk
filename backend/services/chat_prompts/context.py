@@ -1,11 +1,8 @@
 """
 단계별로 AI에게 주입할 DB 컨텍스트를 빌드한다.
 
-각 stage에 필요한 카테고리/메뉴/옵션 정보를 DB에서 조회해 텍스트 블록으로 변환한다.
-응답 예시나 액션 문법 같은 정적 가이드는 stages.py / chat_service._JSON_FORMAT_INSTRUCTION /
-canned_responses 의 매뉴얼이 따로 처리하므로 여기서는 다루지 않는다.
-
-카테고리 목록은 자주 바뀌지 않으므로 5분 메모리 캐시를 둔다.
+핵심: AI가 정확한 메뉴 이름을 사용하도록 **모든 단계에서 전체 메뉴 목록을 포함**한다.
+메뉴 이름이 정확해야 프런트의 navigate(menu_detail)가 404를 내지 않는다.
 """
 import time
 from typing import Optional
@@ -18,6 +15,7 @@ from models.menu import Category
 
 _CACHE_TTL_SEC = 300
 _cat_cache: dict = {"text": None, "expires_at": 0.0}
+_menu_cache: dict = {"text": None, "expires_at": 0.0}
 
 
 # ─── 카테고리 목록 (캐시) ───────────────────────────────────────────────────
@@ -39,32 +37,53 @@ async def _get_cached_category_text(db: AsyncSession) -> str:
     return text
 
 
+# ─── 전체 메뉴 목록 (캐시) — 모든 단계에서 사용 ──────────────────────────────
+
+async def _build_full_menu_text(db: AsyncSession) -> str:
+    """카테고리별로 묶은 전체 메뉴 이름+가격 목록.
+    AI가 모든 단계에서 정확한 메뉴 이름을 사용하게 한다."""
+    cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
+    rows, _ = await get_menus(db, limit=500)
+
+    by_cat: dict[str, list] = {}
+    for m in rows:
+        by_cat.setdefault(m["category"], []).append(m)
+
+    lines = ["[전체 메뉴 목록] ※ navigate시 menu_name은 아래 이름을 정확히 사용하세요."]
+    for c in cats:
+        items = by_cat.get(c.name, [])
+        if not items:
+            continue
+        lines.append(f"  [{c.name}]")
+        for m in items:
+            tags = []
+            if m.get("serving_temperature"):
+                tags.append(m["serving_temperature"])
+            if m.get("is_caffeinated"):
+                tags.append("카페인")
+            tag_str = f" ({'/'.join(tags)})" if tags else ""
+            lines.append(f"  - {m['name']}: {m['price']}원{tag_str}")
+    return "\n".join(lines)
+
+
+async def _get_cached_menu_text(db: AsyncSession) -> str:
+    now = time.time()
+    if _menu_cache["text"] is not None and _menu_cache["expires_at"] > now:
+        return _menu_cache["text"]
+    text = await _build_full_menu_text(db)
+    _menu_cache["text"] = text
+    _menu_cache["expires_at"] = now + _CACHE_TTL_SEC
+    return text
+
+
 def invalidate_menu_catalog_cache() -> None:
     _cat_cache["text"] = None
     _cat_cache["expires_at"] = 0.0
+    _menu_cache["text"] = None
+    _menu_cache["expires_at"] = 0.0
 
 
-# ─── 메뉴/옵션 텍스트 빌더 ───────────────────────────────────────────────────
-
-async def _build_menus_in_category_text(db: AsyncSession, category: Optional[str]) -> str:
-    rows, _ = await get_menus(db, category_name=category, limit=200)
-    header = (
-        f"[메뉴 목록 — 카테고리: {category}]" if category else "[메뉴 목록 (전체)]"
-    )
-    if not rows:
-        return f"{header}\n(없음)"
-    lines = [header]
-    for m in rows:
-        tags = []
-        if m.get("serving_temperature"):
-            tags.append(m["serving_temperature"])
-        if m.get("is_caffeinated"):
-            tags.append("카페인")
-        tag_str = f" ({'/'.join(tags)})" if tags else ""
-        desc = f" — {m['description']}" if m.get("description") else ""
-        lines.append(f"- {m['name']}: {m['price']}원{tag_str}{desc}")
-    return "\n".join(lines)
-
+# ─── 메뉴 상세 / 옵션 텍스트 빌더 (특정 메뉴 선택 시) ─────────────────────
 
 async def _build_menu_detail_text(db: AsyncSession, menu_name: str) -> str:
     detail = await get_menu_detail(db, menu_name)
@@ -76,15 +95,17 @@ async def _build_menu_detail_text(db: AsyncSession, menu_name: str) -> str:
     ]
     if detail.get("description"):
         lines.append(f"- 설명: {detail['description']}")
-    if detail.get("serving_temperature"):
-        lines.append(f"- 제공 온도: {detail['serving_temperature']}")
+    temp = detail.get("serving_temperature")
+    if temp:
+        if temp in ("cold", "hot"):
+            lines.append(f"- 제공 온도: {temp} (고정)")
+        else:
+            lines.append(f"- 제공 온도: {temp}")
     if detail.get("is_caffeinated"):
         lines.append("- 카페인 포함")
     for g in detail.get("option_groups") or []:
         req = "필수" if g.get("is_required") else "선택"
-        lines.append(
-            f"- 옵션 그룹: {g['name']} ({req}, {g['min_select']}~{g['max_select']}개)"
-        )
+        lines.append(f"- 옵션: {g['name']} ({req}, {g['min_select']}~{g['max_select']}개)")
     return "\n".join(lines)
 
 
@@ -115,22 +136,32 @@ async def build_stage_context(
     selected_category: Optional[str] = None,
     selected_menu_name: Optional[str] = None,
 ) -> str:
-    """현재 stage에 필요한 DB 컨텍스트만 합쳐 반환. 응답 예시는 포함하지 않는다."""
+    """
+    현재 stage에 필요한 DB 컨텍스트를 합쳐 반환.
+
+    핵심: **전체 메뉴 목록은 모든 단계에서 항상 포함**.
+    AI가 어느 단계에서든 사용자가 말한 메뉴 이름을 정확히 DB 이름으로 변환할 수 있다.
+    """
+    blocks: list[str] = []
+
+    # 모든 단계에서 전체 메뉴 목록 포함 (캐시라서 DB 부하 거의 없음)
+    blocks.append(await _get_cached_menu_text(db))
+
+    # 단계별 추가 정보
     if stage in ("greeting", "category_browse"):
-        return await _get_cached_category_text(db)
+        blocks.append(await _get_cached_category_text(db))
 
-    if stage == "menu_browse":
-        return await _build_menus_in_category_text(db, selected_category)
-
-    if stage == "menu_select":
+    elif stage == "menu_select":
         if selected_menu_name:
-            return await _build_menu_detail_text(db, selected_menu_name)
-        return await _build_menus_in_category_text(db, selected_category)
+            blocks.append(await _build_menu_detail_text(db, selected_menu_name))
 
-    if stage == "option_select":
+    elif stage == "option_select":
         if selected_menu_name:
-            return await _build_option_groups_text(db, selected_menu_name)
-        return "[옵션] 선택된 메뉴 정보가 없습니다. 사용자에게 메뉴부터 다시 물어보세요."
+            blocks.append(await _build_option_groups_text(db, selected_menu_name))
+        else:
+            blocks.append("[옵션] 선택된 메뉴 정보가 없습니다. 사용자에게 메뉴부터 다시 물어보세요.")
 
-    # cart_review / payment_confirm / farewell — 카트 스냅샷이 별도로 들어가므로 DB 컨텍스트 불필요
-    return ""
+    elif stage in ("cart_review", "payment_confirm"):
+        blocks.append(await _get_cached_category_text(db))
+
+    return "\n\n".join(blocks)

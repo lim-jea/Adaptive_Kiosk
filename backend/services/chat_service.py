@@ -13,10 +13,8 @@
   5. slow path: Gemini structured output 호출 (response_schema=AIChatResponse)
   6. 사용자/어시스턴트 메시지 저장 + 세션 stage 갱신
 """
-import io
 import json
 import logging
-import wave
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -24,15 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from crud import chat as chat_crud
-from crud.menu import get_menus
 from models.session import KioskSession
 from schemas.chat import AIChatResponse, CartItemSnapshot, SpeakAction
 from services.chat_prompts import (
     build_stage_context,
     build_system_prompt,
     check_jailbreak,
-    match_menu_name,
-    match_pattern,
     sanitize_input,
     JailbreakDetectedError,
 )
@@ -49,120 +44,38 @@ logger = logging.getLogger(__name__)
 
 # ─── Gemini 클라이언트 (지연 초기화) ─────────────────────────────────────────
 
-_GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
+_GEMINI_MODEL = "gemini-3.1-flash-preview"
 _client = None
 
 
-# ─── TTS (Gemini 2.5 Flash TTS) ─────────────────────────────────────────────
-# 단일 여성 음성 사용. Kore = 차분하고 따뜻한 한국어 여성 목소리.
-_TTS_VOICE = "Kore"
-# 메모리 hot 캐시 — 디스크 캐시가 영구라 LRU 형태로 작은 사이즈만 유지
+# ─── TTS — 디스크 캐시 전용 (Gemini 라이브 합성 비활성) ────────────────────
+# Gemini TTS preview는 일일 100회 한도(티어 무관)라 현재 비활성.
+# 디스크 캐시(data/tts_cache/)에 있으면 즉시 반환, 없으면 None → 브라우저 TTS 폴백.
+# 추후 한도가 늘어나면 docs/음성 조합 합성 재활성화 가이드.md 참고.
+
 from collections import OrderedDict
-_TTS_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
-_TTS_CACHE_MAX = 64
-
-
-def _cache_put(text: str, wav: bytes) -> None:
-    _TTS_CACHE[text] = wav
-    _TTS_CACHE.move_to_end(text)
-    while len(_TTS_CACHE) > _TTS_CACHE_MAX:
-        _TTS_CACHE.popitem(last=False)
-
-
-def _cache_get(text: str) -> Optional[bytes]:
-    wav = _TTS_CACHE.get(text)
-    if wav is not None:
-        _TTS_CACHE.move_to_end(text)
-    return wav
-
-
-def _pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000) -> bytes:
-    """Gemini TTS는 24kHz mono 16-bit PCM raw를 반환 → 브라우저에서 바로 재생 가능한 WAV로 래핑."""
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm_bytes)
-    return buf.getvalue()
-
-
-def _silence_wav(ms: int = 120) -> bytes:
-    """무음 WAV 생성 — 짧은 조사/공백 fragment용."""
-    samples = int(24000 * ms / 1000)
-    pcm = b"\x00\x00" * samples
-    return _pcm_to_wav(pcm)
-
-
-def _is_too_short_for_tts(text: str) -> bool:
-    """공백 제외 1-2자 이하의 단일 조사/기호 — Gemini가 빈 응답을 주는 경우가 많다."""
-    stripped = text.strip()
-    return len(stripped) <= 1
+_TTS_MEM_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
+_TTS_MEM_MAX = 64
 
 
 async def synthesize_speech(text: str) -> Optional[bytes]:
-    """
-    Gemini Flash TTS로 텍스트→음성 합성. WAV bytes 반환.
-    실패 시 None을 반환하여 프런트가 브라우저 TTS로 폴백할 수 있게 한다.
-    """
+    """디스크 캐시에서 WAV 로드. 없으면 None (프런트가 브라우저 TTS로 폴백)."""
     if not text:
         return None
-    # 1) 메모리 hot 캐시
-    cached = _cache_get(text)
-    if cached is not None:
-        return cached
-    # 2) 디스크 캐시 (서버 재시작 후에도 유지)
-    disk = get_cached_wav(text)
-    if disk is not None:
-        _cache_put(text, disk)
-        return disk
-
-    # 3) 너무 짧은 텍스트("에", ",", " " 등)는 합성 대신 짧은 무음으로 대체.
-    #    조각 합성 시 자연스러운 호흡 역할을 하고, Gemini의 빈 응답 문제도 회피.
-    if _is_too_short_for_tts(text):
-        wav = _silence_wav(80 if text.strip() else 120)
-        _cache_put(text, wav)
-        save_cached_wav(text, wav)
+    # 메모리 LRU
+    wav = _TTS_MEM_CACHE.get(text)
+    if wav is not None:
+        _TTS_MEM_CACHE.move_to_end(text)
         return wav
-
-    client = _get_client()
-    if client is None:
-        return None
-
-    try:
-        from google.genai import types  # type: ignore
-
-        config = types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=_TTS_VOICE),
-                ),
-            ),
-        )
-
-        try:
-            resp = await client.aio.models.generate_content(
-                model=settings.GENAI_TTS_MODEL,
-                contents=text,
-                config=config,
-            )
-            cand = (resp.candidates or [None])[0]
-            content = getattr(cand, "content", None) if cand else None
-            parts = getattr(content, "parts", None) if content else None
-            if not parts:
-                raise ValueError("empty candidate (text too short or filtered)")
-            pcm = parts[0].inline_data.data
-            wav = _pcm_to_wav(pcm)
-            _cache_put(text, wav)
-            save_cached_wav(text, wav)   # 영구 저장
-            return wav
-        except Exception as e:
-            logger.warning("[chat_service] Gemini TTS 실패: %s", e)
-            return None
-    except Exception as e:
-        logger.exception("[chat_service] TTS 호출 실패: %s", e)
-        return None
+    # 디스크
+    wav = get_cached_wav(text)
+    if wav is not None:
+        _TTS_MEM_CACHE[text] = wav
+        _TTS_MEM_CACHE.move_to_end(text)
+        while len(_TTS_MEM_CACHE) > _TTS_MEM_MAX:
+            _TTS_MEM_CACHE.popitem(last=False)
+        return wav
+    return None
 
 
 async def prewarm_tts_cache(db_factory=None) -> int:
@@ -187,27 +100,21 @@ async def prewarm_tts_cache(db_factory=None) -> int:
     return n
 
 
-_JSON_FORMAT_INSTRUCTION = """[응답 JSON 스키마 — 이 형식만 사용]
-{
-  "intent": "string",
-  "response_text": "string (사용자에게 들려줄 한국어 문장)",
-  "next_stage": "greeting|category_browse|menu_browse|menu_select|option_select|cart_review|payment_confirm|farewell" (생략 가능),
-  "actions": [
-    {"type": "speak", "text": "..."},
-    {"type": "navigate", "target": "menu_list|menu_detail|category|cart|payment|complete", "category_name": "...", "menu_name": "..."},
-    {"type": "scroll", "direction": "up|down"},
-    {"type": "option_preview", "menu_name": "...", "option_item_ids": []},
-    {"type": "cart_add", "menu_name": "...", "quantity": 1, "option_item_ids": []},
-    {"type": "cart_remove", "menu_name": "..."},
-    {"type": "cart_update", "menu_name": "...", "quantity": 2},
-    {"type": "place_order"},
-    {"type": "end_conversation"}
-  ],
-  "requires_user_input": true,
-  "end_conversation": false
-}
-- actions는 빈 배열도 허용. 한 액션에 type 필드는 필수.
-- 응답은 JSON 객체 하나만 출력하세요. 다른 텍스트 금지."""
+_JSON_FORMAT_INSTRUCTION = """[JSON 스키마]
+{"intent":"string","response_text":"string","next_stage":"string|null","actions":[...],"requires_user_input":bool,"end_conversation":bool}
+
+actions 종류:
+- speak: {"type":"speak","text":"..."}
+- navigate: {"type":"navigate","target":"menu_list|menu_detail|category|cart|payment","category_name":"...","menu_name":"..."}
+- scroll: {"type":"scroll","direction":"up|down"}
+- option_preview: {"type":"option_preview","menu_name":"...","option_item_ids":[int]}
+- cart_add: {"type":"cart_add","menu_name":"...","quantity":int,"option_item_ids":[int]}
+- cart_remove: {"type":"cart_remove","menu_name":"..."}
+- cart_update: {"type":"cart_update","menu_name":"...","quantity":int}
+- place_order: {"type":"place_order"}
+- end_conversation: {"type":"end_conversation"}
+
+JSON 객체 하나만 출력. 다른 텍스트 금지."""
 
 
 def _get_client():
@@ -226,11 +133,6 @@ def _get_client():
 
 
 # ─── 메뉴 이름 캐시 (matcher용) ─────────────────────────────────────────────
-
-async def _list_menu_names(db: AsyncSession) -> List[str]:
-    rows, _ = await get_menus(db, limit=1000)
-    return [r["name"] for r in rows]
-
 
 # ─── Gemini 호출 ─────────────────────────────────────────────────────────────
 
@@ -283,7 +185,22 @@ async def _call_gemini_structured(
             raw = raw.strip("`")
             if raw.lower().startswith("json"):
                 raw = raw[4:].lstrip()
-        parsed = AIChatResponse.model_validate_json(raw)
+
+        # AI가 잘못된 next_stage를 보내면 파싱이 깨지므로 먼저 보정
+        import json as _json
+        try:
+            raw_dict = _json.loads(raw)
+        except _json.JSONDecodeError:
+            raise ValueError("invalid JSON")
+
+        _VALID_STAGES = {
+            "greeting", "category_browse", "menu_browse", "menu_select",
+            "option_select", "cart_review", "payment_confirm", "farewell",
+        }
+        if raw_dict.get("next_stage") not in _VALID_STAGES:
+            raw_dict["next_stage"] = None
+
+        parsed = AIChatResponse.model_validate(raw_dict)
 
         # audio_segments 무결성 체크 — text와 합쳐 본 결과가 너무 다르면 무시
         if parsed.audio_segments:
@@ -355,7 +272,7 @@ async def process_chat_message(
         await _save_pair(db, session, attempt, sanitized, resp, purpose, "blocked")
         return resp, "blocked"
 
-    # ── fast path 0: 시나리오 매뉴얼 (디스크 캐시된 응답/오디오) ──
+    # ── fast path: 시나리오 매뉴얼 매칭 (디스크 캐시된 응답 즉시 반환) ──
     if purpose == "voice_order":
         canned_resp = match_canned(sanitized, current_stage)
         if canned_resp is not None:
@@ -363,23 +280,7 @@ async def process_chat_message(
             await _apply_stage_update(db, session, canned_resp)
             return canned_resp, "canned"
 
-    # ── fast path 1: 패턴 매칭 ──
-    pattern_resp = match_pattern(sanitized, purpose=purpose)
-    if pattern_resp is not None:
-        await _save_pair(db, session, attempt, sanitized, pattern_resp, purpose, "pattern")
-        await _apply_stage_update(db, session, pattern_resp)
-        return pattern_resp, "pattern"
-
-    # ── fast path 2: 메뉴 이름 직접 언급 ──
-    if purpose == "voice_order":
-        menu_names = await _list_menu_names(db)
-        menu_resp = match_menu_name(sanitized, menu_names)
-        if menu_resp is not None:
-            await _save_pair(db, session, attempt, sanitized, menu_resp, purpose, "menu_name")
-            await _apply_stage_update(db, session, menu_resp)
-            return menu_resp, "menu_name"
-
-    # ── slow path: Gemini ──
+    # ── Gemini 호출 ──
     history_rows = await chat_crud.list_messages_for_context(
         db,
         session_id=session.id,
@@ -397,12 +298,11 @@ async def process_chat_message(
             selected_category=selected_category,
             selected_menu_name=selected_menu_name,
         )
-        # 시나리오 매뉴얼 + 템플릿 매뉴얼을 함께 주입 — AI가 매뉴얼 문구를 그대로 복사하거나
-        # 템플릿 슬롯만 채워 응답하면 디스크 캐시 hit으로 음성이 즉시 재생됨
-        # 조합 합성(audio_segments)은 현재 비활성. 시나리오 매뉴얼만 유지.
+        # 권장 응답 매뉴얼 주입 — AI가 매뉴얼 문구를 그대로 복사하면
+        # 디스크 캐시 hit으로 TTS가 즉시 재생됨
         canned_block = get_canned_phrases_for_prompt(current_stage)
         if canned_block:
-            stage_context = f"{canned_block}\n\n{stage_context}"
+            stage_context = f"{stage_context}\n\n{canned_block}"
 
     system_prompt = build_system_prompt(
         persona=persona,

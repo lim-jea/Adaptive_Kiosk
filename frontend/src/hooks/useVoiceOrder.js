@@ -83,6 +83,9 @@ export function useVoiceOrder({
     setLastResponseText(resp.response_text || '')
     dispatchActions(resp.actions)
 
+    // TTS 재생 전에 STT를 확실히 끈다 — 스피커 출력이 마이크로 피드백되는 것 방지
+    try { stt.stop() } catch {}
+
     if (resp.response_text) {
       setStatus('speaking')
       await tts.speak(resp.response_text, audioB64)
@@ -93,10 +96,10 @@ export function useVoiceOrder({
       return
     }
     if (resp.requires_user_input) {
-      // 짧은 지연으로 onend가 발생할 시간을 준다 (start 충돌 방지).
+      // TTS 종료 후 잔향(에코)이 마이크에 잡히지 않도록 충분한 지연 후 STT 시작
       setTimeout(() => {
         try { stt.start() } catch (e) { console.error(e) }
-      }, 50)
+      }, 500)
     }
   }, [dispatchActions, tts, stt])
 

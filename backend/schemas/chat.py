@@ -38,7 +38,7 @@ class SpeakAction(BaseModel):
 class NavigateAction(BaseModel):
     type: Literal["navigate"] = "navigate"
     target: Literal[
-        "menu_list", "menu_detail", "category", "cart", "payment", "complete"
+        "menu_list", "menu_detail", "category", "cart", "payment"
     ]
     category_name: Optional[str] = None
     menu_name: Optional[str] = None
