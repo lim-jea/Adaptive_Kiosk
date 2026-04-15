@@ -27,7 +27,7 @@ from schemas.chat import (
     VoiceStartResponse,
 )
 from schemas.common import PaginatedResponse, make_error
-from services.chat_prompts import GREETING_BY_PERSONA, decide_persona_from_age_group
+from services.chat_prompts import GREETING_BY_PERSONA, decide_persona
 from services.chat_service import process_voice_message, synthesize_speech
 
 
@@ -56,7 +56,7 @@ async def _get_session_or_404(db: AsyncSession, session_uuid: str):
 async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)):
     session = await _get_session_or_404(db, req.session_uuid)
 
-    persona = decide_persona_from_age_group(session.estimated_age_group)
+    persona = decide_persona(age_group=session.estimated_age_group)
     attempt = await chat_crud.start_new_attempt(db, session, persona=persona, stage="greeting")
 
     greeting_text = GREETING_BY_PERSONA[persona]
@@ -95,7 +95,7 @@ async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)
 async def voice_message(req: VoiceMessageRequest, db: AsyncSession = Depends(get_db)):
     session = await _get_session_or_404(db, req.session_uuid)
 
-    persona = session.voice_persona or decide_persona_from_age_group(session.estimated_age_group)
+    persona = session.voice_persona or decide_persona(age_group=session.estimated_age_group)
     stage = session.voice_current_stage or "greeting"
 
     response, matched_by = await process_voice_message(

@@ -28,9 +28,12 @@ from services.chat_prompts import (
     build_stage_context,
     build_system_prompt,
     check_jailbreak,
+    match_menu_name,
+    match_pattern,
     sanitize_input,
     JailbreakDetectedError,
 )
+from crud.menu import get_menus
 from services.canned_responses import (
     all_canned_texts,
     get_cached_wav,
@@ -44,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Gemini 클라이언트 (지연 초기화) ─────────────────────────────────────────
 
-_GEMINI_MODEL = "gemini-3.1-flash-preview"
+_GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 _client = None
 
 
@@ -101,18 +104,33 @@ async def prewarm_tts_cache(db_factory=None) -> int:
 
 
 _JSON_FORMAT_INSTRUCTION = """[JSON 스키마]
-{"intent":"string","response_text":"string","next_stage":"string|null","actions":[...],"requires_user_input":bool,"end_conversation":bool}
+{
+  "intent": "사용자 의도 분류 키 (예: greet, select_menu, add_to_cart, cancel 등)",
+  "response_text": "손님에게 음성으로 들려줄 한국어 문장",
+  "next_stage": "다음 단계. greeting|category_browse|menu_browse|menu_select|option_select|cart_review|payment_confirm|farewell 중 하나. 변경 없으면 null",
+  "actions": [],
+  "requires_user_input": "사용자 응답이 필요하면 true",
+  "end_conversation": "대화를 종료하려면 true"
+}
 
-actions 종류:
-- speak: {"type":"speak","text":"..."}
-- navigate: {"type":"navigate","target":"menu_list|menu_detail|category|cart|payment","category_name":"...","menu_name":"..."}
-- scroll: {"type":"scroll","direction":"up|down"}
-- option_preview: {"type":"option_preview","menu_name":"...","option_item_ids":[int]}
-- cart_add: {"type":"cart_add","menu_name":"...","quantity":int,"option_item_ids":[int]}
-- cart_remove: {"type":"cart_remove","menu_name":"..."}
-- cart_update: {"type":"cart_update","menu_name":"...","quantity":int}
-- place_order: {"type":"place_order"}
-- end_conversation: {"type":"end_conversation"}
+actions 종류와 용도:
+- speak: 손님에게 음성 안내. {"type":"speak","text":"안내 문장"}
+- navigate: 키오스크 화면 이동.
+  {"type":"navigate","target":"...","category_name":"...","menu_name":"..."}
+  · target=category → 해당 카테고리의 메뉴 목록 화면으로 이동
+  · target=menu_detail → 해당 메뉴의 옵션 선택 화면으로 이동
+  · target=menu_list → 전체 메뉴 목록으로 이동
+  · target=cart → 장바구니 화면 열기
+  · target=payment → 결제 화면으로 이동
+- scroll: 메뉴 목록 스크롤. {"type":"scroll","direction":"up|down"}
+- option_preview: 옵션을 화면에 시각적으로 표시 (장바구니에는 안 담김).
+  {"type":"option_preview","menu_name":"...","option_item_ids":[정수]}
+- cart_add: 장바구니에 메뉴 추가. 모든 필수 옵션이 결정된 후에만 사용.
+  {"type":"cart_add","menu_name":"...","quantity":정수,"option_item_ids":[정수]}
+- cart_remove: 장바구니에서 메뉴 제거. {"type":"cart_remove","menu_name":"..."}
+- cart_update: 장바구니 메뉴 수량 변경. {"type":"cart_update","menu_name":"...","quantity":정수}
+- place_order: 주문 확정/결제 진행. {"type":"place_order"}
+- end_conversation: 대화 종료. {"type":"end_conversation"}
 
 JSON 객체 하나만 출력. 다른 텍스트 금지."""
 
@@ -132,7 +150,51 @@ def _get_client():
         return None
 
 
-# ─── 메뉴 이름 캐시 (matcher용) ─────────────────────────────────────────────
+# ─── Gemini 호출용 단순화 스키마 ──────────────────────────────────────────────
+# AIChatResponse의 actions는 Annotated[Union, discriminator]라 response_schema에
+# 직접 넣으면 깨진다. 액션을 평탄한 dict으로 받는 스키마를 따로 정의해서
+# response_schema로 보내고, 응답은 파싱 없이 바로 사용한다.
+
+from pydantic import BaseModel as _BaseModel
+
+
+class _GeminiAction(_BaseModel):
+    type: str
+    text: Optional[str] = None
+    target: Optional[str] = None
+    category_name: Optional[str] = None
+    menu_name: Optional[str] = None
+    direction: Optional[str] = None
+    quantity: Optional[int] = None
+    option_item_ids: Optional[List[int]] = None
+
+
+class _GeminiResponse(_BaseModel):
+    intent: str
+    response_text: str
+    next_stage: Optional[str] = None
+    actions: List[_GeminiAction] = []
+    requires_user_input: bool = True
+    end_conversation: bool = False
+
+
+_VALID_STAGES = frozenset({
+    "greeting", "category_browse", "menu_browse", "menu_select",
+    "option_select", "cart_review", "payment_confirm", "farewell",
+})
+
+
+def _gemini_to_chat_response(g: _GeminiResponse) -> AIChatResponse:
+    """Gemini 응답 → AIChatResponse 변환. next_stage 보정 포함."""
+    return AIChatResponse(
+        intent=g.intent,
+        response_text=g.response_text,
+        next_stage=g.next_stage if g.next_stage in _VALID_STAGES else None,
+        actions=[a.model_dump(exclude_none=True) for a in g.actions],
+        requires_user_input=g.requires_user_input,
+        end_conversation=g.end_conversation,
+    )
+
 
 # ─── Gemini 호출 ─────────────────────────────────────────────────────────────
 
@@ -144,7 +206,6 @@ async def _call_gemini_structured(
 ) -> AIChatResponse:
     client = _get_client()
     if client is None:
-        # 폴백: Gemini 사용 불가 시 안전한 기본 응답
         text = "죄송해요, 잠시 후 다시 말씀해 주세요."
         return AIChatResponse(
             intent="fallback",
@@ -162,12 +223,10 @@ async def _call_gemini_structured(
             contents.append({"role": role, "parts": [{"text": row["content"]}]})
         contents.append({"role": "user", "parts": [{"text": user_message}]})
 
-        # 주의: AIChatResponse는 Annotated[Union, discriminator] 액션을 포함하므로
-        # google-genai의 response_schema(JSON Schema 변환)에 그대로 넣으면 깨질 수 있다.
-        # 시스템 프롬프트로 JSON 형식을 강제하고 직접 파싱한다.
         config = types.GenerateContentConfig(
             system_instruction=system_prompt + "\n\n" + _JSON_FORMAT_INSTRUCTION,
             response_mime_type="application/json",
+            response_schema=_GeminiResponse,
             temperature=0.4,
         )
 
@@ -177,44 +236,18 @@ async def _call_gemini_structured(
             config=config,
         )
 
+        # response_schema를 사용하면 SDK가 자동 파싱해준다
+        parsed = getattr(resp, "parsed", None)
+        if isinstance(parsed, _GeminiResponse):
+            return _gemini_to_chat_response(parsed)
+
+        # 일부 SDK 버전에서 parsed가 안 채워질 수 있으므로 수동 폴백
         raw = (getattr(resp, "text", None) or "").strip()
         if not raw:
             raise ValueError("empty response")
-        # 일부 응답이 ```json ... ``` 로 감싸지는 경우 제거
-        if raw.startswith("```"):
-            raw = raw.strip("`")
-            if raw.lower().startswith("json"):
-                raw = raw[4:].lstrip()
+        g = _GeminiResponse.model_validate_json(raw)
+        return _gemini_to_chat_response(g)
 
-        # AI가 잘못된 next_stage를 보내면 파싱이 깨지므로 먼저 보정
-        import json as _json
-        try:
-            raw_dict = _json.loads(raw)
-        except _json.JSONDecodeError:
-            raise ValueError("invalid JSON")
-
-        _VALID_STAGES = {
-            "greeting", "category_browse", "menu_browse", "menu_select",
-            "option_select", "cart_review", "payment_confirm", "farewell",
-        }
-        if raw_dict.get("next_stage") not in _VALID_STAGES:
-            raw_dict["next_stage"] = None
-
-        parsed = AIChatResponse.model_validate(raw_dict)
-
-        # audio_segments 무결성 체크 — text와 합쳐 본 결과가 너무 다르면 무시
-        if parsed.audio_segments:
-            joined = "".join(parsed.audio_segments).replace(" ", "")
-            target = (parsed.response_text or "").replace(" ", "")
-            if joined and target and (
-                abs(len(joined) - len(target)) > max(3, len(target) // 4)
-            ):
-                logger.warning(
-                    "[chat_service] audio_segments mismatch — 무시. text=%r segments=%r",
-                    parsed.response_text, parsed.audio_segments,
-                )
-                parsed.audio_segments = None
-        return parsed
     except Exception as e:
         logger.exception("[chat_service] Gemini 호출 실패: %s", e)
         text = "죄송해요, 다시 한 번 말씀해 주세요."
@@ -272,13 +305,30 @@ async def process_chat_message(
         await _save_pair(db, session, attempt, sanitized, resp, purpose, "blocked")
         return resp, "blocked"
 
-    # ── fast path: 시나리오 매뉴얼 매칭 (디스크 캐시된 응답 즉시 반환) ──
+    # ── fast path 0: 시나리오 매뉴얼 매칭 (디스크 캐시된 응답 즉시 반환) ──
     if purpose == "voice_order":
         canned_resp = match_canned(sanitized, current_stage)
         if canned_resp is not None:
             await _save_pair(db, session, attempt, sanitized, canned_resp, purpose, "canned")
             await _apply_stage_update(db, session, canned_resp)
             return canned_resp, "canned"
+
+    # ── fast path 1: 코드 패턴 매칭 (인사/취소/긍정/부정/도움) ──
+    pattern_resp = match_pattern(sanitized, purpose=purpose)
+    if pattern_resp is not None:
+        await _save_pair(db, session, attempt, sanitized, pattern_resp, purpose, "pattern")
+        await _apply_stage_update(db, session, pattern_resp)
+        return pattern_resp, "pattern"
+
+    # ── fast path 2: 메뉴 이름 직접 매칭 (긴 이름 우선) ──
+    if purpose == "voice_order":
+        menu_rows, _ = await get_menus(db, limit=500)
+        menu_names = [r["name"] for r in menu_rows]
+        menu_resp = match_menu_name(sanitized, menu_names)
+        if menu_resp is not None:
+            await _save_pair(db, session, attempt, sanitized, menu_resp, purpose, "menu_name")
+            await _apply_stage_update(db, session, menu_resp)
+            return menu_resp, "menu_name"
 
     # ── Gemini 호출 ──
     history_rows = await chat_crud.list_messages_for_context(
