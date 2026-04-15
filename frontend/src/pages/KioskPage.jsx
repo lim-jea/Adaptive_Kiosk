@@ -110,6 +110,12 @@ export default function KioskPage() {
   const handleVoiceAction = useCallback(async (action) => {
     switch (action.type) {
       case 'navigate': {
+        // 옵션 모달이 열린 상태에서 다른 화면(카테고리/결제/카트 등)으로 이동하면
+        // 모달이 남아 UX가 깨지므로, menu_detail을 여는 경우를 제외하고는 항상 닫는다.
+        if (action.target !== 'menu_detail') {
+          setOptionMenu(null)
+          setOptionPreview([])
+        }
         if (action.target === 'category' && action.category_name) {
           setActiveCategory(action.category_name)
           flash(`category:${action.category_name}`)
@@ -196,6 +202,8 @@ export default function KioskPage() {
         break
       }
       case 'place_order': {
+        setOptionMenu(null)
+        setOptionPreview([])
         if (cartRef.current.length > 0) navigate('/payment')
         break
       }

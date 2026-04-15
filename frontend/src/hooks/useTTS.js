@@ -40,19 +40,34 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
   }, [supported])
 
-  // base64 WAV → Audio 재생
+  const looksLikeWav = (u8) => {
+    if (!u8 || u8.length < 12) return false
+    // 'RIFF'....'WAVE'
+    return (
+      u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46 &&
+      u8[8] === 0x57 && u8[9] === 0x41 && u8[10] === 0x56 && u8[11] === 0x45
+    )
+  }
+
+  // base64 WAV → Audio 재생 (성공 여부 boolean 반환)
   const playBase64 = useCallback((b64) => {
-    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-    const blob = new Blob([bytes], { type: 'audio/wav' })
-    const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audioRef.current = audio
-    setSpeaking(true)
-    return new Promise((resolve) => {
-      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve() }
-      audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve() }
-      audio.play().catch(() => { setSpeaking(false); resolve() })
-    })
+    try {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+      if (!looksLikeWav(bytes)) return Promise.resolve(false)
+
+      const blob = new Blob([bytes], { type: 'audio/wav' })
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      setSpeaking(true)
+      return new Promise((resolve) => {
+        audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve(true) }
+        audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve(false) }
+        audio.play().catch(() => { setSpeaking(false); URL.revokeObjectURL(url); resolve(false) })
+      })
+    } catch {
+      return Promise.resolve(false)
+    }
   }, [])
 
   // 브라우저 speechSynthesis
@@ -79,7 +94,8 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
   const speak = useCallback(async (text, audioB64) => {
     if (!text && !audioB64) return
     if (audioB64) {
-      try { return await playBase64(audioB64) } catch {}
+      const ok = await playBase64(audioB64)
+      if (ok) return
     }
     await speakBrowser(text)
   }, [playBase64, speakBrowser])
