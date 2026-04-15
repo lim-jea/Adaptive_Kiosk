@@ -185,7 +185,11 @@ def template_to_segments(template_id: str, **slots) -> Optional[list[str]]:
                 val = slots.get(key)
                 if val is None:
                     return None
-                out.append(str(val))
+                # 슬롯 값은 단일 문자열 뿐 아니라 여러 조각(list[str])도 허용한다.
+                if isinstance(val, (list, tuple)):
+                    out.extend(str(x) for x in val)
+                else:
+                    out.append(str(val))
             else:
                 out.append(p)
         return out
@@ -505,25 +509,124 @@ def get_canned_phrases_for_prompt(stage: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
+async def collect_prewarm_segments(
+    db=None,
+    *,
+    include_menus: Optional[bool] = None,
+    include_options: Optional[bool] = None,
+) -> list[str]:
+    """조각 합성(audio_segments)용으로 '개별 WAV로 미리 합성해 둘 텍스트' 목록을 수집.
+
+    구성:
+    - fragments.static (정적 연결구/숫자 단위 등)
+    - 템플릿(parts)의 슬롯이 아닌 정적 문자열 조각
+    - (선택) 메뉴/옵션 이름(각각 단독 조각) — DB가 필요
+
+    include_menus/include_options를 None으로 두면 canned_responses.json의 설정을 따른다.
+    """
+    out: list[str] = []
+
+    # 1) fragments.static
+    out.extend(_fragments_cfg.get("static", []) or [])
+
+    # 2) templates.parts 의 정적 조각
+    for tpl in _templates:
+        parts = tpl.get("parts")
+        if not parts:
+            continue
+        for p in parts:
+            if not _is_slot(p):
+                out.append(p)
+
+    # 3) (선택) 메뉴/옵션 이름
+    want_menus = _fragments_cfg.get("include_menus") if include_menus is None else include_menus
+    want_options = _fragments_cfg.get("include_options") if include_options is None else include_options
+
+    if (want_menus or want_options) and db is None:
+        # DB가 없으면 정적 조각만 반환
+        return list(dict.fromkeys(s for s in out if s))
+
+    if want_menus or want_options:
+        # 기존 구현 재사용: 정적 조각 + 메뉴/옵션 이름을 단독 조각으로 수집
+        try:
+            frag_texts = await expand_fragment_texts(db)
+            out.extend(frag_texts)
+        except Exception as e:
+            logger.warning("[canned] prewarm segment 수집 실패(DB): %s", e)
+
+    return list(dict.fromkeys(s for s in out if s))
+
+
 # ─── TTS 디스크 캐시 ─────────────────────────────────────────────────────────
 
 # 캐시 키에 음성 식별자를 포함시켜 voice를 바꿨을 때 옛 파일이 잘못 재생되지 않게 한다.
-_CACHE_KEY_VERSION = "kore-v1"
+# v1 캐시에 WAV가 아닌 오디오(PCM 등)가 저장된 경우가 있어 v2로 올린다.
+_CACHE_KEY_VERSION = "kore-v2"
+
+
+def _looks_like_wav(wav_bytes: bytes) -> bool:
+    return (
+        isinstance(wav_bytes, (bytes, bytearray))
+        and len(wav_bytes) >= 12
+        and wav_bytes[0:4] == b"RIFF"
+        and wav_bytes[8:12] == b"WAVE"
+    )
+
+
+_ILLEGAL_FILENAME_CHARS = re.compile(r"[<>:\"/\\|?*\x00-\x1F]")
+
+
+def _filename_hint(text: str, max_len: int = 40) -> str:
+    """텍스트를 파일명 힌트로 변환.
+
+    - Windows/NTFS에서 금지되는 문자를 제거
+    - 공백을 '_'로 축약
+    - 너무 길면 잘라낸다
+    """
+    s = (text or "").strip()
+    s = _ILLEGAL_FILENAME_CHARS.sub("", s)
+    s = re.sub(r"\s+", "_", s)
+    s = s.strip("._ ")
+    if not s:
+        return "tts"
+    return s[:max_len]
 
 
 def _wav_path_for(text: str) -> Path:
+    digest = hashlib.sha256(f"{_CACHE_KEY_VERSION}:{text}".encode("utf-8")).hexdigest()
+    hint = _filename_hint(text)
+    return _TTS_CACHE_DIR / f"{hint}__{digest}.wav"
+
+
+def _legacy_wav_path_for(text: str) -> Path:
+    """이전 버전(파일명이 sha256만 있던 형태) 경로."""
     digest = hashlib.sha256(f"{_CACHE_KEY_VERSION}:{text}".encode("utf-8")).hexdigest()
     return _TTS_CACHE_DIR / f"{digest}.wav"
 
 
 def get_cached_wav(text: str) -> Optional[bytes]:
     """디스크 캐시에서 WAV 바이트 로드. 없으면 None."""
+    # 신규: {hint}__{sha}.wav
     p = _wav_path_for(text)
     if p.exists():
         try:
-            return p.read_bytes()
+            b = p.read_bytes()
+            if not _looks_like_wav(b):
+                return None
+            return b
         except Exception as e:
             logger.warning("[canned] WAV 로드 실패 %s: %s", p.name, e)
+
+    # 레거시: {sha}.wav
+    legacy = _legacy_wav_path_for(text)
+    if legacy.exists():
+        try:
+            b = legacy.read_bytes()
+            if not _looks_like_wav(b):
+                return None
+            return b
+        except Exception as e:
+            logger.warning("[canned] WAV 로드 실패 %s: %s", legacy.name, e)
     return None
 
 

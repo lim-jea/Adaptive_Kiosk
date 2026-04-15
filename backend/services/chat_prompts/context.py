@@ -15,7 +15,8 @@ from models.menu import Category
 
 _CACHE_TTL_SEC = 300
 _cat_cache: dict = {"text": None, "expires_at": 0.0}
-_menu_cache: dict = {"text": None, "expires_at": 0.0}
+_menu_names_cache: dict = {"text": None, "expires_at": 0.0}
+_menu_prices_cache: dict = {"text": None, "expires_at": 0.0}
 
 
 # ─── 카테고리 목록 (캐시) ───────────────────────────────────────────────────
@@ -37,11 +38,11 @@ async def _get_cached_category_text(db: AsyncSession) -> str:
     return text
 
 
-# ─── 전체 메뉴 목록 (캐시) — 모든 단계에서 사용 ──────────────────────────────
+# ─── 메뉴 카탈로그 (캐시) ──────────────────────────────────────────────────
 
-async def _build_full_menu_text(db: AsyncSession) -> str:
-    """카테고리별로 묶은 전체 메뉴 이름+가격 목록.
-    AI가 모든 단계에서 정확한 메뉴 이름을 사용하게 한다."""
+async def _build_menu_names_text(db: AsyncSession) -> str:
+    """카테고리별 메뉴 이름만(컴팩트).
+    대부분의 stage에서 '정확한 menu_name' 매칭만 필요하므로 가격/태그는 생략한다."""
     cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
     rows, _ = await get_menus(db, limit=500)
 
@@ -49,38 +50,66 @@ async def _build_full_menu_text(db: AsyncSession) -> str:
     for m in rows:
         by_cat.setdefault(m["category"], []).append(m)
 
-    lines = ["[전체 메뉴 목록] ※ navigate시 menu_name은 아래 이름을 정확히 사용하세요."]
+    lines = ["[메뉴 이름 목록] (navigate시 menu_name은 아래 이름 그대로 사용)"]
     for c in cats:
         items = by_cat.get(c.name, [])
         if not items:
             continue
-        lines.append(f"  [{c.name}]")
-        for m in items:
-            tags = []
-            if m.get("serving_temperature"):
-                tags.append(m["serving_temperature"])
-            if m.get("is_caffeinated"):
-                tags.append("카페인")
-            tag_str = f" ({'/'.join(tags)})" if tags else ""
-            lines.append(f"  - {m['name']}: {m['price']}원{tag_str}")
+        names = [m["name"] for m in items if m.get("name")]
+        if not names:
+            continue
+        lines.append(f"[{c.name}] " + ", ".join(names))
     return "\n".join(lines)
 
 
-async def _get_cached_menu_text(db: AsyncSession) -> str:
+async def _get_cached_menu_names_text(db: AsyncSession) -> str:
     now = time.time()
-    if _menu_cache["text"] is not None and _menu_cache["expires_at"] > now:
-        return _menu_cache["text"]
-    text = await _build_full_menu_text(db)
-    _menu_cache["text"] = text
-    _menu_cache["expires_at"] = now + _CACHE_TTL_SEC
+    if _menu_names_cache["text"] is not None and _menu_names_cache["expires_at"] > now:
+        return _menu_names_cache["text"]
+    text = await _build_menu_names_text(db)
+    _menu_names_cache["text"] = text
+    _menu_names_cache["expires_at"] = now + _CACHE_TTL_SEC
+    return text
+
+
+async def _build_menu_prices_text(db: AsyncSession) -> str:
+    """메뉴 이름+가격(간단 표기). 메뉴 탐색 단계에서만 추가 주입."""
+    cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
+    rows, _ = await get_menus(db, limit=500)
+
+    by_cat: dict[str, list] = {}
+    for m in rows:
+        by_cat.setdefault(m["category"], []).append(m)
+
+    lines = ["[메뉴 목록(가격)]"]
+    for c in cats:
+        items = by_cat.get(c.name, [])
+        if not items:
+            continue
+        pairs = [f"{m['name']}({m['price']}원)" for m in items if m.get("name")]
+        if not pairs:
+            continue
+        lines.append(f"[{c.name}] " + ", ".join(pairs))
+    return "\n".join(lines)
+
+
+async def _get_cached_menu_prices_text(db: AsyncSession) -> str:
+    now = time.time()
+    if _menu_prices_cache["text"] is not None and _menu_prices_cache["expires_at"] > now:
+        return _menu_prices_cache["text"]
+    text = await _build_menu_prices_text(db)
+    _menu_prices_cache["text"] = text
+    _menu_prices_cache["expires_at"] = now + _CACHE_TTL_SEC
     return text
 
 
 def invalidate_menu_catalog_cache() -> None:
     _cat_cache["text"] = None
     _cat_cache["expires_at"] = 0.0
-    _menu_cache["text"] = None
-    _menu_cache["expires_at"] = 0.0
+    _menu_names_cache["text"] = None
+    _menu_names_cache["expires_at"] = 0.0
+    _menu_prices_cache["text"] = None
+    _menu_prices_cache["expires_at"] = 0.0
 
 
 # ─── 메뉴 상세 / 옵션 텍스트 빌더 (특정 메뉴 선택 시) ─────────────────────
@@ -144,8 +173,12 @@ async def build_stage_context(
     """
     blocks: list[str] = []
 
-    # 모든 단계에서 전체 메뉴 목록 포함 (캐시라서 DB 부하 거의 없음)
-    blocks.append(await _get_cached_menu_text(db))
+    # 모든 단계에서 '메뉴 이름 목록'은 포함 (정확한 menu_name 매칭 목적)
+    blocks.append(await _get_cached_menu_names_text(db))
+
+    # 메뉴 탐색 단계에서는 가격 정보까지 추가로 포함
+    if stage == "menu_browse":
+        blocks.append(await _get_cached_menu_prices_text(db))
 
     # 단계별 추가 정보
     if stage in ("greeting", "category_browse"):

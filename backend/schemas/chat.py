@@ -107,8 +107,8 @@ class AIChatResponse(BaseModel):
     actions: List[AIAction] = Field(default_factory=list)
     requires_user_input: bool = True
     end_conversation: bool = False
-    # (현재 비활성) 조합형 응답용 음성 조각 배열. 백엔드가 무시하고 response_text를 통째 합성한다.
-    # AI는 이 필드를 채우지 말 것.
+    # 조각 합성용 음성 조각 배열.
+    # 채워지면 백엔드가 조각 WAV를 이어붙여 재생을 시도하고, 조각 캐시가 없으면 response_text 합성/폴백을 사용한다.
     audio_segments: Optional[List[str]] = None
 
 

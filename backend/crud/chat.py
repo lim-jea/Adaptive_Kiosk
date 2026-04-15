@@ -73,6 +73,20 @@ async def list_messages_for_context(
     )
     rows = (await db.execute(stmt)).scalars().all()
 
+    # 방어: attempt_started_at이 미세하게 달라져(타임존/초단위 절삭 등)
+    # 조회가 0건이 되는 경우가 있다. 이때는 같은 session/purpose의 최신 이력으로 폴백해
+    # 모델이 완전히 무(無)컨텍스트로 동작하는 걸 막는다.
+    if not rows:
+        fallback_stmt = (
+            select(ChatMessage)
+            .where(
+                ChatMessage.session_id == session_id,
+                ChatMessage.purpose == purpose,
+            )
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        )
+        rows = (await db.execute(fallback_stmt)).scalars().all()
+
     selected: List[ChatMessage] = []
     total = 0
     for row in rows:

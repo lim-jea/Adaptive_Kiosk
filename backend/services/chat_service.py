@@ -13,17 +13,22 @@
   5. slow path: Gemini structured output 호출 (response_schema=AIChatResponse)
   6. 사용자/어시스턴트 메시지 저장 + 세션 stage 갱신
 """
-import json
 import logging
-from datetime import datetime, timezone
+import re
+import time
+from datetime import datetime
 from typing import List, Optional
+
+import base64
+import io
+import wave
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from crud import chat as chat_crud
 from models.session import KioskSession
-from schemas.chat import AIChatResponse, CartItemSnapshot, SpeakAction
+from schemas.chat import AIChatResponse, CartAddAction, CartItemSnapshot, OptionPreviewAction, SpeakAction
 from services.chat_prompts import (
     build_stage_context,
     build_system_prompt,
@@ -33,16 +38,41 @@ from services.chat_prompts import (
     sanitize_input,
     JailbreakDetectedError,
 )
-from crud.menu import get_menus
+from crud.menu import get_menu_detail, get_menus
 from services.canned_responses import (
     all_canned_texts,
+    compose_template,
+    expand_fragment_texts,
+    expand_template_texts,
     get_cached_wav,
     get_canned_phrases_for_prompt,
+    get_fragments_for_prompt,
+    get_template_phrases_for_prompt,
     match_canned,
     save_cached_wav,
+    template_to_segments,
+    price_to_segments,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ─── 메뉴 이름 캐시 (menu_name fast path용) ─────────────────────────────────
+
+_MENU_CACHE_TTL_SEC = 300
+_menu_names_cache: dict = {"names": None, "expires_at": 0.0}
+
+
+async def _get_cached_menu_names(db: AsyncSession) -> list[str]:
+    now = time.time()
+    cached = _menu_names_cache.get("names")
+    if cached is not None and _menu_names_cache.get("expires_at", 0.0) > now:
+        return cached
+    rows, _ = await get_menus(db, limit=500)
+    names = [r["name"] for r in rows if r.get("name")]
+    _menu_names_cache["names"] = names
+    _menu_names_cache["expires_at"] = now + _MENU_CACHE_TTL_SEC
+    return names
 
 
 # ─── Gemini 클라이언트 (지연 초기화) ─────────────────────────────────────────
@@ -62,7 +92,15 @@ _TTS_MEM_MAX = 64
 
 
 async def synthesize_speech(text: str) -> Optional[bytes]:
-    """디스크 캐시에서 WAV 로드. 없으면 None (프런트가 브라우저 TTS로 폴백)."""
+    """텍스트 → WAV.
+
+    우선순위:
+    1) 메모리 LRU 캐시
+    2) 디스크 캐시(data/tts_cache)
+    3) (선택) Gemini TTS 라이브 합성 → 디스크 저장
+
+    캐시 미스 & 라이브 합성 비활성 시 None (프런트가 브라우저 TTS로 폴백).
+    """
     if not text:
         return None
     # 메모리 LRU
@@ -78,6 +116,135 @@ async def synthesize_speech(text: str) -> Optional[bytes]:
         while len(_TTS_MEM_CACHE) > _TTS_MEM_MAX:
             _TTS_MEM_CACHE.popitem(last=False)
         return wav
+
+    # 캐시 미스 → (옵션) 라이브 TTS
+    if not getattr(settings, "GENAI_TTS_ENABLED", False):
+        return None
+
+    wav = await _synthesize_speech_live(text)
+    if wav:
+        save_cached_wav(text, wav)
+        _TTS_MEM_CACHE[text] = wav
+        _TTS_MEM_CACHE.move_to_end(text)
+        while len(_TTS_MEM_CACHE) > _TTS_MEM_MAX:
+            _TTS_MEM_CACHE.popitem(last=False)
+        return wav
+
+    return None
+
+
+async def _synthesize_speech_live(text: str) -> Optional[bytes]:
+    """Gemini TTS를 호출해 WAV 바이트를 받는다. 실패 시 None."""
+    client = _get_client()
+    if client is None:
+        return None
+
+    from google.genai import types  # type: ignore
+
+    voice_name = (getattr(settings, "GENAI_TTS_VOICE_NAME", "kore") or "kore").lower()
+    language_code = getattr(settings, "GENAI_TTS_LANGUAGE_CODE", None)
+    if isinstance(language_code, str) and language_code:
+        # SpeechConfig는 ISO 639-1(예: 'ko')를 기대하는 경우가 있어 축약한다.
+        language_code = language_code.split("-")[0].strip() or None
+
+    # SDK 테스트 예제와 동일한 형태(소문자 'audio', prebuilt voice_name)
+    speech_cfg = types.SpeechConfig(
+        voice_config=types.VoiceConfig(
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+        )
+    )
+    if language_code:
+        speech_cfg.language_code = language_code
+
+    config = types.GenerateContentConfig(
+        response_modalities=["audio"],
+        speech_config=speech_cfg,
+        temperature=0,
+    )
+
+    def _looks_like_wav(b: bytes) -> bool:
+        return isinstance(b, (bytes, bytearray)) and len(b) >= 12 and b[0:4] == b"RIFF" and b[8:12] == b"WAVE"
+
+    def _parse_audio_params(mime: str) -> dict:
+        # 예: "audio/pcm;rate=24000;channels=1"
+        out: dict[str, str] = {}
+        if not mime:
+            return out
+        parts = [p.strip() for p in str(mime).split(";")]
+        for p in parts[1:]:
+            if "=" in p:
+                k, v = p.split("=", 1)
+                out[k.strip().lower()] = v.strip()
+        return out
+
+    def _pcm16le_to_wav(pcm: bytes, *, rate: int = 24000, channels: int = 1) -> bytes:
+        # Gemini TTS preview 예제 기준으로 16-bit little-endian PCM을 WAV로 감싼다.
+        out = io.BytesIO()
+        with wave.open(out, "wb") as wf:
+            wf.setnchannels(int(channels) if channels else 1)
+            wf.setsampwidth(2)
+            wf.setframerate(int(rate) if rate else 24000)
+            wf.writeframes(pcm or b"")
+        return out.getvalue()
+
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            model_name = getattr(settings, "GENAI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+
+            resp = await client.aio.models.generate_content(
+                model=model_name,
+                contents=f'Produce a speech response saying "{text}"',
+                config=config,
+            )
+
+            candidates = getattr(resp, "candidates", None) or []
+            for cand in candidates:
+                content = getattr(cand, "content", None)
+                parts = getattr(content, "parts", None) or []
+                for part in parts:
+                    inline = getattr(part, "inline_data", None)
+                    if not inline:
+                        continue
+                    mime = getattr(inline, "mime_type", None) or ""
+                    data = getattr(inline, "data", None)
+                    if not data or not str(mime).startswith("audio/"):
+                        continue
+
+                    # SDK/버전에 따라 data가 bytes 또는 base64 str로 올 수 있다.
+                    if isinstance(data, str):
+                        try:
+                            audio_bytes = base64.b64decode(data)
+                        except Exception:
+                            audio_bytes = data.encode("utf-8", errors="ignore")
+                    else:
+                        audio_bytes = bytes(data)
+
+                    m = str(mime).lower()
+                    if "wav" in m and _looks_like_wav(audio_bytes):
+                        return audio_bytes
+
+                    # PCM이면 WAV로 래핑해서 반환 (compose_audio_from_segments가 WAV 디코드를 기대)
+                    if "pcm" in m or "l16" in m:
+                        params = _parse_audio_params(m)
+                        rate = int(params.get("rate", "24000")) if params.get("rate") else 24000
+                        channels = int(params.get("channels", "1")) if params.get("channels") else 1
+                        return _pcm16le_to_wav(audio_bytes, rate=rate, channels=channels)
+
+                    # 기타 포맷은 현재 파이프라인이 WAV만 처리하므로 무시
+            return None
+        except Exception as e:
+            last_error = e
+            msg = str(e)
+            is_internal = (" 500 " in msg) or ("INTERNAL" in msg)
+            if attempt < 2 and is_internal:
+                import asyncio
+                await asyncio.sleep(0.6 * (attempt + 1))
+                continue
+            break
+
+    if last_error is not None:
+        logger.warning("[chat_service] TTS 라이브 합성 실패: %s", last_error)
     return None
 
 
@@ -85,12 +252,21 @@ async def prewarm_tts_cache(db_factory=None) -> int:
     """
     서버 부팅 시 호출 — 시나리오 매뉴얼의 response_text만 합성해 디스크 캐시에 적재.
     조합 합성(템플릿/조각)은 현재 비활성. 이미 캐시된 항목은 자동으로 건너뛴다.
-    db_factory 인자는 호환성을 위해 남겨두지만 사용하지 않는다.
+    db_factory가 주어지면 템플릿/조각 확장 문구도 함께 프리워밍한다.
     """
-    if _get_client() is None:
-        return 0
+    phrases: list[str] = list(all_canned_texts())
 
-    phrases = list(dict.fromkeys(p for p in all_canned_texts() if p))
+    # 조합 합성(audio_segments)용 템플릿/조각 프리워밍은 GENAI TTS가 켜졌을 때만 의미가 크다.
+    # (꺼져 있으면 디스크 캐시 미스가 대부분이라 DB를 긁어 대량 확장하는 게 오히려 낭비가 될 수 있음)
+    if getattr(settings, "GENAI_TTS_ENABLED", False) and db_factory is not None:
+        try:
+            async with db_factory() as db:
+                phrases.extend(await expand_template_texts(db))
+                phrases.extend(await expand_fragment_texts(db))
+        except Exception as e:
+            logger.warning("[chat_service] 템플릿/조각 확장 실패: %s", e)
+
+    phrases = list(dict.fromkeys(p for p in phrases if p))
 
     n = 0
     for phrase in phrases:
@@ -107,10 +283,11 @@ _JSON_FORMAT_INSTRUCTION = """[JSON 스키마]
 {
   "intent": "사용자 의도 분류 키 (예: greet, select_menu, add_to_cart, cancel 등)",
   "response_text": "손님에게 음성으로 들려줄 한국어 문장",
+    "audio_segments": ["(선택) 조합형 TTS용 음성 조각 텍스트"],
   "next_stage": "다음 단계. greeting|category_browse|menu_browse|menu_select|option_select|cart_review|payment_confirm|farewell 중 하나. 변경 없으면 null",
   "actions": [],
-  "requires_user_input": "사용자 응답이 필요하면 true",
-  "end_conversation": "대화를 종료하려면 true"
+    "requires_user_input": true,
+    "end_conversation": false
 }
 
 actions 종류와 용도:
@@ -156,6 +333,7 @@ def _get_client():
 # response_schema로 보내고, 응답은 파싱 없이 바로 사용한다.
 
 from pydantic import BaseModel as _BaseModel
+from pydantic import Field as _Field
 
 
 class _GeminiAction(_BaseModel):
@@ -173,7 +351,8 @@ class _GeminiResponse(_BaseModel):
     intent: str
     response_text: str
     next_stage: Optional[str] = None
-    actions: List[_GeminiAction] = []
+    actions: List[_GeminiAction] = _Field(default_factory=list)
+    audio_segments: Optional[List[str]] = None
     requires_user_input: bool = True
     end_conversation: bool = False
 
@@ -191,6 +370,7 @@ def _gemini_to_chat_response(g: _GeminiResponse) -> AIChatResponse:
         response_text=g.response_text,
         next_stage=g.next_stage if g.next_stage in _VALID_STAGES else None,
         actions=[a.model_dump(exclude_none=True) for a in g.actions],
+        audio_segments=g.audio_segments,
         requires_user_input=g.requires_user_input,
         end_conversation=g.end_conversation,
     )
@@ -314,7 +494,7 @@ async def process_chat_message(
             return canned_resp, "canned"
 
     # ── fast path 1: 코드 패턴 매칭 (인사/취소/긍정/부정/도움) ──
-    pattern_resp = match_pattern(sanitized, purpose=purpose)
+    pattern_resp = match_pattern(sanitized, purpose=purpose, stage=current_stage)
     if pattern_resp is not None:
         await _save_pair(db, session, attempt, sanitized, pattern_resp, purpose, "pattern")
         await _apply_stage_update(db, session, pattern_resp)
@@ -322,13 +502,61 @@ async def process_chat_message(
 
     # ── fast path 2: 메뉴 이름 직접 매칭 (긴 이름 우선) ──
     if purpose == "voice_order":
-        menu_rows, _ = await get_menus(db, limit=500)
-        menu_names = [r["name"] for r in menu_rows]
+        menu_names = await _get_cached_menu_names(db)
         menu_resp = match_menu_name(sanitized, menu_names)
         if menu_resp is not None:
             await _save_pair(db, session, attempt, sanitized, menu_resp, purpose, "menu_name")
             await _apply_stage_update(db, session, menu_resp)
             return menu_resp, "menu_name"
+
+    # ── fast path 3: 장바구니 요약/총액 (조합형 audio_segments) ──
+    if purpose == "voice_order" and cart_snapshot and current_stage in ("cart_review", "payment_confirm"):
+        total_query = re.search(r"(총액|합계|얼마|가격|금액|계산)", sanitized)
+        summary_query = re.search(r"(요약|정리|뭐\s*담겼|뭐\s*있|장바구니\s*뭐)", sanitized)
+        if total_query or summary_query:
+            total = sum(int(it.unit_price) * int(it.quantity) for it in cart_snapshot)
+            menu_names = [it.menu_name for it in cart_snapshot if getattr(it, "menu_name", None)]
+            menu_names = list(dict.fromkeys(menu_names))
+
+            if not menu_names:
+                text = "장바구니가 비어 있어요."
+                resp = AIChatResponse(
+                    intent="cart_empty",
+                    response_text=text,
+                    actions=[SpeakAction(text=text)],
+                    requires_user_input=True,
+                )
+                await _save_pair(db, session, attempt, sanitized, resp, purpose, "cart_empty")
+                return resp, "cart_empty"
+
+            if summary_query and len(menu_names) <= 3:
+                menus_text = ", ".join(menu_names)
+                response_text = compose_template("order_summary_simple", menus=menus_text, price=str(total)) or (
+                    f"{menus_text} 주문하셨습니다. 총 {total}원입니다."
+                )
+                menus_segments: list[str] = []
+                for i, name in enumerate(menu_names):
+                    if i:
+                        menus_segments.append(", ")
+                    menus_segments.append(name)
+                segments = template_to_segments(
+                    "order_summary_simple",
+                    menus=menus_segments,
+                    price=price_to_segments(total),
+                )
+            else:
+                response_text = compose_template("cart_total", price=str(total)) or f"총 {total}원입니다."
+                segments = template_to_segments("cart_total", price=price_to_segments(total))
+
+            resp = AIChatResponse(
+                intent="cart_summary" if summary_query else "cart_total",
+                response_text=response_text,
+                actions=[SpeakAction(text=response_text)],
+                audio_segments=segments,
+                requires_user_input=True,
+            )
+            await _save_pair(db, session, attempt, sanitized, resp, purpose, "cart_total")
+            return resp, "cart_total"
 
     # ── Gemini 호출 ──
     history_rows = await chat_crud.list_messages_for_context(
@@ -348,11 +576,17 @@ async def process_chat_message(
             selected_category=selected_category,
             selected_menu_name=selected_menu_name,
         )
-        # 권장 응답 매뉴얼 주입 — AI가 매뉴얼 문구를 그대로 복사하면
-        # 디스크 캐시 hit으로 TTS가 즉시 재생됨
+        # 권장 응답/템플릿/조각 매뉴얼 주입
+        # 템플릿/조각은 조합형 응답에서만 가치가 크므로 필요한 stage에서만 주입해
+        # 프롬프트 토큰을 줄인다.
         canned_block = get_canned_phrases_for_prompt(current_stage)
-        if canned_block:
-            stage_context = f"{stage_context}\n\n{canned_block}"
+        # 다만 실제 운영에서는 stage와 무관하게 재질문/모호성 해소/장바구니 안내가 필요하므로,
+        # templates/fragments 매뉴얼은 모든 stage에서 가볍게 주입한다.
+        template_block = get_template_phrases_for_prompt()
+        fragment_block = get_fragments_for_prompt()
+        prefix_blocks = [b for b in (canned_block, template_block, fragment_block) if b]
+        if prefix_blocks:
+            stage_context = "\n\n".join(prefix_blocks + [stage_context])
 
     system_prompt = build_system_prompt(
         persona=persona,
@@ -366,6 +600,19 @@ async def process_chat_message(
         history=history,
         user_message=sanitized,
     )
+
+    if purpose == "voice_order":
+        try:
+            await _postprocess_voice_cart_actions(
+                db,
+                user_message=sanitized,
+                current_stage=current_stage,
+                selected_menu_name=selected_menu_name,
+                response=resp,
+            )
+        except Exception as e:
+            logger.warning("[chat_service] voice action postprocess failed: %s", e)
+
     await _save_pair(db, session, attempt, sanitized, resp, purpose, "gemini")
     await _apply_stage_update(db, session, resp)
     return resp, "gemini"
@@ -447,3 +694,207 @@ async def _apply_stage_update(
     if changed:
         await db.commit()
         await db.refresh(session)
+
+
+_ADD_TO_CART_KEYWORDS_RE = re.compile(r"(담아|담아줘|담아\s*줘|넣어|추가|장바구니|카트|주문\s*할래|주문\s*해|결제)")
+
+
+def _extract_quantity_from_text(text: str) -> int:
+    """간단 수량 추출 (1~10). 실패 시 1."""
+    if not text:
+        return 1
+
+    m = re.search(r"(\d+)\s*(잔|개|컵)?", text)
+    if m:
+        try:
+            n = int(m.group(1))
+            return max(1, min(10, n))
+        except Exception:
+            pass
+
+    # 한국어 수량
+    mapping = {
+        "한": 1, "하나": 1, "1": 1,
+        "두": 2, "둘": 2, "2": 2,
+        "세": 3, "셋": 3, "3": 3,
+        "네": 4, "넷": 4, "4": 4,
+        "다섯": 5, "5": 5,
+        "여섯": 6, "6": 6,
+        "일곱": 7, "7": 7,
+        "여덟": 8, "8": 8,
+        "아홉": 9, "9": 9,
+        "열": 10, "10": 10,
+    }
+    for k, v in mapping.items():
+        if re.search(rf"{re.escape(k)}\s*(잔|개|컵)", text):
+            return v
+
+    return 1
+
+
+def _finalize_option_item_ids(menu_detail: dict, requested_ids: list[int]) -> list[int]:
+    """요청 옵션 + 기본 옵션을 합쳐, 가능한 한 필수 옵션을 충족하도록 보정한다."""
+    option_groups = menu_detail.get("option_groups") or []
+    requested_set = {int(x) for x in (requested_ids or [])}
+
+    # group_id -> selected ids
+    selected_by_group: dict[int, list[int]] = {}
+    for g in option_groups:
+        gid = int(g.get("id"))
+        group_items = g.get("items") or []
+        group_item_ids = [
+            int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
+            for it in group_items
+        ]
+        group_item_ids = [i for i in group_item_ids if i]
+        sel = [i for i in group_item_ids if i in requested_set]
+        selected_by_group[gid] = sel
+
+    # fill defaults for required groups if needed
+    for g in option_groups:
+        gid = int(g.get("id"))
+        is_required = bool(g.get("is_required"))
+        min_select = int(g.get("min_select") or 0)
+        max_select = int(g.get("max_select") or 0)
+        current = selected_by_group.get(gid, [])
+
+        if max_select and len(current) > max_select:
+            current = current[:max_select]
+
+        if is_required and len(current) < min_select:
+            defaults = [
+                int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
+                for it in (g.get("items") or [])
+                if bool(getattr(it, "is_default", None) if not isinstance(it, dict) else it.get("is_default"))
+            ]
+            defaults = [i for i in defaults if i]
+            for did in defaults:
+                if did not in current:
+                    current.append(did)
+                if len(current) >= min_select:
+                    break
+
+        # re-apply max_select guard
+        if max_select and len(current) > max_select:
+            current = current[:max_select]
+
+        selected_by_group[gid] = current
+
+    # flatten while keeping group order
+    out: list[int] = []
+    for g in option_groups:
+        gid = int(g.get("id"))
+        out.extend(selected_by_group.get(gid, []))
+    return list(dict.fromkeys(out))
+
+
+def _required_options_satisfied(menu_detail: dict, option_item_ids: list[int]) -> bool:
+    option_groups = menu_detail.get("option_groups") or []
+    selected_set = {int(x) for x in (option_item_ids or [])}
+
+    for g in option_groups:
+        if not g.get("is_required"):
+            continue
+        min_select = int(g.get("min_select") or 0)
+        max_select = int(g.get("max_select") or 0)
+        group_items = g.get("items") or []
+        group_item_ids = {
+            int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
+            for it in group_items
+        }
+        group_item_ids.discard(0)
+        selected_in_group = [i for i in selected_set if i in group_item_ids]
+        if len(selected_in_group) < min_select:
+            return False
+        if max_select and len(selected_in_group) > max_select:
+            return False
+    return True
+
+
+def _action_type(a) -> str | None:
+    if a is None:
+        return None
+    t = getattr(a, "type", None)
+    if isinstance(t, str):
+        return t
+    if isinstance(a, dict):
+        return a.get("type")
+    return None
+
+
+async def _postprocess_voice_cart_actions(
+    db: AsyncSession,
+    *,
+    user_message: str,
+    current_stage: str,
+    selected_menu_name: Optional[str],
+    response: AIChatResponse,
+) -> None:
+    """음성 주문에서 cart_add 누락을 보정한다.
+
+    목표:
+    - option_select 단계에서 필수 옵션이 모두 결정되었으면 cart_add가 반드시 발생
+    - '담아줘'류 발화인데도 action이 비어 있으면, 필수 옵션이 없거나 기본값으로 충족 가능할 때 cart_add 생성
+    """
+    if not response or response.end_conversation:
+        return
+
+    # 이미 cart_add가 있으면 그대로 둔다.
+    if any(_action_type(a) == "cart_add" for a in (response.actions or [])):
+        return
+
+    if current_stage != "option_select":
+        return
+
+    # menu_name 후보: option_preview.menu_name > selected_menu_name
+    preview_action: OptionPreviewAction | None = None
+    for a in (response.actions or []):
+        if _action_type(a) == "option_preview":
+            preview_action = a  # type: ignore[assignment]
+            break
+
+    menu_name = None
+    preview_ids: list[int] = []
+    if preview_action is not None:
+        menu_name = getattr(preview_action, "menu_name", None) or (preview_action.get("menu_name") if isinstance(preview_action, dict) else None)
+        preview_ids = list(getattr(preview_action, "option_item_ids", None) or (preview_action.get("option_item_ids") if isinstance(preview_action, dict) else []) or [])
+    if not menu_name:
+        menu_name = selected_menu_name
+
+    if not menu_name:
+        return
+
+    menu_detail = await get_menu_detail(db, menu_name)
+    if not menu_detail:
+        return
+
+    quantity = _extract_quantity_from_text(user_message)
+
+    # 1) option_preview가 있고, 그 조합(+기본값)으로 필수 옵션 충족이면 cart_add로 승격
+    if preview_action is not None:
+        finalized_ids = _finalize_option_item_ids(menu_detail, preview_ids)
+        if _required_options_satisfied(menu_detail, finalized_ids):
+            new_actions = []
+            replaced = False
+            for a in (response.actions or []):
+                if (not replaced) and _action_type(a) == "option_preview":
+                    new_actions.append(CartAddAction(menu_name=menu_name, quantity=quantity, option_item_ids=finalized_ids))
+                    replaced = True
+                else:
+                    new_actions.append(a)
+            response.actions = new_actions  # type: ignore[assignment]
+            response.next_stage = "cart_review"  # type: ignore[assignment]
+            return
+
+    # 2) '담아줘'류 발화인데도 액션이 없거나 cart_add가 없으면, 필수 옵션이 없/기본값으로 충족 가능할 때 cart_add 생성
+    if (response.intent or "") in ("fallback", "error"):
+        return
+    if not _ADD_TO_CART_KEYWORDS_RE.search(user_message or ""):
+        return
+
+    finalized_ids = _finalize_option_item_ids(menu_detail, [])
+    if not _required_options_satisfied(menu_detail, finalized_ids):
+        return
+
+    response.actions = list(response.actions or []) + [CartAddAction(menu_name=menu_name, quantity=quantity, option_item_ids=finalized_ids)]  # type: ignore[assignment]
+    response.next_stage = "cart_review"  # type: ignore[assignment]

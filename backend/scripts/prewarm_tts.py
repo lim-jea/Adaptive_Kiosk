@@ -38,11 +38,30 @@ _TTS_CACHE_DIR = _ROOT / "data" / "tts_cache"
 
 
 async def _collect_phrases() -> list[str]:
-    """시나리오 매뉴얼의 response_text만 모아 중복 제거한 리스트 반환.
-    조합 합성(템플릿/조각)은 현재 비활성이므로 DB 조회도 필요 없다."""
-    from services.canned_responses import all_canned_texts
+    """시나리오 + 템플릿 정적 조각 + fragments(정적/메뉴/옵션) 텍스트를 모아 중복 제거.
 
-    return list(dict.fromkeys(p for p in all_canned_texts() if p))
+    DB 연결이 불가하면(로컬 테스트/초기 환경) 시나리오 텍스트만 반환한다.
+    """
+    from core.database import get_session_factory, initialize_connection_pool
+    from services.canned_responses import (
+        all_canned_texts,
+        expand_fragment_texts,
+        expand_template_texts,
+    )
+
+    phrases: list[str] = list(all_canned_texts())
+
+    try:
+        await initialize_connection_pool()
+        factory = get_session_factory()
+        if factory:
+            async with factory() as db:
+                phrases.extend(await expand_template_texts(db))
+                phrases.extend(await expand_fragment_texts(db))
+    except Exception as e:
+        logger.warning("DB 연결 실패 — 템플릿/조각 확장 건너뜀: %s", e)
+
+    return list(dict.fromkeys(p for p in phrases if p))
 
 
 _RATE_LIMIT_MARKERS = ("429", "RESOURCE_EXHAUSTED", "rate", "Too Many Requests")
