@@ -13,7 +13,7 @@ from datetime import datetime
 
 from core.database import get_session_factory
 from services.recommendation_service import get_recommendation_engine
-from schemas.recommendation_schema import (
+from schemas.recommendation import (
     ModeANewRequest,
     ModeAResponse,
     ModeBRequest,
