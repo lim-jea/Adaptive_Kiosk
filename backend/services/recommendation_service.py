@@ -5,12 +5,12 @@ Mode A: 상황 기반 추천 (gender + age_group + time_period → top 음료)
 Mode B: 주문 이력 기반 추천 (selected_beverages → 보완 음료)
 """
 
-import pandas as pd
 import logging
 from typing import List, Dict, Optional
-from collections import Counter
-from sqlalchemy.ext.asyncio import AsyncSession
+
+import pandas as pd
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.menu import Menu
 from services.trend_service import get_trend_service
@@ -270,6 +270,7 @@ class RecommendationEngine:
         try:
             # 시간 추출 및 타입 변환
             orders_copy = self.orders_df.copy()
+            orders_copy['order_id'] = orders_copy.index + 1
             orders_copy['hour'] = pd.to_datetime(orders_copy['created_at']).dt.hour
             orders_copy['session_id'] = pd.to_numeric(orders_copy['session_id'], errors='coerce').fillna(0).astype(int)
 
@@ -284,14 +285,10 @@ class RecommendationEngine:
                 how='inner'
             )
 
-            # 행 인덱스를 order_index로 추가 (order_items와 연결용)
-            merged = merged.reset_index(drop=True).reset_index()
-            merged = merged.rename(columns={'index': 'order_index'})
-
             # order_items 결합
             merged_with_items = merged.merge(
                 self.order_items_df,
-                left_on='order_index',
+                left_on='order_id',
                 right_on='order_id',
                 how='inner'
             )
@@ -332,7 +329,7 @@ class RecommendationEngine:
                             (merged_with_items['estimated_gender'] == gender) &
                             (merged_with_items['estimated_age_group'] == age_group) &
                             (merged_with_items['period'] == period)
-                        ]['order_index'].unique()
+                        ]['order_id'].unique()
                     ),
                     'total_items': total_items,
                 }
@@ -560,9 +557,10 @@ class RecommendationEngine:
                 'cache_hit': False
             }
 
-        filtered = self.orders_df[
-            (self.orders_df.index + 1).isin(session_filtered.index + 1)
-        ]
+        session_ids = session_filtered.index + 1
+        filtered = self.orders_df.copy()
+        filtered['order_id'] = filtered.index + 1
+        filtered = filtered[filtered['session_id'].isin(session_ids)]
         logger.debug(f"  ✓ 대응 주문: {len(filtered)}개")
 
         # 시간대 필터링
@@ -584,7 +582,7 @@ class RecommendationEngine:
             }
 
         # 해당 주문의 음료 통계
-        orders_in_situation = set(filtered_time.index + 1)
+        orders_in_situation = set(filtered_time['order_id'])
         items_in_situation = self.order_items_df[
             self.order_items_df['order_id'].isin(orders_in_situation)
         ]
@@ -878,6 +876,54 @@ class RecommendationEngine:
         )
         return round(cf_score, 4)
 
+    def _get_cart_candidate_menu_ids(self, cart_items: List[int]) -> set[int]:
+        """장바구니와 함께 자주 주문된 메뉴 후보를 수집한다."""
+        candidate_ids: set[int] = set()
+
+        for selected_id in cart_items:
+            cached_pairs = self._mode_b_cache.get(f"menu_id:{selected_id}", {})
+            for pair_key in cached_pairs.keys():
+                menu_a, menu_b = map(int, pair_key.split(':'))
+                other_menu = menu_b if menu_a == selected_id else menu_a
+                if other_menu not in cart_items:
+                    candidate_ids.add(other_menu)
+
+        return candidate_ids
+
+    def _get_cart_cf_score(self, candidate_menu_id: int, cart_items: List[int]) -> float:
+        """
+        장바구니 기반 item-item CF 점수.
+
+        평균만 내면 메뉴가 많아질수록 점수가 희석되므로,
+        가장 강한 연결을 중심으로 보되 여러 장바구니 메뉴와 동시에
+        연결될 때는 소폭 보너스를 준다.
+        """
+        if not cart_items:
+            return 0.0
+
+        strengths: List[float] = []
+
+        for selected_id in cart_items:
+            cached_pairs = self._mode_b_cache.get(f"menu_id:{selected_id}", {})
+            if not cached_pairs:
+                continue
+
+            pair_key = f"{min(selected_id, candidate_menu_id)}:{max(selected_id, candidate_menu_id)}"
+            pair_stats = cached_pairs.get(pair_key)
+            if pair_stats:
+                strengths.append(float(pair_stats.get('strength', 0.0)))
+
+        if not strengths:
+            return 0.0
+
+        strongest_link = max(strengths)
+        avg_link = sum(strengths) / len(strengths)
+        coverage_bonus = min(0.03, 0.01 * (len(strengths) - 1))
+
+        # 강한 연결을 우선하면서, 여러 메뉴와 동시에 연결될 때만 약하게 가산
+        cart_cf_score = (strongest_link * 0.75) + (avg_link * 0.25) + coverage_bonus
+        return round(cart_cf_score, 4)
+
     def get_integrated_recommendations(
         self,
         gender: str,
@@ -954,16 +1000,33 @@ class RecommendationEngine:
             logger.debug(f"  ✓ Cache hit: {cache_key}")
 
             # 모든 메뉴별 CF 점수 계산
+            profile_popularity_map = {
+                rec['menu_id']: rec['popularity']
+                for rec in profile_data['recommendations']
+            }
+            candidate_menu_ids = set(profile_popularity_map.keys())
+            if cart_items:
+                candidate_menu_ids.update(self._get_cart_candidate_menu_ids(cart_items))
+
             cf_scores = {}
-            for rec in profile_data['recommendations']:
-                menu_id = rec['menu_id']
-                profile_pop = rec['popularity']
+            for menu_id in candidate_menu_ids:
+                profile_pop = profile_popularity_map.get(menu_id, 0.0)
                 global_pop = self._get_global_popularity(menu_id)
-                cf_score = self.get_cf_score(menu_id, profile_pop, global_pop)
+                base_cf_score = self.get_cf_score(menu_id, profile_pop, global_pop)
+                cart_cf_score = self._get_cart_cf_score(menu_id, cart_items)
+
+                if cart_items:
+                    # 장바구니가 있을 때는 item-based CF를 더 우선하되,
+                    # 프로필 기반 추천이 완전히 사라지지 않도록 균형 유지
+                    cf_score = round((base_cf_score * 0.35) + (cart_cf_score * 0.65), 4)
+                else:
+                    cf_score = base_cf_score
+
                 cf_scores[menu_id] = {
                     'profile_popularity': profile_pop,
                     'global_popularity': global_pop,
-                    'cf_score': cf_score
+                    'cart_cf_score': cart_cf_score,
+                    'cf_score': cf_score,
                 }
 
             # 4. 트렌드 가중치 적용
@@ -989,7 +1052,12 @@ class RecommendationEngine:
                 # Final Score = CF_Score + (Trend × 0.15)
                 final_score = scores['cf_score'] + (trend_score * 0.15)
 
-                reasoning = f"Profile({age_group}/{period}): {scores['cf_score']:.3f}, Trend: {trend_score:.2f}"
+                reasoning = (
+                    f"Profile({age_group}/{period}): {scores['profile_popularity']:.3f}, "
+                    f"Global: {scores['global_popularity']:.3f}, "
+                    f"CartCF: {scores['cart_cf_score']:.3f}, "
+                    f"Trend: {trend_score:.2f}"
+                )
 
                 recommendations.append({
                     'rank': len(recommendations) + 1,
@@ -998,6 +1066,7 @@ class RecommendationEngine:
                     'cf_breakdown': {
                         'profile_popularity': round(scores['profile_popularity'], 4),
                         'global_popularity': round(scores['global_popularity'], 4),
+                        'cart_cf_score': round(scores['cart_cf_score'], 4),
                         'cf_score': round(scores['cf_score'], 4)
                     },
                     'trend_score': round(trend_score, 2),

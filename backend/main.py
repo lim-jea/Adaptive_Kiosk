@@ -1,36 +1,43 @@
 import asyncio
-import sys
 import logging
+import secrets
+import sys
 from contextlib import asynccontextmanager
-
-# Windows + aiomysql + SSL 호환을 위해 SelectorEventLoop 사용
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.requests import Request
 from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
-from core.database import Base, get_engine, get_session_factory, initialize_connection_pool
-import secrets
-from core.config import settings
-from core.security import http_basic
 from api.v1.router import v1_router
+from core.config import settings
+from core.database import (
+    Base,
+    get_engine,
+    get_session_factory,
+    initialize_connection_pool,
+)
+from core.security import http_basic
 from scripts.seed_menu import seed_menu_data
-from services.face_service import face_service
 from services.chat_service import prewarm_tts_cache
+from services.face_service import face_service
+from services.recommendation_service import (
+    get_recommendation_engine,
+    initialize_recommendation_engine,
+)
 from services.trend_service import initialize_trend_service
-from services.recommendation_service import initialize_recommendation_engine, get_recommendation_engine
 
-# 모델 임포트 (Base.metadata에 테이블 등록)
 import models  # noqa: F401
+
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-# Set specific loggers to INFO to see API call logs
 logging.getLogger("services.trend_service").setLevel(logging.INFO)
 logging.getLogger("services.recommendation_service").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,81 +45,95 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 시작/종료 시 실행되는 이벤트"""
-    # 얼굴 분석 모델 로드 (mock 모드 가능)
+    """Application startup and shutdown lifecycle."""
     try:
         await face_service.load_models()
-    except Exception as e:
-        logger.warning("Face service load failed: %s", e)
+    except Exception as exc:
+        logger.warning("Face service load failed: %s", exc)
 
     try:
         await initialize_connection_pool()
-        # DB 연결 성공 시 테이블 자동 생성
         engine = get_engine()
         if engine is not None:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("Database tables created successfully.")
 
-            # 시드 데이터 삽입 (카테고리, 메뉴, 옵션)
             factory = get_session_factory()
             if factory:
                 async with factory() as db:
                     await seed_menu_data(db)
 
-                # 📊 추천 통계 배치 프로세스 (서버 시작 시 한 번만 실행)
-                logger.info("🔄 추천 통계 배치 시작...")
-                engine = get_recommendation_engine()
-                stats, metadata = await engine.precompute_all_stats()
+                logger.info("Starting recommendation stats batch...")
+                recommendation_engine = get_recommendation_engine()
+                stats, metadata = await recommendation_engine.precompute_all_stats()
 
                 if stats and metadata:
-                    logger.info("✓ 배치 완료, 캐시 로드 중...")
-
-                    # 메뉴 정보 캐시 (DB에서 가져오기)
+                    logger.info("Recommendation stats batch finished. Loading cache...")
                     async with factory() as db:
                         await initialize_recommendation_engine(db)
 
-                    # 사전 계산된 통계 로드
-                    if engine.load_cached_stats(stats, metadata):
-                        logger.info("✅ 추천 시스템 준비 완료 (캐시 활성화)")
+                    if recommendation_engine.load_cached_stats(stats, metadata):
+                        logger.info("Recommendation system ready (cache enabled)")
                     else:
-                        logger.warning("캐시 로드 실패, Fallback 모드로 실행")
+                        logger.warning("Recommendation cache load failed. Using fallback mode.")
                 else:
-                    logger.warning("배치 실패, Fallback 모드로 실행")
-                    # Fallback: 기존 CSV 로드 방식으로 진행
+                    logger.warning("Recommendation stats batch failed. Using fallback mode.")
                     async with factory() as db:
                         await initialize_recommendation_engine(db)
-    except Exception as e:
-        logger.warning("Database initialization skipped: %s", e)
-    
-    # 트렌드 서비스 초기화 (추천 엔진과 독립적)
-    try:
-        if initialize_trend_service():
-            logger.info("✓ Trend service initialized")
-        else:
-            logger.warning("Trend service not available")
-    except Exception as e:
-        logger.warning("Trend service initialization failed: %s", e)
+    except Exception as exc:
+        logger.warning("Database initialization skipped: %s", exc)
 
-    # TTS 프리워밍 — 시나리오 + 템플릿×DB 메뉴/옵션 조합을 미리 합성해 디스크 캐시에 적재
-    # 백그라운드로 띄워서 서버 부팅을 막지 않음
+    try:
+        from services.trend_service import get_trend_service
+        from models.menu import Menu
+        from sqlalchemy import select
+
+        if settings.NAVER_TREND_ENABLED and initialize_trend_service():
+            logger.info("Trend service initialized")
+
+            factory = get_session_factory()
+            if factory:
+                async with factory() as db:
+                    stmt = select(Menu).where(Menu.is_available == True)
+                    result = await db.execute(stmt)
+                    menus = result.scalars().all()
+
+                menu_dicts = [{"name": m.name, "id": m.id} for m in menus]
+                trend_service = get_trend_service()
+                cached_count = trend_service.load_current_snapshot()
+
+                if cached_count > 0:
+                    logger.info("Trend snapshot loaded: %d cached weights", cached_count)
+                else:
+                    logger.info(
+                        "No fresh trend snapshot. Starting 3-day trend precompute in background."
+                    )
+                    asyncio.create_task(trend_service.ensure_trends_ready(menu_dicts))
+        elif settings.NAVER_TREND_ENABLED:
+            logger.warning("Trend service not available")
+        else:
+            logger.info("Trend integration disabled by env setting")
+    except Exception as exc:
+        logger.warning("Trend service initialization failed: %s", exc)
+
     asyncio.create_task(prewarm_tts_cache(get_session_factory()))
     yield
 
 
 app = FastAPI(
     title="Adaptive Kiosk API",
-    description="카메라 기반 사용자 인식 + 음료 추천 + 주문 관리",
+    description="Camera-based recognition, beverage recommendations, and order management API",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# ─── CORS 미들웨어 ───
+
 origins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:5000",
-    "http://localhost:5173",  # Vite 기본 포트 (프런트엔드)
+    "http://localhost:5173",
     "http://localhost:8000",
     "http://localhost:8080",
 ]
@@ -126,9 +147,8 @@ app.add_middleware(
 )
 
 
-# ─── Docs 보호 미들웨어 ───
-# /docs, /redoc 진입 시에만 인증. /openapi.json은 인증 후 브라우저 캐시로 접근하므로 제외.
 PROTECTED_DOC_PATHS = {"/docs", "/docs/", "/redoc", "/redoc/"}
+
 
 @app.middleware("http")
 async def docs_protect_middleware(request: Request, call_next):
@@ -150,11 +170,9 @@ async def docs_protect_middleware(request: Request, call_next):
     return response
 
 
-# ─── 라우터 등록 ───
 app.include_router(v1_router)
 
 
-# ─── 기본 헬스 체크 ───
 @app.get("/")
 async def root():
     return {"message": "Adaptive Kiosk API is running"}

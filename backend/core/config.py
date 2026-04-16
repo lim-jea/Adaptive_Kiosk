@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     VOICE_AUDIO_SEGMENTS_ONLY: bool = False
 
     # Naver DataLab API - 실시간 트렌드 조회
+    NAVER_TREND_ENABLED: bool = True
     NAVER_CLIENT_ID: str = ""
     NAVER_CLIENT_SECRET: str = ""
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)

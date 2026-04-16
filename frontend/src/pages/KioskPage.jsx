@@ -72,6 +72,7 @@ export default function KioskPage() {
       type: ACTIONS.ADD_TO_CART,
       payload: {
         cartItemId,
+        menuId: optionMenu.id,
         menuName: optionMenu.name,
         displayName: optionMenu.name,
         basePrice: optionMenu.price,
@@ -172,6 +173,7 @@ export default function KioskPage() {
             type: ACTIONS.ADD_TO_CART,
             payload: {
               cartItemId,
+              menuId: menu.id,
               menuName: menu.name,
               displayName: menu.name,
               basePrice: menu.price,
@@ -264,11 +266,14 @@ export default function KioskPage() {
         ) : (
           <>
             {/* 추천 음료 패널 — 항상 표시 */}
-            {state.gender && state.ageGroup && (
+            {state.gender && (state.ageGroup || state.ageEst) && (
               <div className="mb-6">
                 <RecommendationPanel
                   gender={state.gender}
+                  age={state.ageEst}
                   ageGroup={state.ageGroup}
+                  menus={menus}
+                  cartItems={state.cart}
                   onSelectMenu={(menuName) => {
                     // 추천 메뉴 클릭 시 카테고리를 전체로 변경하고 메뉴 선택
                     if (activeCategory !== 'all') {
