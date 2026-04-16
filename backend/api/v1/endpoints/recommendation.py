@@ -19,6 +19,8 @@ from schemas.recommendation import (
     ModeBRequest,
     ModeBResponse,
     RecommendationHealthResponse,
+    SuggestRequest,
+    SuggestResponse,
 )
 from utils.recommendation_utils import age_to_age_group
 
@@ -174,7 +176,99 @@ async def get_complementary_recommendations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health")
+@router.post("/suggest", response_model=SuggestResponse)
+async def get_integrated_recommendations(
+    request: SuggestRequest = Body(..., example={
+        "gender": "M",
+        "age": 35,
+        "cart_items": [3, 10],
+        "top_n": 5,
+        "include_trend": True
+    })
+) -> SuggestResponse:
+    """
+    **협업 필터링(CF) 중심 통합 추천**
+
+    성별×나이×시간대 기반 협업 필터링 + 트렌드 가중치
+
+    **알고리즘**:
+    - CF_Score = 0.6 × 프로필인기도 + 0.4 × 전체평균인기도
+    - Final_Score = CF_Score + (트렌드가중치 × 0.15)
+
+    **특징**:
+    - 같은 프로필(성별/나이/시간대) 사용자 선호도 60% 반영
+    - 전체 보편적 인기도 40% 반영 (다양성 보장)
+    - 트렌드 신호 추가 반영 (기본 활성화)
+    - 장바구니 음료는 자동 제외
+
+    **요청 예시**:
+    ```json
+    {
+        "gender": "M",
+        "age": 35,
+        "cart_items": [3, 10],
+        "top_n": 5,
+        "include_trend": true
+    }
+    ```
+
+    **응답 필드**:
+    - `user_context`: 사용자 프로필 {gender, age_group, period, current_hour}
+    - `cart_items`: 장바구니 음료 목록
+    - `recommendations`: CF 기반 추천 음료
+        - `cf_breakdown`: {profile_popularity, global_popularity, cf_score}
+        - `trend_score`: 트렌드 가중치
+        - `final_score`: 최종 점수
+        - `reasoning`: 추천 이유
+    - `cache_hit`: 캐시 사용 여부
+    """
+    try:
+        logger.debug(
+            f"📥 CF 통합 추천 API 요청: "
+            f"gender={request.gender}, age={request.age}, "
+            f"cart={request.cart_items}, top_n={request.top_n}"
+        )
+
+        engine = get_recommendation_engine()
+
+        if not engine.is_loaded:
+            logger.error("Recommendation engine not loaded")
+            raise HTTPException(
+                status_code=503,
+                detail="Recommendation engine not initialized"
+            )
+
+        # CF 추천 메서드 호출
+        result = engine.get_integrated_recommendations(
+            gender=request.gender,
+            age=request.age,
+            cart_items=request.cart_items,
+            top_n=request.top_n,
+            include_trend=request.include_trend
+        )
+
+        if 'error' in result:
+            logger.error(f"Engine error: {result['error']}")
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        logger.info(
+            f"📤 CF 추천 API 응답: "
+            f"{result['user_context']['age_group']}/{result['user_context']['period']} "
+            f"→ {len(result['recommendations'])}개 추천"
+        )
+
+        rec_list = ', '.join([f"{r['menu_name']}({r['final_score']:.4f})" for r in result['recommendations']])
+        logger.debug(f"  추천 목록: {rec_list}")
+
+        return SuggestResponse(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in CF recommendation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def health_check():
     """추천 시스템 상태 확인"""
     engine = get_recommendation_engine()

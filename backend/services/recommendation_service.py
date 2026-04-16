@@ -818,6 +818,234 @@ class RecommendationEngine:
             'cache_hit': False
         }
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🤝 협업 필터링 (CF) 중심 통합 추천
+    # ═══════════════════════════════════════════════════════════════════════
+
+    def _get_global_popularity(self, menu_id: int) -> float:
+        """
+        전체 사용자의 평균 인기도 (모든 Mode A 조합에서의 평균)
+
+        Args:
+            menu_id: 메뉴 ID
+
+        Returns:
+            0~1 범위의 전체 평균 인기도
+        """
+        if not self._use_cache or not self._mode_a_cache:
+            logger.warning(f"Global popularity cache not available for menu {menu_id}")
+            return 0.5  # 기본값: 중립적 인기도
+
+        total_popularity = 0.0
+        count = 0
+
+        for cache_data in self._mode_a_cache.values():
+            recommendations = cache_data.get('recommendations', [])
+            for rec in recommendations:
+                if rec['menu_id'] == menu_id:
+                    total_popularity += rec['popularity']
+                    count += 1
+
+        if count == 0:
+            logger.debug(f"  Menu {menu_id} not found in any Mode A combination")
+            return 0.0
+
+        global_popularity = total_popularity / count
+        logger.debug(f"  Global popularity for menu {menu_id}: {global_popularity:.4f} ({count} combinations)")
+        return round(global_popularity, 4)
+
+    def get_cf_score(
+        self,
+        menu_id: int,
+        profile_popularity: float,
+        global_popularity: float
+    ) -> float:
+        """
+        CF 점수 계산: 0.6 × profile + 0.4 × global
+
+        Args:
+            menu_id: 메뉴 ID (로깅용)
+            profile_popularity: 같은 프로필 사용자의 인기도
+            global_popularity: 전체 사용자의 평균 인기도
+
+        Returns:
+            CF 종합 점수 (0~1)
+        """
+        cf_score = 0.6 * profile_popularity + 0.4 * global_popularity
+        logger.debug(
+            f"  CF Score for menu {menu_id}: {cf_score:.4f} "
+            f"(profile=0.6×{profile_popularity:.3f}, global=0.4×{global_popularity:.3f})"
+        )
+        return round(cf_score, 4)
+
+    def get_integrated_recommendations(
+        self,
+        gender: str,
+        age: int,
+        cart_items: Optional[List[int]] = None,
+        top_n: int = 5,
+        include_trend: bool = True
+    ) -> Dict:
+        """
+        협업 필터링(CF) 중심 통합 추천
+
+        알고리즘:
+        1. 나이 → 나이대 변환
+        2. 시간 → 시간대 변환
+        3. 모든 음료에 대해:
+           a. Profile popularity: Mode A 캐시에서 조회
+           b. Global popularity: 모든 Mode A에서의 평균
+           c. CF_Score = 0.6×profile + 0.4×global
+           d. 트렌드 가중치 적용 (선택사항)
+           e. Final_Score = CF_Score + (Trend×0.15)
+        4. 장바구니 음료는 제외
+        5. 상위 N개 반환
+
+        Args:
+            gender: M 또는 F
+            age: 15~100 (나이)
+            cart_items: 장바구니 음료 menu_id 목록 (기본: 빈 리스트)
+            top_n: 추천 개수 (기본: 5)
+            include_trend: 트렌드 반영 여부 (기본: True)
+
+        Returns:
+            {
+                'mode': 'CF',
+                'user_context': {...},
+                'cart_items': [...],
+                'recommendations': [...],
+                'cache_hit': bool
+            }
+        """
+        from utils.recommendation_utils import age_to_age_group
+        from datetime import datetime
+
+        if not self.is_loaded:
+            logger.error("Recommendation engine not loaded")
+            return {'mode': 'CF', 'error': 'Engine not loaded'}
+
+        cart_items = cart_items or []
+        logger.info(f"🔍 CF 추천 요청: gender={gender}, age={age}, cart={cart_items}, top_n={top_n}")
+
+        try:
+            # 1. 나이 → 나이대 변환
+            try:
+                age_group = age_to_age_group(age)
+            except ValueError as e:
+                logger.warning(f"Age validation failed: {e}")
+                return {'mode': 'CF', 'error': str(e)}
+
+            # 2. 시간 → 시간대 변환
+            current_hour = datetime.now().hour
+            period = self._hour_to_period(current_hour)
+            logger.debug(f"  ✓ Conversion: age={age} → age_group={age_group}, hour={current_hour} → period={period}")
+
+            # 3. Profile popularity 조회 (Mode A 캐시)
+            cache_key = f"gender:{gender},age:{age_group},period:{period}"
+            profile_data = self._mode_a_cache.get(cache_key) if self._use_cache else None
+
+            if not profile_data:
+                logger.warning(f"  ⚠ Profile not found in cache: {cache_key}")
+                return {
+                    'mode': 'CF',
+                    'error': f'No data for profile: {gender}/{age_group}/{period}'
+                }
+
+            logger.debug(f"  ✓ Cache hit: {cache_key}")
+
+            # 모든 메뉴별 CF 점수 계산
+            cf_scores = {}
+            for rec in profile_data['recommendations']:
+                menu_id = rec['menu_id']
+                profile_pop = rec['popularity']
+                global_pop = self._get_global_popularity(menu_id)
+                cf_score = self.get_cf_score(menu_id, profile_pop, global_pop)
+                cf_scores[menu_id] = {
+                    'profile_popularity': profile_pop,
+                    'global_popularity': global_pop,
+                    'cf_score': cf_score
+                }
+
+            # 4. 트렌드 가중치 적용
+            trend_service = get_trend_service() if include_trend else None
+            hour_weight = self.hourly_weights.get(current_hour, 1.0)
+
+            recommendations = []
+            for menu_id, scores in cf_scores.items():
+                # 장바구니에 있는 음료는 제외
+                if menu_id in cart_items:
+                    logger.debug(f"  Skipping menu {menu_id} (in cart)")
+                    continue
+
+                menu_name = self.menu_id_to_name.get(menu_id, f"Menu_{menu_id}")
+
+                # 트렌드 가중치
+                trend_score = 1.0
+                if trend_service:
+                    trend_score = trend_service.get_weight(
+                        menu_name, gender, age_group, hour_weight
+                    )
+
+                # Final Score = CF_Score + (Trend × 0.15)
+                final_score = scores['cf_score'] + (trend_score * 0.15)
+
+                reasoning = f"Profile({age_group}/{period}): {scores['cf_score']:.3f}, Trend: {trend_score:.2f}"
+
+                recommendations.append({
+                    'rank': len(recommendations) + 1,
+                    'menu_id': menu_id,
+                    'menu_name': menu_name,
+                    'cf_breakdown': {
+                        'profile_popularity': round(scores['profile_popularity'], 4),
+                        'global_popularity': round(scores['global_popularity'], 4),
+                        'cf_score': round(scores['cf_score'], 4)
+                    },
+                    'trend_score': round(trend_score, 2),
+                    'final_score': round(final_score, 4),
+                    'reasoning': reasoning
+                })
+
+            # 5. Final Score로 정렬 및 상위 N개 선택
+            recommendations.sort(key=lambda x: x['final_score'], reverse=True)
+            recommendations = recommendations[:top_n]
+
+            # 순위 재설정
+            for i, rec in enumerate(recommendations, 1):
+                rec['rank'] = i
+
+            logger.debug(f"  📊 최종 추천 (top {len(recommendations)}):")
+            for rec in recommendations:
+                logger.debug(
+                    f"    [{rec['rank']}] {rec['menu_name']}: {rec['final_score']:.4f}"
+                )
+
+            # 6. 장바구니 음료 정보 추가
+            cart_item_list = []
+            for cart_id in cart_items:
+                cart_item_list.append({
+                    'menu_id': cart_id,
+                    'menu_name': self.menu_id_to_name.get(cart_id, f"Menu_{cart_id}")
+                })
+
+            logger.info(f"✅ CF 추천 완료: {len(recommendations)}개 추천")
+
+            return {
+                'mode': 'CF',
+                'user_context': {
+                    'gender': gender,
+                    'age_group': age_group,
+                    'period': period,
+                    'current_hour': current_hour
+                },
+                'cart_items': cart_item_list,
+                'recommendations': recommendations,
+                'cache_hit': profile_data is not None
+            }
+
+        except Exception as e:
+            logger.error(f"CF 추천 실패: {e}", exc_info=True)
+            return {'mode': 'CF', 'error': str(e)}
+
 
 # 싱글톤 인스턴스
 _engine: Optional[RecommendationEngine] = None
