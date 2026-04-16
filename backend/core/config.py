@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # - False(기본): 조각 미스면 response_text TTS 캐시(또는 설정에 따라 라이브)까지 시도.
     VOICE_AUDIO_SEGMENTS_ONLY: bool = False
 
+    # Naver DataLab API - 실시간 트렌드 조회
+    NAVER_CLIENT_ID: str = ""
+    NAVER_CLIENT_SECRET: str = ""
+    TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

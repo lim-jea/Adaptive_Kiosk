@@ -7,6 +7,7 @@ import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import VoiceOverlay from '../components/VoiceOverlay'
+import RecommendationPanel from '../components/RecommendationPanel'
 
 export default function KioskPage() {
   const navigate = useNavigate()
@@ -260,21 +261,47 @@ export default function KioskPage() {
           <div className="flex items-center justify-center h-40">
             <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : filteredMenus.length === 0 ? (
-          <p className="text-center text-gray-400 mt-12">해당 카테고리 메뉴가 없습니다</p>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {filteredMenus.map((menu) => (
-              <MenuCard
-                key={menu.id}
-                menu={menu}
-                cartCount={state.cart
-                  .filter((i) => i.menuName === menu.name)
-                  .reduce((s, i) => s + i.quantity, 0)}
-                onClick={() => handleMenuClick(menu)}
-              />
-            ))}
-          </div>
+          <>
+            {/* 추천 음료 패널 — 항상 표시 */}
+            {state.gender && state.ageGroup && (
+              <div className="mb-6">
+                <RecommendationPanel
+                  gender={state.gender}
+                  ageGroup={state.ageGroup}
+                  onSelectMenu={(menuName) => {
+                    // 추천 메뉴 클릭 시 카테고리를 전체로 변경하고 메뉴 선택
+                    if (activeCategory !== 'all') {
+                      setActiveCategory('all')
+                    }
+                    // 메뉴 찾아서 선택
+                    const menu = menus.find((m) => m.name === menuName)
+                    if (menu) {
+                      handleMenuClick(menu)
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* 메뉴 목록 */}
+            {filteredMenus.length === 0 ? (
+              <p className="text-center text-gray-400 mt-12">해당 카테고리 메뉴가 없습니다</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {filteredMenus.map((menu) => (
+                  <MenuCard
+                    key={menu.id}
+                    menu={menu}
+                    cartCount={state.cart
+                      .filter((i) => i.menuName === menu.name)
+                      .reduce((s, i) => s + i.quantity, 0)}
+                    onClick={() => handleMenuClick(menu)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

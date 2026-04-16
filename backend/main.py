@@ -18,14 +18,21 @@ from core.config import settings
 from core.security import http_basic
 from api.v1.router import v1_router
 from scripts.seed_menu import seed_menu_data
-from scripts.seed_sample import seed_sample_data  # 테스트용 예시 데이터 (프로덕션 전 삭제)
 from services.face_service import face_service
 from services.chat_service import prewarm_tts_cache
+from services.trend_service import initialize_trend_service
+from services.recommendation_service import initialize_recommendation_engine, get_recommendation_engine
 
 # 모델 임포트 (Base.metadata에 테이블 등록)
 import models  # noqa: F401
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+# Set specific loggers to INFO to see API call logs
+logging.getLogger("services.trend_service").setLevel(logging.INFO)
+logging.getLogger("services.recommendation_service").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -52,10 +59,40 @@ async def lifespan(app: FastAPI):
             if factory:
                 async with factory() as db:
                     await seed_menu_data(db)
-                async with factory() as db:
-                    await seed_sample_data(db)  # 테스트용 예시 데이터 (프로덕션 전 삭제)
+
+                # 📊 추천 통계 배치 프로세스 (서버 시작 시 한 번만 실행)
+                logger.info("🔄 추천 통계 배치 시작...")
+                engine = get_recommendation_engine()
+                stats, metadata = await engine.precompute_all_stats()
+
+                if stats and metadata:
+                    logger.info("✓ 배치 완료, 캐시 로드 중...")
+
+                    # 메뉴 정보 캐시 (DB에서 가져오기)
+                    async with factory() as db:
+                        await initialize_recommendation_engine(db)
+
+                    # 사전 계산된 통계 로드
+                    if engine.load_cached_stats(stats, metadata):
+                        logger.info("✅ 추천 시스템 준비 완료 (캐시 활성화)")
+                    else:
+                        logger.warning("캐시 로드 실패, Fallback 모드로 실행")
+                else:
+                    logger.warning("배치 실패, Fallback 모드로 실행")
+                    # Fallback: 기존 CSV 로드 방식으로 진행
+                    async with factory() as db:
+                        await initialize_recommendation_engine(db)
     except Exception as e:
         logger.warning("Database initialization skipped: %s", e)
+    
+    # 트렌드 서비스 초기화 (추천 엔진과 독립적)
+    try:
+        if initialize_trend_service():
+            logger.info("✓ Trend service initialized")
+        else:
+            logger.warning("Trend service not available")
+    except Exception as e:
+        logger.warning("Trend service initialization failed: %s", e)
 
     # TTS 프리워밍 — 시나리오 + 템플릿×DB 메뉴/옵션 조합을 미리 합성해 디스크 캐시에 적재
     # 백그라운드로 띄워서 서버 부팅을 막지 않음
