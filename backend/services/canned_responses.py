@@ -15,7 +15,7 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from schemas.chat import AIChatResponse
+from schemas import AIChatResponse
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ async def expand_template_texts(db) -> list[str]:
     """
     from sqlalchemy import select
     from crud.menu import get_menus
-    from models.menu import OptionItem
+    from model import MenuOption
 
     out: list[str] = []
     menu_names: list[str] = []
@@ -146,8 +146,8 @@ async def expand_template_texts(db) -> list[str]:
         elif expand == "options":
             if not option_names:
                 try:
-                    items = (await db.execute(select(OptionItem))).scalars().all()
-                    option_names = sorted({i.name for i in items if i.name})
+                    items = (await db.execute(select(MenuOption))).scalars().all()
+                    option_names = sorted({i.option_name for i in items if i.option_name})
                 except Exception as e:
                     logger.warning("[canned] 옵션 로드 실패: %s", e)
             for name in option_names:
@@ -204,7 +204,7 @@ async def expand_fragment_texts(db) -> list[str]:
     """
     from sqlalchemy import select
     from crud.menu import get_menus
-    from models.menu import OptionItem
+    from model import MenuOption
 
     out: list[str] = list(_fragments_cfg.get("static", []))
 
@@ -217,8 +217,8 @@ async def expand_fragment_texts(db) -> list[str]:
 
     if _fragments_cfg.get("include_options"):
         try:
-            items = (await db.execute(select(OptionItem))).scalars().all()
-            out.extend(sorted({i.name for i in items if i.name}))
+            items = (await db.execute(select(MenuOption))).scalars().all()
+            out.extend(sorted({i.option_name for i in items if i.option_name}))
         except Exception as e:
             logger.warning("[canned] fragment 옵션 로드 실패: %s", e)
 

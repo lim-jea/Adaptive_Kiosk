@@ -11,8 +11,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.chat_message import ChatMessage
-from models.session import KioskSession
+from model import ChatMessage, KioskSession
 
 
 async def insert_message(

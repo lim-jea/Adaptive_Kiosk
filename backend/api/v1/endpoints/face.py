@@ -7,9 +7,7 @@ from crud.session import get_session_by_uuid, update_session
 from crud.vision import create_vision_event
 from services.face_service import face_service
 from services.vision_service import SIMPLE_MODE_AGE_GROUPS
-from schemas.face import FaceAnalyzeRequest, FaceAnalyzeResponse
-from schemas.vision import VisionEventCreate
-from schemas.common import make_error
+from schemas import FaceAnalyzeRequest, FaceAnalyzeResponse, VisionEventCreate, make_error
 
 router = APIRouter(prefix="/face", tags=["Face"])
 

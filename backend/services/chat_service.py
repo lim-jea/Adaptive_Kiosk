@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from crud import chat as chat_crud
-from models.session import KioskSession
-from schemas.chat import AIChatResponse, CartAddAction, CartItemSnapshot, OptionPreviewAction, SpeakAction
+from model import KioskSession
+from schemas import AIChatResponse, CartAddAction, CartItemSnapshot, OptionPreviewAction, SpeakAction
 from services.chat_prompts import (
     build_stage_context,
     build_system_prompt,

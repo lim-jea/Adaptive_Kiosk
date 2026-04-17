@@ -1,4 +1,4 @@
-from schemas.vision import VisionEventCreate
+from schemas import VisionEventCreate
 
 # face_service.py의 _age_to_group()이 반환하는 값과 일치시켜야 함
 # 매핑: <=12: 어린이, <=35: 청년, <=55: 중장년, >55: 노년

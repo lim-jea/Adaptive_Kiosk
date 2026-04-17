@@ -27,7 +27,7 @@ from services.recommendation_service import (
 )
 from services.trend_service import initialize_trend_service
 
-import models  # noqa: F401
+import model  # noqa: F401
 
 
 if sys.platform == "win32":
@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
 
     try:
         from services.trend_service import get_trend_service
-        from models.menu import Menu
+        from model import Menu
         from sqlalchemy import select
 
         if settings.NAVER_TREND_ENABLED and initialize_trend_service():

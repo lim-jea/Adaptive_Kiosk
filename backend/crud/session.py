@@ -3,7 +3,7 @@ from typing import Optional, List, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.session import KioskSession
+from model import KioskSession
 from core.enums import SessionStatus
 
 

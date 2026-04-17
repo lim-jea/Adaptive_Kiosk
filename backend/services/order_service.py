@@ -3,17 +3,17 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.menu import Menu
+from model import Menu
 from crud.menu import get_menu_by_name, get_option_item_by_id
 from crud.session import get_session_by_uuid, get_session_by_id
 from crud import order as order_crud
-from schemas.order import (
+from schemas import (
     OrderCreateRequest,
     OrderResponse,
     OrderItemResponse,
     OrderItemOptionResponse,
 )
-from schemas.common import make_error
+from schemas import make_error
 
 
 async def calculate_unit_price(db: AsyncSession, menu_name: str, option_item_ids: list[int]) -> tuple[int, "Menu"]:
@@ -38,6 +38,25 @@ async def calculate_unit_price(db: AsyncSession, menu_name: str, option_item_ids
                 detail=make_error(
                     "OPTION_NOT_FOUND",
                     f"Option item ID {oi_id} not found",
+                    option_item_id=oi_id,
+                ),
+            )
+        if oi.menu_id != menu.id:
+            raise HTTPException(
+                status_code=400,
+                detail=make_error(
+                    "OPTION_MENU_MISMATCH",
+                    f"Option item ID {oi_id} does not belong to menu '{menu.name}'",
+                    option_item_id=oi_id,
+                    menu_name=menu.name,
+                ),
+            )
+        if not oi.is_available:
+            raise HTTPException(
+                status_code=400,
+                detail=make_error(
+                    "OPTION_NOT_AVAILABLE",
+                    f"Option item ID {oi_id} is not available",
                     option_item_id=oi_id,
                 ),
             )
@@ -83,11 +102,11 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
                     db,
                     order_item_id=order_item.id,
                     option_item_id=oi.id,
-                    option_name=oi.name,
+                    option_name=oi.option_name,
                     extra_price=oi.extra_price,
                 )
                 option_responses.append(
-                    OrderItemOptionResponse(option_name=oi.name, extra_price=oi.extra_price)
+                    OrderItemOptionResponse(option_name=oi.option_name, extra_price=oi.extra_price)
                 )
 
         total_price += server_unit_price * item.quantity

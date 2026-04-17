@@ -68,7 +68,7 @@ async def _amain(args) -> int:
             from core.database import get_session_factory
             from crud.menu import get_menus
             from sqlalchemy import select
-            from models.menu import OptionItem
+            from model import MenuOption
 
             factory = get_session_factory()
             if factory is not None:
@@ -79,9 +79,9 @@ async def _amain(args) -> int:
                         rows, _ = await get_menus(db, limit=max(0, int(args.menus)))
                         menu_extra = [r.get("name") for r in rows if r.get("name")]
                     if args.options:
-                        q = select(OptionItem).limit(max(0, int(args.options)))
+                        q = select(MenuOption).limit(max(0, int(args.options)))
                         items = (await db.execute(q)).scalars().all()
-                        option_extra = [i.name for i in items if getattr(i, "name", None)]
+                        option_extra = [i.option_name for i in items if getattr(i, "option_name", None)]
 
                 for name in menu_extra + option_extra:
                     if name and name not in seen:

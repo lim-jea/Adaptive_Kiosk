@@ -12,7 +12,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.menu import Menu
+from model import Menu
 from services.trend_service import get_trend_service
 
 logger = logging.getLogger(__name__)

@@ -1,64 +1,45 @@
 """
-카테고리 + 메뉴 + 옵션 초기 데이터를 DB에 삽입합니다.
-서버 시작 시 main.py lifespan에서 호출됩니다.
-이미 데이터가 있으면 건너뜁니다.
+메뉴 + 메뉴 옵션 초기 데이터를 DB에 삽입한다.
+
+서버 시작 시 호출되며 아래를 수행한다.
+1. 새 구조에 맞는 누락 테이블을 create_all 이후 채운다.
+2. 레거시 option_groups/option_items/menu_option_groups 데이터가 있으면 menu_options로 이관한다.
+3. 완전한 빈 DB라면 기본 메뉴/옵션 시드를 넣는다.
 """
 import logging
-from sqlalchemy import select
+
+from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.menu import Category, Menu, OptionGroup, OptionItem, MenuOptionGroup
+from model import Menu, MenuOption
 
 logger = logging.getLogger(__name__)
 
-# ─── 카테고리 ───
-CATEGORIES = [
-    {"name": "커피", "display_order": 1},
-    {"name": "달콤한커피", "display_order": 2},
-    {"name": "블렌디드", "display_order": 3},
-    {"name": "티", "display_order": 4},
-    {"name": "달콤한티", "display_order": 5},
-    {"name": "에이드", "display_order": 6},
-    {"name": "스무디", "display_order": 7},
-    {"name": "주스", "display_order": 8},
-]
-
-# ─── 메뉴 ───
-# 컬럼: icon_emoji, calories, serving_temperature, is_caffeinated, sweetness_level, bitterness_level
 MENUS = [
-    # 커피
-    {"name": "에스프레소", "category": "커피", "price": 4000, "icon_emoji": "☕", "calories": 5, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 5},
-    {"name": "따뜻한 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
-    {"name": "아이스 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
-    {"name": "따뜻한 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 120, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 2},
-    {"name": "아이스 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 2},
-    {"name": "카푸치노", "category": "커피", "price": 5200, "icon_emoji": "☕", "calories": 100, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 3},
-    {"name": "콜드브루", "category": "커피", "price": 5200, "icon_emoji": "🖤", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
-    {"name": "콜드브루 라떼", "category": "커피", "price": 5800, "icon_emoji": "🖤", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 1, "bitterness_level": 3},
-    {"name": "드립 커피", "category": "커피", "price": 5000, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True, "sweetness_level": 0, "bitterness_level": 4},
-    # 달콤한 커피
-    {"name": "바닐라 라떼", "category": "달콤한커피", "price": 5900, "icon_emoji": "🍦", "calories": 200, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 4, "bitterness_level": 2},
-    {"name": "카라멜 마끼아또", "category": "달콤한커피", "price": 6200, "icon_emoji": "🍮", "calories": 250, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 5, "bitterness_level": 2},
-    # 블렌디드
-    {"name": "프라푸치노", "category": "블렌디드", "price": 6500, "icon_emoji": "🍫", "calories": 350, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 5, "bitterness_level": 1},
-    {"name": "말차 프라페", "category": "블렌디드", "price": 6300, "icon_emoji": "🍵", "calories": 300, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 4, "bitterness_level": 2},
-    # 티
-    {"name": "녹차 라떼", "category": "티", "price": 5800, "icon_emoji": "🍵", "calories": 160, "serving_temperature": "both", "is_caffeinated": True, "sweetness_level": 2, "bitterness_level": 2},
-    {"name": "캐모마일 티", "category": "티", "price": 4900, "icon_emoji": "🌼", "calories": 5, "serving_temperature": "hot", "is_caffeinated": False, "sweetness_level": 0, "bitterness_level": 1},
-    # 달콤한 티
-    {"name": "복숭아 아이스티", "category": "달콤한티", "price": 5200, "icon_emoji": "🍑", "calories": 80, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
-    {"name": "자몽 허니 블랙 티", "category": "달콤한티", "price": 5700, "icon_emoji": "🍊", "calories": 90, "serving_temperature": "cold", "is_caffeinated": True, "sweetness_level": 3, "bitterness_level": 1},
-    # 에이드/주스
-    {"name": "레몬에이드", "category": "에이드", "price": 6000, "icon_emoji": "🍋", "calories": 120, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
-    {"name": "자몽에이드", "category": "에이드", "price": 6200, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
-    # 스무디
-    {"name": "딸기 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🍓", "calories": 260, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 5, "bitterness_level": 0},
-    {"name": "망고 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥭", "calories": 250, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 5, "bitterness_level": 0},
-    # 주스
-    {"name": "오렌지 주스", "category": "주스", "price": 5800, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False, "sweetness_level": 4, "bitterness_level": 0},
+    {"name": "에스프레소", "category": "커피", "price": 4000, "icon_emoji": "☕", "calories": 5, "serving_temperature": "hot", "is_caffeinated": True},
+    {"name": "따뜻한 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True},
+    {"name": "아이스 아메리카노", "category": "커피", "price": 4500, "icon_emoji": "☕", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "따뜻한 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 120, "serving_temperature": "hot", "is_caffeinated": True},
+    {"name": "아이스 카페라떼", "category": "커피", "price": 5200, "icon_emoji": "🥛", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "카푸치노", "category": "커피", "price": 5200, "icon_emoji": "☕", "calories": 100, "serving_temperature": "hot", "is_caffeinated": True},
+    {"name": "콜드브루", "category": "커피", "price": 5200, "icon_emoji": "🖤", "calories": 10, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "콜드브루 라떼", "category": "커피", "price": 5800, "icon_emoji": "🖤", "calories": 110, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "드립 커피", "category": "커피", "price": 5000, "icon_emoji": "☕", "calories": 10, "serving_temperature": "hot", "is_caffeinated": True},
+    {"name": "바닐라 라떼", "category": "달콤한커피", "price": 5900, "icon_emoji": "🍦", "calories": 200, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "카라멜 마끼아또", "category": "달콤한커피", "price": 6200, "icon_emoji": "🍮", "calories": 250, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "프라푸치노", "category": "블렌디드", "price": 6500, "icon_emoji": "🍫", "calories": 350, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "말차 프라페", "category": "블렌디드", "price": 6300, "icon_emoji": "🍵", "calories": 300, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "녹차 라떼", "category": "티", "price": 5800, "icon_emoji": "🍵", "calories": 160, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "캐모마일 티", "category": "티", "price": 4900, "icon_emoji": "🌼", "calories": 5, "serving_temperature": "hot", "is_caffeinated": False},
+    {"name": "복숭아 아이스티", "category": "달콤한티", "price": 5200, "icon_emoji": "🍑", "calories": 80, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "자몽 허니 블랙 티", "category": "달콤한티", "price": 5700, "icon_emoji": "🍊", "calories": 90, "serving_temperature": "cold", "is_caffeinated": True},
+    {"name": "레몬에이드", "category": "에이드", "price": 6000, "icon_emoji": "🍋", "calories": 120, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "자몽에이드", "category": "에이드", "price": 6200, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "딸기 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🍓", "calories": 260, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "망고 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥭", "calories": 250, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "오렌지 주스", "category": "주스", "price": 5800, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False},
 ]
 
-# ─── 옵션 그룹 + 아이템 ───
 OPTION_GROUPS = [
     {
         "name": "사이즈",
@@ -123,7 +104,6 @@ OPTION_GROUPS = [
     },
 ]
 
-# 어떤 카테고리의 메뉴에 어떤 옵션 그룹을 연결할지 (카테고리 이름 → 옵션 그룹 이름 목록)
 CATEGORY_OPTION_MAP = {
     "커피": ["사이즈", "샷 추가", "시럽"],
     "달콤한커피": ["사이즈", "온도", "샷 추가", "시럽"],
@@ -135,92 +115,189 @@ CATEGORY_OPTION_MAP = {
     "주스": ["사이즈", "당도"],
 }
 
+_OPTION_GROUPS_BY_NAME = {group["name"]: group for group in OPTION_GROUPS}
 
-async def seed_menu_data(db: AsyncSession):
-    """DB에 초기 메뉴 데이터를 삽입합니다. 이미 있으면 건너뜁니다."""
-    existing = await db.execute(select(Category.id).limit(1))
-    if existing.scalar_one_or_none() is not None:
-        logger.info("Seed data already exists. Skipping.")
+
+async def _get_table_names(db: AsyncSession) -> list[str]:
+    conn = await db.connection()
+    return await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names())
+
+
+async def _get_foreign_keys(db: AsyncSession, table_name: str) -> list[dict]:
+    conn = await db.connection()
+    return await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_foreign_keys(table_name))
+
+
+async def _drop_foreign_key(db: AsyncSession, table_name: str, fk_name: str) -> None:
+    conn = await db.connection()
+    dialect = conn.dialect.name
+    if dialect.startswith("mysql"):
+        sql = f"ALTER TABLE {table_name} DROP FOREIGN KEY {fk_name}"
+    elif dialect == "postgresql":
+        sql = f'ALTER TABLE "{table_name}" DROP CONSTRAINT "{fk_name}"'
+    else:
+        logger.info("Skipping FK drop for unsupported dialect: %s", dialect)
         return
+    await db.execute(text(sql))
 
-    # 1. 카테고리 생성
-    cat_map = {}
-    for cat in CATEGORIES:
-        c = Category(name=cat["name"], display_order=cat["display_order"])
-        db.add(c)
-    await db.flush()
 
-    # 카테고리 ID 맵 구축
-    result = await db.execute(select(Category))
-    for c in result.scalars().all():
-        cat_map[c.name] = c.id
+async def _drop_legacy_foreign_keys(db: AsyncSession, tables: set[str]) -> None:
+    if "menus" in tables:
+        for fk in await _get_foreign_keys(db, "menus"):
+            if fk.get("referred_table") == "categories" and fk.get("constrained_columns") == ["category"]:
+                name = fk.get("name")
+                if name:
+                    logger.info("Dropping legacy foreign key menus.category -> categories.name (%s)", name)
+                    await _drop_foreign_key(db, "menus", name)
 
-    # 2. 메뉴 생성
-    for m in MENUS:
-        cat_name = m["category"]
-        cat_id = cat_map.get(cat_name)
-        if not cat_id:
-            continue
-        menu = Menu(
-            name=m["name"],
-            category=cat_name,
-            price=m["price"],
-            icon_emoji=m.get("icon_emoji"),
-            calories=m.get("calories"),
-            serving_temperature=m.get("serving_temperature"),
-            is_caffeinated=m.get("is_caffeinated", False),
-            is_seasonal=m.get("is_seasonal", False),
-            sweetness_level=m.get("sweetness_level"),
-            bitterness_level=m.get("bitterness_level"),
-        )
-        db.add(menu)
-    await db.flush()
-
-    # 3. 옵션 그룹 + 아이템 생성
-    og_map = {}
-    for og_data in OPTION_GROUPS:
-        og = OptionGroup(
-            name=og_data["name"],
-            is_required=og_data["is_required"],
-            min_select=og_data["min_select"],
-            max_select=og_data["max_select"],
-        )
-        db.add(og)
-        await db.flush()
-        og_map[og.name] = og.id
-
-        for item_data in og_data["items"]:
-            oi = OptionItem(
-                group_id=og.id,
-                name=item_data["name"],
-                extra_price=item_data["extra_price"],
-                is_default=item_data["is_default"],
-            )
-            db.add(oi)
-
-    await db.flush()
-
-    # 4. 메뉴 - 옵션 그룹 연결
-    menu_result = await db.execute(select(Menu))
-    all_menus = menu_result.scalars().all()
-
-    for menu in all_menus:
-        # 메뉴의 카테고리 이름 조회
-        cat_result = await db.execute(select(Category).where(Category.name == menu.category))
-        cat = cat_result.scalar_one_or_none()
-        if not cat:
-            continue
-
-        option_names = CATEGORY_OPTION_MAP.get(cat.name, [])
-        for order, og_name in enumerate(option_names):
-            og_id = og_map.get(og_name)
-            if og_id:
-                mog = MenuOptionGroup(
-                    menu_id=menu.id,
-                    option_group_id=og_id,
-                    display_order=order,
-                )
-                db.add(mog)
+    if "order_item_options" in tables:
+        for fk in await _get_foreign_keys(db, "order_item_options"):
+            if fk.get("constrained_columns") == ["option_item_id"]:
+                name = fk.get("name")
+                if name:
+                    logger.info("Dropping legacy foreign key order_item_options.option_item_id (%s)", name)
+                    await _drop_foreign_key(db, "order_item_options", name)
 
     await db.commit()
-    logger.info("Seed data inserted successfully.")
+
+
+async def _seed_menus_if_needed(db: AsyncSession) -> None:
+    existing = await db.execute(select(Menu.id).limit(1))
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    for item in MENUS:
+        db.add(Menu(**item))
+    await db.commit()
+    logger.info("Inserted default menus: %d", len(MENUS))
+
+
+async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
+    existing = await db.execute(select(MenuOption.id).limit(1))
+    if existing.scalar_one_or_none() is not None:
+        return 0
+
+    menu_rows = (await db.execute(select(Menu))).scalars().all()
+    if not menu_rows:
+        return 0
+
+    inserted = 0
+    for menu in menu_rows:
+        group_names = CATEGORY_OPTION_MAP.get(menu.category, [])
+        for group_order, group_name in enumerate(group_names):
+            group = _OPTION_GROUPS_BY_NAME.get(group_name)
+            if not group:
+                continue
+            for option_order, item in enumerate(group["items"]):
+                db.add(
+                    MenuOption(
+                        menu_id=menu.id,
+                        group_name=group["name"],
+                        group_order=group_order,
+                        option_name=item["name"],
+                        option_order=option_order,
+                        extra_price=item.get("extra_price", 0),
+                        is_required=group["is_required"],
+                        min_select=group["min_select"],
+                        max_select=group["max_select"],
+                        is_default=item.get("is_default", False),
+                        is_available=item.get("is_available", True),
+                    )
+                )
+                inserted += 1
+
+    await db.commit()
+    return inserted
+
+
+async def _migrate_legacy_option_tables(db: AsyncSession, tables: set[str]) -> int:
+    required = {"option_groups", "option_items", "menu_option_groups", "menus", "menu_options"}
+    if not required.issubset(tables):
+        return 0
+
+    existing = await db.execute(select(MenuOption.id).limit(1))
+    if existing.scalar_one_or_none() is not None:
+        return 0
+
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT
+                    mog.menu_id AS menu_id,
+                    og.name AS group_name,
+                    mog.display_order AS group_order,
+                    oi.name AS option_name,
+                    oi.extra_price AS extra_price,
+                    og.is_required AS is_required,
+                    og.min_select AS min_select,
+                    og.max_select AS max_select,
+                    oi.is_default AS is_default,
+                    oi.is_available AS is_available
+                FROM menu_option_groups AS mog
+                JOIN option_groups AS og ON og.id = mog.option_group_id
+                JOIN option_items AS oi ON oi.group_id = og.id
+                ORDER BY mog.menu_id, mog.display_order, oi.id
+                """
+            )
+        )
+    ).mappings().all()
+
+    if not rows:
+        return 0
+
+    option_order_by_group: dict[tuple[int, str, int], int] = {}
+    inserted = 0
+    for row in rows:
+        key = (int(row["menu_id"]), str(row["group_name"]), int(row["group_order"] or 0))
+        option_order = option_order_by_group.get(key, 0)
+        option_order_by_group[key] = option_order + 1
+
+        db.add(
+            MenuOption(
+                menu_id=int(row["menu_id"]),
+                group_name=str(row["group_name"]),
+                group_order=int(row["group_order"] or 0),
+                option_name=str(row["option_name"]),
+                option_order=option_order,
+                extra_price=int(row["extra_price"] or 0),
+                is_required=bool(row["is_required"]),
+                min_select=int(row["min_select"] or 0),
+                max_select=int(row["max_select"] or 1),
+                is_default=bool(row["is_default"]),
+                is_available=bool(row["is_available"]),
+            )
+        )
+        inserted += 1
+
+    await db.commit()
+    return inserted
+
+
+async def seed_menu_data(db: AsyncSession) -> None:
+    tables = set(await _get_table_names(db))
+
+    try:
+        await _drop_legacy_foreign_keys(db, tables)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Legacy foreign key cleanup skipped: %s", exc)
+        await db.rollback()
+
+    await _seed_menus_if_needed(db)
+
+    migrated = 0
+    try:
+        migrated = await _migrate_legacy_option_tables(db, tables)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Legacy option migration skipped: %s", exc)
+        await db.rollback()
+
+    if migrated > 0:
+        logger.info("Migrated legacy option tables into menu_options: %d rows", migrated)
+        return
+
+    inserted = await _seed_menu_options_from_category_map(db)
+    if inserted > 0:
+        logger.info("Inserted default menu options: %d rows", inserted)
+    else:
+        logger.info("Menu seed data already exists. Skipping.")

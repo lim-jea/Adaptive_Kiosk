@@ -9,7 +9,7 @@
 import re
 from typing import Optional
 
-from schemas.chat import (
+from schemas import (
     AIChatResponse,
     NavigateAction,
     SpeakAction,

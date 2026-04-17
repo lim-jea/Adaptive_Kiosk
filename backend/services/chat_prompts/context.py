@@ -7,11 +7,9 @@
 import time
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud.menu import get_menu_detail, get_menus
-from models.menu import Category
+from crud.menu import get_categories, get_menu_detail, get_menus
 
 _CACHE_TTL_SEC = 300
 _cat_cache: dict = {"text": None, "expires_at": 0.0}
@@ -22,10 +20,10 @@ _menu_prices_cache: dict = {"text": None, "expires_at": 0.0}
 # ─── 카테고리 목록 (캐시) ───────────────────────────────────────────────────
 
 async def _build_category_list_text(db: AsyncSession) -> str:
-    cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
+    cats, _ = await get_categories(db, limit=1000)
     if not cats:
         return "[카테고리 목록] (없음)"
-    return "[카테고리 목록]\n" + "\n".join(f"- {c.name}" for c in cats)
+    return "[카테고리 목록]\n" + "\n".join(f"- {c['name']}" for c in cats)
 
 
 async def _get_cached_category_text(db: AsyncSession) -> str:
@@ -43,7 +41,7 @@ async def _get_cached_category_text(db: AsyncSession) -> str:
 async def _build_menu_names_text(db: AsyncSession) -> str:
     """카테고리별 메뉴 이름만(컴팩트).
     대부분의 stage에서 '정확한 menu_name' 매칭만 필요하므로 가격/태그는 생략한다."""
-    cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
+    cats, _ = await get_categories(db, limit=1000)
     rows, _ = await get_menus(db, limit=500)
 
     by_cat: dict[str, list] = {}
@@ -52,13 +50,13 @@ async def _build_menu_names_text(db: AsyncSession) -> str:
 
     lines = ["[메뉴 이름 목록] (navigate시 menu_name은 아래 이름 그대로 사용)"]
     for c in cats:
-        items = by_cat.get(c.name, [])
+        items = by_cat.get(c["name"], [])
         if not items:
             continue
         names = [m["name"] for m in items if m.get("name")]
         if not names:
             continue
-        lines.append(f"[{c.name}] " + ", ".join(names))
+        lines.append(f"[{c['name']}] " + ", ".join(names))
     return "\n".join(lines)
 
 
@@ -74,7 +72,7 @@ async def _get_cached_menu_names_text(db: AsyncSession) -> str:
 
 async def _build_menu_prices_text(db: AsyncSession) -> str:
     """메뉴 이름+가격(간단 표기). 메뉴 탐색 단계에서만 추가 주입."""
-    cats = (await db.execute(select(Category).order_by(Category.display_order))).scalars().all()
+    cats, _ = await get_categories(db, limit=1000)
     rows, _ = await get_menus(db, limit=500)
 
     by_cat: dict[str, list] = {}
@@ -83,13 +81,13 @@ async def _build_menu_prices_text(db: AsyncSession) -> str:
 
     lines = ["[메뉴 목록(가격)]"]
     for c in cats:
-        items = by_cat.get(c.name, [])
+        items = by_cat.get(c["name"], [])
         if not items:
             continue
         pairs = [f"{m['name']}({m['price']}원)" for m in items if m.get("name")]
         if not pairs:
             continue
-        lines.append(f"[{c.name}] " + ", ".join(pairs))
+        lines.append(f"[{c['name']}] " + ", ".join(pairs))
     return "\n".join(lines)
 
 
@@ -150,9 +148,13 @@ async def _build_option_groups_text(db: AsyncSession, menu_name: str) -> str:
         req = "필수" if g.get("is_required") else "선택"
         lines.append(f"- {g['name']} ({req}, {g['min_select']}~{g['max_select']}개 선택)")
         for it in g.get("items", []):
-            extra = f" (+{it.extra_price}원)" if it.extra_price else ""
-            default = " [기본]" if it.is_default else ""
-            lines.append(f"  · id={it.id} {it.name}{extra}{default}")
+            item_id = getattr(it, "id", None) if not isinstance(it, dict) else it.get("id")
+            item_name = getattr(it, "name", None) if not isinstance(it, dict) else it.get("name")
+            extra_price = getattr(it, "extra_price", None) if not isinstance(it, dict) else it.get("extra_price", 0)
+            is_default = getattr(it, "is_default", None) if not isinstance(it, dict) else it.get("is_default")
+            extra = f" (+{extra_price}원)" if extra_price else ""
+            default = " [기본]" if is_default else ""
+            lines.append(f"  · id={item_id} {item_name}{extra}{default}")
     return "\n".join(lines)
 
 

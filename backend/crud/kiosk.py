@@ -4,7 +4,7 @@ from typing import Optional, List, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.kiosk import Kiosk
+from model import Kiosk
 
 
 def _generate_api_key() -> str:

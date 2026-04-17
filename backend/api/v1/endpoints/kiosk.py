@@ -8,13 +8,13 @@ from crud.kiosk import (
     get_kiosk_by_api_key,
     list_kiosks,
 )
-from schemas.kiosk import (
+from schemas import (
     KioskCreateRequest,
     KioskCreateResponse,
     KioskListRequest,
     KioskResponse,
 )
-from schemas.common import PaginatedResponse, make_error
+from schemas import PaginatedResponse, make_error
 
 router = APIRouter(prefix="/kiosks", tags=["Kiosk"])
 

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security import verify_credentials
-from schemas.analytics import (
+from schemas import (
     AnalyticsRangeRequest,
     SessionAnalytics,
     RecommendationAnalytics,

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from models.order import Order, OrderItem, OrderItemOption
+from model import Order, OrderItem, OrderItemOption
 
 
 async def insert_order(

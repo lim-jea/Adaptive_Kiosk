@@ -3,10 +3,8 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.session import KioskSession
-from models.recommendation_event import RecommendationEvent
-from models.order import Order
-from schemas.analytics import SessionAnalytics, RecommendationAnalytics, OrderAnalytics
+from model import KioskSession, RecommendationEvent, Order
+from schemas import SessionAnalytics, RecommendationAnalytics, OrderAnalytics
 
 
 def _apply_session_filters(query, start_date, end_date, kiosk_id):

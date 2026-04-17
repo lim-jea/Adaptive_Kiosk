@@ -7,19 +7,17 @@ from crud.menu import (
     get_categories,
     get_menus,
     get_menu_detail,
-    create_category,
     create_menu,
 )
-from schemas.menu import (
+from schemas import (
     CategoryListRequest,
-    CategoryCreateRequest,
     CategoryResponse,
     MenuListRequest,
     MenuCreateRequest,
     MenuListResponse,
     MenuDetailResponse,
 )
-from schemas.common import PaginatedResponse, make_error
+from schemas import PaginatedResponse, make_error
 
 router = APIRouter(tags=["Menu"])
 
@@ -34,21 +32,6 @@ async def list_categories(
     """카테고리 목록."""
     items, total = await get_categories(db, skip=req.skip, limit=req.limit)
     return PaginatedResponse(items=items, total=total, skip=req.skip, limit=req.limit)
-
-
-@router.post(
-    "/categories",
-    response_model=CategoryResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_category_endpoint(
-    req: CategoryCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    _=Depends(verify_credentials),
-):
-    """카테고리 생성. 관리자 인증 필요."""
-    return await create_category(db, name=req.name, display_order=req.display_order)
-
 
 # ─── Menus ───
 

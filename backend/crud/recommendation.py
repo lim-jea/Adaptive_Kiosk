@@ -2,7 +2,7 @@ from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.recommendation_event import RecommendationEvent
+from model import RecommendationEvent
 
 
 async def create_recommendation_events(

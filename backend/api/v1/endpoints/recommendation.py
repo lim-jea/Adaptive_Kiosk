@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from schemas.recommendation import ModeAResponse, SuggestRequest, SuggestResponse
+from schemas import ModeAResponse, SuggestRequest, SuggestResponse
 from services.recommendation_service import get_recommendation_engine
 from utils.recommendation_utils import age_to_age_group, normalize_age_group, normalize_gender
 

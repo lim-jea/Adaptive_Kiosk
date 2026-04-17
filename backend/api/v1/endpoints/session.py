@@ -4,9 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import verify_credentials
 from crud.session import create_session, get_session_by_uuid, list_sessions, update_session
-from schemas.session import SessionListRequest, SessionUpdateRequest, SessionResponse
-from schemas.common import PaginatedResponse, make_error
-from models.kiosk import Kiosk
+from schemas import SessionListRequest, SessionUpdateRequest, SessionResponse, PaginatedResponse, make_error
+from model import Kiosk
 from api.v1.endpoints.kiosk import get_current_kiosk
 
 router = APIRouter(prefix="/sessions", tags=["Session"])

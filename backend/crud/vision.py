@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.vision_event import VisionEvent
-from schemas.vision import VisionEventCreate
+from model import VisionEvent
+from schemas import VisionEventCreate
 
 
 async def create_vision_event(db: AsyncSession, session_id: int, data: VisionEventCreate) -> VisionEvent:

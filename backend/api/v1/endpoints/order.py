@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from services.order_service import create_order, get_order_response
-from schemas.order import OrderCreateRequest, OrderResponse
-from schemas.common import make_error
+from schemas import OrderCreateRequest, OrderResponse, make_error
 
 router = APIRouter(prefix="/orders", tags=["Order"])
 

@@ -18,7 +18,7 @@ from core.config import settings
 from core.database import get_db
 from crud import chat as chat_crud
 from crud.session import get_session_by_uuid
-from schemas.chat import (
+from schemas import (
     AIChatResponse,
     ChatMessageItem,
     SpeakAction,
@@ -29,7 +29,7 @@ from schemas.chat import (
     VoiceStartRequest,
     VoiceStartResponse,
 )
-from schemas.common import PaginatedResponse, make_error
+from schemas import PaginatedResponse, make_error
 from services.canned_responses import compose_audio_from_segments
 from services.chat_prompts import GREETING_BY_PERSONA, decide_persona
 from services.chat_service import process_voice_message, synthesize_speech
