@@ -22,6 +22,37 @@ export default function KioskPage() {
   const [cartOpen, setCartOpen] = useState(false)
   const [voiceFlash, setVoiceFlash] = useState(null)      // 'category:커피' 등 잠깐 하이라이트
   const flashTimerRef = useRef(null)
+  const cartLoadedRef = useRef(false)
+  const lastSyncedCartRef = useRef('')
+
+  const serializeCartForSync = useCallback((cart) => JSON.stringify(
+    cart.map((item) => ({
+      menu_name: item.menuName,
+      quantity: item.quantity,
+      from_recommendation: false,
+      selected_options: item.selectedOptions || [],
+    }))
+  ), [])
+
+  const mapServerCartToLocal = useCallback((items = []) => items.map((item) => {
+    const optionLabels = (item.options || []).map((option) => option.option_name)
+    const selectedOptions = (item.options || []).map((option) => ({
+      option_item_id: option.option_item_id,
+    }))
+    const optionExtra = (item.options || []).reduce((sum, option) => sum + option.extra_price, 0)
+
+    return {
+      cartItemId: item.line_id,
+      menuId: item.menu_id,
+      menuName: item.menu_name,
+      displayName: item.menu_name,
+      basePrice: item.unit_price - optionExtra,
+      unitPrice: item.unit_price,
+      quantity: item.quantity,
+      selectedOptions,
+      optionLabels,
+    }
+  }), [])
 
   const flash = useCallback((key) => {
     setVoiceFlash(key)
@@ -47,6 +78,57 @@ export default function KioskPage() {
     }
     loadAll()
   }, [])
+
+  useEffect(() => {
+    const loadServerCart = async () => {
+      if (!state.sessionUuid) {
+        cartLoadedRef.current = false
+        lastSyncedCartRef.current = ''
+        return
+      }
+
+      try {
+        const { data } = await api.get(`/api/v1/carts/${state.sessionUuid}`)
+        const localCart = mapServerCartToLocal(data.items || [])
+        lastSyncedCartRef.current = serializeCartForSync(localCart)
+        dispatch({
+          type: ACTIONS.REPLACE_CART,
+          payload: { cart: localCart },
+        })
+      } catch (err) {
+        console.error('서버 장바구니 로드 실패:', err)
+      } finally {
+        cartLoadedRef.current = true
+      }
+    }
+
+    loadServerCart()
+  }, [state.sessionUuid, dispatch, ACTIONS, mapServerCartToLocal, serializeCartForSync])
+
+  useEffect(() => {
+    const syncCartToServer = async () => {
+      if (!state.sessionUuid || !cartLoadedRef.current) return
+
+      const signature = serializeCartForSync(state.cart)
+      if (signature === lastSyncedCartRef.current) return
+
+      try {
+        await api.put(`/api/v1/carts/${state.sessionUuid}`, {
+          items: state.cart.map((item) => ({
+            menu_name: item.menuName,
+            quantity: item.quantity,
+            from_recommendation: false,
+            selected_options: item.selectedOptions || [],
+          })),
+        })
+        lastSyncedCartRef.current = signature
+      } catch (err) {
+        console.error('서버 장바구니 동기화 실패:', err)
+      }
+    }
+
+    syncCartToServer()
+  }, [state.sessionUuid, state.cart, serializeCartForSync])
 
   const filteredMenus = useMemo(() => {
     if (activeCategory === 'all') return menus

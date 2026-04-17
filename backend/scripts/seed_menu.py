@@ -6,6 +6,7 @@
 2. 레거시 option_groups/option_items/menu_option_groups 데이터가 있으면 menu_options로 이관한다.
 3. 완전한 빈 DB라면 기본 메뉴/옵션 시드를 넣는다.
 """
+import json
 import logging
 
 from sqlalchemy import inspect, select, text
@@ -128,6 +129,11 @@ async def _get_foreign_keys(db: AsyncSession, table_name: str) -> list[dict]:
     return await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_foreign_keys(table_name))
 
 
+async def _get_columns(db: AsyncSession, table_name: str) -> list[dict]:
+    conn = await db.connection()
+    return await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_columns(table_name))
+
+
 async def _drop_foreign_key(db: AsyncSession, table_name: str, fk_name: str) -> None:
     conn = await db.connection()
     dialect = conn.dialect.name
@@ -139,6 +145,19 @@ async def _drop_foreign_key(db: AsyncSession, table_name: str, fk_name: str) -> 
         logger.info("Skipping FK drop for unsupported dialect: %s", dialect)
         return
     await db.execute(text(sql))
+
+
+async def _add_column_if_missing(
+    db: AsyncSession,
+    table_name: str,
+    existing_columns: set[str],
+    column_name: str,
+    column_sql: str,
+) -> bool:
+    if column_name in existing_columns:
+        return False
+    await db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"))
+    return True
 
 
 async def _drop_legacy_foreign_keys(db: AsyncSession, tables: set[str]) -> None:
@@ -158,6 +177,129 @@ async def _drop_legacy_foreign_keys(db: AsyncSession, tables: set[str]) -> None:
                     logger.info("Dropping legacy foreign key order_item_options.option_item_id (%s)", name)
                     await _drop_foreign_key(db, "order_item_options", name)
 
+    await db.commit()
+
+
+async def _migrate_order_item_snapshots(db: AsyncSession, tables: set[str]) -> None:
+    if "order_items" not in tables:
+        return
+
+    columns = {column["name"] for column in await _get_columns(db, "order_items")}
+    changed = False
+
+    conn = await db.connection()
+    dialect = conn.dialect.name
+    json_sql = "JSON"
+    if dialect == "postgresql":
+        json_sql = "JSONB"
+
+    changed |= await _add_column_if_missing(
+        db,
+        "order_items",
+        columns,
+        "menu_name_snapshot",
+        "VARCHAR(100) NULL",
+    )
+    changed |= await _add_column_if_missing(
+        db,
+        "order_items",
+        columns,
+        "line_total",
+        "INTEGER NULL",
+    )
+    changed |= await _add_column_if_missing(
+        db,
+        "order_items",
+        columns,
+        "selected_options_json",
+        f"{json_sql} NULL",
+    )
+    if changed:
+        await db.commit()
+
+    item_rows = (
+        await db.execute(
+            text(
+                """
+                SELECT oi.id, oi.menu_name_snapshot, oi.line_total, oi.unit_price, oi.quantity, m.name AS menu_name
+                FROM order_items AS oi
+                LEFT JOIN menus AS m ON m.id = oi.menu_id
+                """
+            )
+        )
+    ).mappings().all()
+
+    for row in item_rows:
+        updates: dict[str, object] = {}
+        if row["menu_name_snapshot"] is None and row["menu_name"] is not None:
+            updates["menu_name_snapshot"] = str(row["menu_name"])
+        if row["line_total"] is None:
+            updates["line_total"] = int(row["unit_price"] or 0) * int(row["quantity"] or 0)
+        if updates:
+            await db.execute(
+                text(
+                    """
+                    UPDATE order_items
+                    SET
+                        menu_name_snapshot = COALESCE(:menu_name_snapshot, menu_name_snapshot),
+                        line_total = COALESCE(:line_total, line_total)
+                    WHERE id = :order_item_id
+                    """
+                ),
+                {
+                    "order_item_id": int(row["id"]),
+                    "menu_name_snapshot": updates.get("menu_name_snapshot"),
+                    "line_total": updates.get("line_total"),
+                },
+            )
+
+    if "order_item_options" in tables:
+        rows = (
+            await db.execute(
+                text(
+                    """
+                    SELECT order_item_id, option_item_id, option_name, extra_price
+                    FROM order_item_options
+                    ORDER BY id
+                    """
+                )
+            )
+        ).mappings().all()
+
+        grouped: dict[int, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(int(row["order_item_id"]), []).append(
+                {
+                    "option_item_id": int(row["option_item_id"]),
+                    "option_name": str(row["option_name"]),
+                    "extra_price": int(row["extra_price"] or 0),
+                }
+            )
+
+        for order_item_id, options in grouped.items():
+            serialized = json.dumps(options, ensure_ascii=False)
+            await db.execute(
+                text(
+                    """
+                    UPDATE order_items
+                    SET selected_options_json = COALESCE(selected_options_json, :selected_options_json)
+                    WHERE id = :order_item_id
+                    """
+                ),
+                {
+                    "order_item_id": order_item_id,
+                    "selected_options_json": serialized,
+                },
+            )
+
+    await db.execute(
+        text(
+            """
+            UPDATE order_items
+            SET selected_options_json = COALESCE(selected_options_json, '[]')
+            """
+        )
+    )
     await db.commit()
 
 
@@ -281,6 +423,12 @@ async def seed_menu_data(db: AsyncSession) -> None:
         await _drop_legacy_foreign_keys(db, tables)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Legacy foreign key cleanup skipped: %s", exc)
+        await db.rollback()
+
+    try:
+        await _migrate_order_item_snapshots(db, tables)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Order item snapshot migration skipped: %s", exc)
         await db.rollback()
 
     await _seed_menus_if_needed(db)

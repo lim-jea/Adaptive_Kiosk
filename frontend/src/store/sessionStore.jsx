@@ -26,6 +26,7 @@ const initialState = {
 const ACTIONS = {
   SET_SESSION: 'SET_SESSION',
   SET_VISION: 'SET_VISION',
+  REPLACE_CART: 'REPLACE_CART',
   ADD_TO_CART: 'ADD_TO_CART',
   REMOVE_FROM_CART: 'REMOVE_FROM_CART',
   UPDATE_CART_QTY: 'UPDATE_CART_QTY',
@@ -48,6 +49,12 @@ function sessionReducer(state, action) {
         gender: action.payload.gender ?? state.gender,
         ageEst: action.payload.ageEst ?? state.ageEst,
         isSimpleMode: action.payload.isSimpleMode ?? state.isSimpleMode,
+      }
+
+    case ACTIONS.REPLACE_CART:
+      return {
+        ...state,
+        cart: action.payload.cart ?? [],
       }
 
     case ACTIONS.ADD_TO_CART: {

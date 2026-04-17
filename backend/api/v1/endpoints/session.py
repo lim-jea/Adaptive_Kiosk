@@ -7,6 +7,7 @@ from crud.session import create_session, get_session_by_uuid, list_sessions, upd
 from schemas import SessionListRequest, SessionUpdateRequest, SessionResponse, PaginatedResponse, make_error
 from model import Kiosk
 from api.v1.endpoints.kiosk import get_current_kiosk
+from services.cart_service import ensure_cart_for_session
 
 router = APIRouter(prefix="/sessions", tags=["Session"])
 
@@ -17,7 +18,9 @@ async def create_session_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """세션 생성. X-API-Key 헤더 필수."""
-    return await create_session(db, kiosk_id=kiosk.id)
+    session = await create_session(db, kiosk_id=kiosk.id)
+    await ensure_cart_for_session(db, session.id)
+    return session
 
 
 @router.get("", response_model=PaginatedResponse[SessionResponse])

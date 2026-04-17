@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from model import Order, OrderItem, OrderItemOption
+from model import Order, OrderItem
 
 
 async def insert_order(
@@ -27,43 +27,31 @@ async def insert_order_item(
     db: AsyncSession,
     order_id: int,
     menu_id: int,
+    menu_name_snapshot: str,
     quantity: int,
     unit_price: int,
+    line_total: int,
     from_recommendation: bool,
+    selected_options_json: list[dict],
 ) -> OrderItem:
     item = OrderItem(
         order_id=order_id,
         menu_id=menu_id,
+        menu_name_snapshot=menu_name_snapshot,
         quantity=quantity,
         unit_price=unit_price,
+        line_total=line_total,
         from_recommendation=from_recommendation,
+        selected_options_json=selected_options_json,
     )
     db.add(item)
     await db.flush()
     return item
 
-
-async def insert_order_item_option(
-    db: AsyncSession,
-    order_item_id: int,
-    option_item_id: int,
-    option_name: str,
-    extra_price: int,
-) -> OrderItemOption:
-    snapshot = OrderItemOption(
-        order_item_id=order_item_id,
-        option_item_id=option_item_id,
-        option_name=option_name,
-        extra_price=extra_price,
-    )
-    db.add(snapshot)
-    return snapshot
-
-
 async def get_order_by_uuid(db: AsyncSession, order_uuid: str) -> Optional[Order]:
     result = await db.execute(
         select(Order)
         .where(Order.order_uuid == order_uuid)
-        .options(selectinload(Order.items).selectinload(OrderItem.options))
+        .options(selectinload(Order.items))
     )
     return result.scalar_one_or_none()

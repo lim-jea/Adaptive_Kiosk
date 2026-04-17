@@ -6,6 +6,7 @@ Mode B: 주문 이력 기반 추천 (selected_beverages → 보완 음료)
 """
 
 import logging
+from pathlib import Path
 from typing import List, Dict, Optional
 
 import pandas as pd
@@ -16,6 +17,7 @@ from model import Menu
 from services.trend_service import get_trend_service
 
 logger = logging.getLogger(__name__)
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
 class RecommendationEngine:
@@ -54,9 +56,9 @@ class RecommendationEngine:
     def load_data(self) -> bool:
         """CSV 데이터 로드 및 시간대 가중치 계산"""
         try:
-            self.sessions_df = pd.read_csv('./data/kiosk_sessions.csv')
-            self.orders_df = pd.read_csv('./data/orders.csv')
-            self.order_items_df = pd.read_csv('./data/order_items.csv')
+            self.sessions_df = pd.read_csv(DATA_DIR / "kiosk_sessions.csv")
+            self.orders_df = pd.read_csv(DATA_DIR / "orders.csv")
+            self.order_items_df = pd.read_csv(DATA_DIR / "order_items.csv")
             
             self.is_loaded = True
             logger.info(

@@ -62,17 +62,9 @@ export default function PaymentPage() {
 
     let orderUuid = null
     try {
-      // 주문 생성 (백엔드: 가격 재검증 + 옵션 스냅샷 저장)
+      // 주문 생성: 서버에 저장된 cart를 기준으로 생성
       const res = await api.post('/api/v1/orders', {
         session_uuid: state.sessionUuid,
-        items: state.cart.map((item) => ({
-          menu_name: item.menuName,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          from_recommendation: false,
-          selected_options: item.selectedOptions || [],
-        })),
-        used_recommendation: false,
       })
       orderUuid = res.data.order_uuid
     } catch (err) {

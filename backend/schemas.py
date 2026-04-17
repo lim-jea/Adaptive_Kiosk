@@ -206,18 +206,67 @@ class SelectedOptionRequest(BaseModel):
     option_item_id: int = Field(..., gt=0, examples=[2])
 
 
+class CartItemRequest(BaseModel):
+    menu_name: str = Field(..., min_length=1, examples=["아이스 아메리카노"])
+    quantity: int = Field(default=1, ge=1, le=99, examples=[2])
+    from_recommendation: bool = Field(default=False)
+    selected_options: List[SelectedOptionRequest] = Field(
+        default_factory=list,
+        examples=[[{"option_item_id": 2}]],
+    )
+
+
+class CartReplaceRequest(BaseModel):
+    items: List[CartItemRequest] = Field(default_factory=list)
+
+
+class CartOptionResponse(BaseModel):
+    option_item_id: int
+    option_name: str
+    extra_price: int
+
+
+class CartItemResponse(BaseModel):
+    line_id: str
+    menu_id: int
+    menu_name: str
+    quantity: int
+    unit_price: int
+    line_total: int
+    from_recommendation: bool
+    options: List[CartOptionResponse] = []
+
+
+class CartResponse(BaseModel):
+    session_uuid: str
+    status: str
+    item_count: int
+    total_quantity: int
+    total_price: int
+    contains_recommendation_item: bool
+    items: List[CartItemResponse]
+    created_at: datetime
+    updated_at: datetime
+
+
 class OrderItemRequest(BaseModel):
     menu_name: str = Field(..., min_length=1, examples=["아이스 아메리카노"])
     quantity: int = Field(default=1, ge=1, le=99, examples=[2])
     unit_price: int = Field(..., ge=0, examples=[5000], description="프런트 계산값 (서버에서 재검증)")
     from_recommendation: bool = Field(default=False)
-    selected_options: List[SelectedOptionRequest] = Field(default=[], examples=[[{"option_item_id": 2}]])
+    selected_options: List[SelectedOptionRequest] = Field(
+        default_factory=list,
+        examples=[[{"option_item_id": 2}]],
+    )
 
 
 class OrderCreateRequest(BaseModel):
     session_uuid: str = Field(..., min_length=32, max_length=32)
-    items: List[OrderItemRequest] = Field(..., min_length=1, description="최소 1개 아이템 필요")
-    used_recommendation: bool = Field(default=False)
+    items: Optional[List[OrderItemRequest]] = Field(
+        default=None,
+        description="생략 시 서버에 저장된 cart를 기준으로 주문 생성",
+    )
+    used_recommendation: Optional[bool] = Field(default=None)
 
 
 class OrderListRequest(BaseModel):

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -32,7 +34,10 @@ class Settings(BaseSettings):
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
 
     model_config = {
-        "env_file": ".env",
+        "env_file": (
+            str(Path(__file__).resolve().parents[1] / ".env"),
+            ".env",
+        ),
         "env_file_encoding": "utf-8",
     }
 

@@ -58,6 +58,21 @@ class KioskSession(Base):
     voice_attempt_started_at = Column(DateTime, nullable=True)
 
 
+class Cart(Base):
+    __tablename__ = "carts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("kiosk_sessions.id"), unique=True, nullable=False)
+    status = Column(String(20), default="active", nullable=False)
+    item_count = Column(Integer, default=0, nullable=False)
+    total_quantity = Column(Integer, default=0, nullable=False)
+    total_price = Column(Integer, default=0, nullable=False)
+    contains_recommendation_item = Column(Boolean, default=False, nullable=False)
+    cart_data = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 # ============================================================================
 # Menu / Order
 # ============================================================================
@@ -128,24 +143,14 @@ class OrderItem(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
     menu_id = Column(Integer, ForeignKey("menus.id"), nullable=False)
+    menu_name_snapshot = Column(String(100), nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     unit_price = Column(Integer, nullable=False)
+    line_total = Column(Integer, nullable=True)
     from_recommendation = Column(Boolean, default=False, nullable=False)
+    selected_options_json = Column(JSON, nullable=True)
 
     order = relationship("Order", back_populates="items")
-    options = relationship("OrderItemOption", back_populates="order_item")
-
-
-class OrderItemOption(Base):
-    __tablename__ = "order_item_options"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    order_item_id = Column(Integer, ForeignKey("order_items.id"), nullable=False)
-    option_item_id = Column(Integer, nullable=False)
-    option_name = Column(String(50), nullable=False)
-    extra_price = Column(Integer, default=0, nullable=False)
-
-    order_item = relationship("OrderItem", back_populates="options")
 
 
 # ============================================================================
@@ -208,11 +213,11 @@ class ChatMessage(Base):
 __all__ = [
     "Kiosk",
     "KioskSession",
+    "Cart",
     "Menu",
     "MenuOption",
     "Order",
     "OrderItem",
-    "OrderItemOption",
     "VisionEvent",
     "RecommendationEvent",
     "ChatMessage",

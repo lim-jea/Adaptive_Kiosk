@@ -283,7 +283,7 @@ SQLAlchemy의 `Base.metadata.create_all`은 **이미 존재하는 테이블을 �
 ```sql
 SET FOREIGN_KEY_CHECKS=0;
 DROP TABLE IF EXISTS kiosk_sessions, kiosks, menu_options, menus,
-                     order_item_options, order_items,
+                     order_items,
                      orders, recommendation_events, vision_events, chat_messages;
 SET FOREIGN_KEY_CHECKS=1;
 ```
