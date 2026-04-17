@@ -11,6 +11,7 @@ from schemas import (
     CartItemRequest,
     CartItemResponse,
     CartOptionResponse,
+    CartItemSnapshot,
     CartReplaceRequest,
     CartResponse,
     make_error,
@@ -217,3 +218,21 @@ async def get_cart_items_for_checkout(db: AsyncSession, session_id: int) -> tupl
             detail=make_error("CART_EMPTY", "Cart is empty"),
         )
     return cart, items
+
+
+async def get_voice_cart_snapshot(db: AsyncSession, session_id: int) -> list[CartItemSnapshot]:
+    cart = await get_or_create_cart(db, session_id)
+    items = (cart.cart_data or _empty_cart_data()).get("items", [])
+    snapshots: list[CartItemSnapshot] = []
+    for item in items:
+        snapshots.append(
+            CartItemSnapshot(
+                line_id=item.get("line_id"),
+                menu_name=item["menu_name"],
+                quantity=item["quantity"],
+                unit_price=item["unit_price"],
+                option_item_ids=[option["option_item_id"] for option in item.get("options", [])],
+                option_names=[option["option_name"] for option in item.get("options", [])],
+            )
+        )
+    return snapshots

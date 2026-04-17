@@ -9,6 +9,21 @@ import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import VoiceOverlay from '../components/VoiceOverlay'
 import RecommendationPanel from '../components/RecommendationPanel'
 
+function normalizeOptionIds(optionIds = []) {
+  return [...optionIds].map(Number).filter(Boolean).sort((a, b) => a - b)
+}
+
+function getCartOptionIds(item) {
+  return normalizeOptionIds((item.selectedOptions || []).map((option) => option.option_item_id))
+}
+
+function sameOptionSelection(item, optionItemIds = []) {
+  const left = getCartOptionIds(item)
+  const right = normalizeOptionIds(optionItemIds)
+  if (left.length !== right.length) return false
+  return left.every((value, index) => value === right[index])
+}
+
 export default function KioskPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
@@ -272,14 +287,36 @@ export default function KioskPage() {
         break
       }
       case 'cart_remove': {
-        // 같은 메뉴가 다른 옵션으로 여러 개 있을 때: 가장 최근에 담은 것(마지막)부터 삭제
-        const candidates = cartRef.current.filter((i) => i.menuName === action.menu_name)
-        const item = candidates[candidates.length - 1]
+        let item = null
+        if (action.cart_line_id) {
+          item = cartRef.current.find((i) => i.cartItemId === action.cart_line_id) || null
+        }
+        if (!item && action.option_item_ids?.length) {
+          const candidates = cartRef.current.filter(
+            (i) => i.menuName === action.menu_name && sameOptionSelection(i, action.option_item_ids)
+          )
+          item = candidates[candidates.length - 1] || null
+        }
+        if (!item) {
+          const candidates = cartRef.current.filter((i) => i.menuName === action.menu_name)
+          item = candidates[candidates.length - 1] || null
+        }
         if (item) dispatch({ type: ACTIONS.REMOVE_FROM_CART, payload: { cartItemId: item.cartItemId } })
         break
       }
       case 'cart_update': {
-        const item = cartRef.current.find((i) => i.menuName === action.menu_name)
+        let item = null
+        if (action.cart_line_id) {
+          item = cartRef.current.find((i) => i.cartItemId === action.cart_line_id) || null
+        }
+        if (!item && action.option_item_ids?.length) {
+          item = cartRef.current.find(
+            (i) => i.menuName === action.menu_name && sameOptionSelection(i, action.option_item_ids)
+          ) || null
+        }
+        if (!item) {
+          item = cartRef.current.find((i) => i.menuName === action.menu_name) || null
+        }
         if (item) dispatch({
           type: ACTIONS.UPDATE_CART_QTY,
           payload: { cartItemId: item.cartItemId, quantity: action.quantity },
@@ -302,11 +339,11 @@ export default function KioskPage() {
 
   const voice = useVoiceOrder({
     sessionUuid: state.sessionUuid,
-    cartSnapshot: state.cart,
     selectedCategory: activeCategory === 'all' ? null : activeCategory,
     selectedMenuName: optionMenu?.name || null,
     onAction: handleVoiceAction,
     autoStart: state.isSimpleMode,
+    ttsRate: state.isSimpleMode ? 0.65 : 0.85,
   })
 
   return (

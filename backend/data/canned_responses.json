@@ -1,541 +1,690 @@
-{
-  "_doc": "프리워밍/즉시응답 시나리오 매뉴얼. response_text/fragments는 절대 변경하지 말 것 — 디스크 캐시 키입니다.",
-  "fragments": {
-    "_doc": "런타임에 audio_segments로 합쳐 쓸 음성 조각들. 각 조각은 개별 WAV로 미리 합성됨.",
-    "_static_doc": "두 음절 이하 단어는 Gemini TTS가 빈 응답을 주는 경우가 있어 합성 시 silence로 폴백된다. 자연 발화가 필요한 숫자는 두 음절 이상 묶음으로 별도 정의.",
-    "static": [
-      " 에 ",
-      ", ",
-      "안녕하세요.",
-      " 어떤 음료로 주문하시겠어요?",
-      "어떤 종류가 좋으세요? ",
-      " 중에 골라주세요.",
-      " 메뉴 보여드릴게요.",
-      "잘 못 들었어요.",
-      " 다시 말씀해 주세요.",
-      "원하시는 메뉴를 정확히 말씀해 주세요.",
-      "비슷한 메뉴가 여러 개 있어요.",
-      " 중에서 어떤 걸로 드릴까요?",
-      "수량은 몇 잔으로 할까요?",
-      "옵션을 선택해 주세요.",
-      "필수 옵션이 남아 있어요.",
-      "장바구니가 비어 있어요.",
-      "먼저 메뉴를 담아주세요.",
-      "를 장바구니에 담았어요.",
-      "를 장바구니에서 빼드릴게요.",
-      "더 보여드릴게요.",
-      "위로 올려드릴게요.",
-      "장바구니 열어드릴게요.",
-      "결제 화면으로 이동할게요.",
-      "결제를 진행할게요.",
-      "주문 완료되었습니다.",
-      " 감사합니다.",
-      "알겠습니다.",
-      " 다른 걸 도와드릴까요?",
-      "주문을 취소할게요.",
-      " 다음에 또 오세요.",
-      "원하시는 음료 이름을 말씀해 주세요.",
-      "다시 말씀드릴게요.",
-      "네, 천천히 말씀하세요.",
-      "톨 사이즈 선택했어요.",
-      " 다음 옵션을 알려주세요.",
-      "차갑게 준비할게요.",
-      "따뜻하게 준비할게요.",
-      "죄송해요,",
-      " 주문만 도와드릴 수 있어요.",
-      "커피",
-      "티",
-      "스무디",
-      "에이드",
-      "주스",
-      " 주문하셨습니다.",
-      " 한 잔 담았어요.",
-      " 선택했어요.",
-      " 추가했어요.",
-      " 빼드릴게요.",
-      " 총 ",
-      " 원입니다.",
-      " 일 ", " 이 ", " 삼 ", " 사 ", " 오 ", " 육 ", " 칠 ", " 팔 ", " 구 ",
-      " 십 ", " 백 ", " 천 ", " 만 ", " 십만 ", " 백만 "
-    ],
-    "include_menus": true,
-    "include_options": true
-  },
-  "_templates_doc": "parts 배열은 audio_segments를 그대로 만들기 위한 시퀀스. 슬롯({menu}/{option})은 런타임에 메뉴/옵션 조각으로 치환됨. parts에 들어가는 정적 문자열만 디스크에 합성하면 충분하므로 메뉴 N개 × 템플릿 K개 = N*K 가 아니라 K개만 미리 만들어두면 된다.",
-  "templates": [
-    {
-      "id": "menu_selected",
-      "expand": "menus",
-      "text": "{menu} 선택하셨어요. 옵션을 골라주세요.",
-      "parts": ["{menu}", " 선택하셨어요. 옵션을 골라주세요."]
-    },
-    {
-      "id": "menu_added",
-      "expand": "menus",
-      "text": "{menu} 한 잔 담았어요.",
-      "parts": ["{menu}", " 한 잔 담았어요."]
-    },
-    {
-      "id": "menu_ask_temperature",
-      "expand": "menus",
-      "text": "{menu}는 차갑게 드릴까요, 따뜻하게 드릴까요?",
-      "parts": ["{menu}", "는 차갑게 드릴까요, 따뜻하게 드릴까요?"]
-    },
-    {
-      "id": "option_chosen",
-      "expand": "options",
-      "text": "{option} 선택했어요.",
-      "parts": ["{option}", " 선택했어요."]
-    },
-    {
-      "id": "option_unavailable",
-      "expand": "options",
-      "text": "죄송해요, {option} 옵션이 없어요.",
-      "parts": ["죄송해요, ", "{option}", " 옵션이 없어요."]
-    },
-    {
-      "id": "cart_total",
-      "expand": null,
-      "text": "총 {price}원입니다.",
-      "parts": [" 총 ", "{price}", " 원입니다."]
-    },
-    {
-      "id": "order_summary_simple",
-      "expand": null,
-      "text": "{menus} 주문하셨습니다. 총 {price}원입니다.",
-      "parts": ["{menus}", " 주문하셨습니다.", " 총 ", "{price}", " 원입니다."]
-    },
-    {
-      "id": "ask_repeat",
-      "expand": null,
-      "text": "잘 못 들었어요. 다시 말씀해 주세요.",
-      "parts": ["잘 못 들었어요.", " 다시 말씀해 주세요."]
-    },
-    {
-      "id": "ask_quantity",
-      "expand": null,
-      "text": "수량은 몇 잔으로 할까요?",
-      "parts": ["수량은 몇 잔으로 할까요?"]
-    },
-    {
-      "id": "ask_options_required",
-      "expand": null,
-      "text": "필수 옵션이 남아 있어요. 옵션을 선택해 주세요.",
-      "parts": ["필수 옵션이 남아 있어요.", " 옵션을 선택해 주세요."]
-    },
-    {
-      "id": "cart_empty",
-      "expand": null,
-      "text": "장바구니가 비어 있어요.",
-      "parts": ["장바구니가 비어 있어요."]
-    },
-    {
-      "id": "cart_add_confirm",
-      "expand": "menus",
-      "text": "{menu}를 장바구니에 담았어요.",
-      "parts": ["{menu}", "를 장바구니에 담았어요."]
-    },
-    {
-      "id": "cart_remove_confirm",
-      "expand": "menus",
-      "text": "{menu}를 장바구니에서 빼드릴게요.",
-      "parts": ["{menu}", "를 장바구니에서 빼드릴게요."]
-    }
-  ],
-  "scenarios": [
-    {
-      "id": "greet_general",
-      "description": "일반 인사말 (greeting 단계 진입)",
-      "match": {
-        "stages": ["greeting"],
-        "patterns": ["^(안녕|하이|여보세요|시작|반가워|반갑)"]
-      },
-      "response": {
-        "intent": "greet",
-        "response_text": "안녕하세요. 어떤 음료로 주문하시겠어요?",
-        "audio_segments": ["안녕하세요.", " 어떤 음료로 주문하시겠어요?"],
-        "next_stage": "category_browse",
-        "actions": [{ "type": "speak", "text": "안녕하세요. 어떤 음료로 주문하시겠어요?" }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "ask_recommend",
-      "description": "추천 요청",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse"],
-        "patterns": ["(추천|뭐가\\s*좋|뭐\\s*먹|아무거나|골라줘|모르겠어요)"]
-      },
-      "response": {
-        "intent": "ask_category",
-        "response_text": "어떤 종류가 좋으세요? 커피, 티, 스무디 중에 골라주세요.",
-        "audio_segments": ["어떤 종류가 좋으세요? ", "커피", ", ", "티", ", ", "스무디", " 중에 골라주세요."],
-        "next_stage": "category_browse",
-        "actions": [{ "type": "speak", "text": "어떤 종류가 좋으세요? 커피, 티, 스무디 중에 골라주세요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "affirm",
-      "description": "긍정 응답",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review"],
-        "patterns": ["^(네|예|좋아|좋습니다|응|맞아|맞습니다|그래|오케이|좋아요)$"]
-      },
-      "response": {
-        "intent": "affirm",
-        "response_text": "네, 알겠습니다.",
-        "audio_segments": ["네, 알겠습니다."],
-        "actions": [{ "type": "speak", "text": "네, 알겠습니다." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "deny",
-      "description": "부정 응답",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review"],
-        "patterns": ["^(아니|아뇨|아니요|싫어|별로|아닙니다)$"]
-      },
-      "response": {
-        "intent": "deny",
-        "response_text": "알겠습니다. 다른 걸 도와드릴까요?",
-        "audio_segments": ["알겠습니다.", " 다른 걸 도와드릴까요?"],
-        "actions": [{ "type": "speak", "text": "알겠습니다. 다른 걸 도와드릴까요?" }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "cancel",
-      "description": "주문 전체 취소",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review"],
-        "patterns": ["(전부\\s*취소|전체\\s*취소|주문\\s*취소|주문\\s*종료|끝낼래|종료|중단|관둘래|관둬|그만할래|그만)"]
-      },
-      "response": {
-        "intent": "cancel",
-        "response_text": "주문을 취소할게요. 다음에 또 오세요.",
-        "audio_segments": ["주문을 취소할게요.", " 다음에 또 오세요."],
-        "actions": [
-          { "type": "speak", "text": "주문을 취소할게요. 다음에 또 오세요." },
-          { "type": "end_conversation" }
-        ],
-        "requires_user_input": false,
-        "end_conversation": true
-      }
-    },
-    {
-      "id": "help",
-      "description": "도움 요청",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select"],
-        "patterns": ["(도와|도움|모르겠|어떻게|어렵|헷갈)"]
-      },
-      "response": {
-        "intent": "help",
-        "response_text": "원하시는 음료 이름을 말씀해 주세요.",
-        "audio_segments": ["원하시는 음료 이름을 말씀해 주세요."],
-        "actions": [{ "type": "speak", "text": "원하시는 음료 이름을 말씀해 주세요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "repeat",
-      "description": "다시 말해달라",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review", "payment_confirm"],
-        "patterns": ["(다시|뭐라고|못\\s*들었|안\\s*들려)"]
-      },
-      "response": {
-        "intent": "repeat",
-        "response_text": "다시 말씀드릴게요.",
-        "audio_segments": ["다시 말씀드릴게요."],
-        "actions": [{ "type": "speak", "text": "다시 말씀드릴게요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "wait",
-      "description": "잠시만 / 대기",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review"],
-        "patterns": ["(잠시만|잠깐|기다려)"]
-      },
-      "response": {
-        "intent": "wait",
-        "response_text": "네, 천천히 말씀하세요.",
-        "audio_segments": ["네, 천천히 말씀하세요."],
-        "actions": [{ "type": "speak", "text": "네, 천천히 말씀하세요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "category_coffee",
-      "description": "커피 카테고리 선택",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse"],
-        "patterns": ["^\\s*(커피)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"]
-      },
-      "response": {
-        "intent": "select_category",
-        "response_text": "커피 메뉴 보여드릴게요.",
-        "audio_segments": ["커피", " 메뉴 보여드릴게요."],
-        "next_stage": "menu_browse",
-        "actions": [
-          { "type": "navigate", "target": "category", "category_name": "커피" },
-          { "type": "speak", "text": "커피 메뉴 보여드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "category_tea",
-      "description": "티 카테고리 선택",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse"],
-        "patterns": ["^\\s*(티|차)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"]
-      },
-      "response": {
-        "intent": "select_category",
-        "response_text": "티 메뉴 보여드릴게요.",
-        "audio_segments": ["티", " 메뉴 보여드릴게요."],
-        "next_stage": "menu_browse",
-        "actions": [
-          { "type": "navigate", "target": "category", "category_name": "티" },
-          { "type": "speak", "text": "티 메뉴 보여드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "category_smoothie",
-      "description": "스무디 카테고리",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse"],
-        "patterns": ["^\\s*(스무디)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"]
-      },
-      "response": {
-        "intent": "select_category",
-        "response_text": "스무디 메뉴 보여드릴게요.",
-        "audio_segments": ["스무디", " 메뉴 보여드릴게요."],
-        "next_stage": "menu_browse",
-        "actions": [
-          { "type": "navigate", "target": "category", "category_name": "스무디" },
-          { "type": "speak", "text": "스무디 메뉴 보여드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "category_ade",
-      "description": "에이드 카테고리",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse"],
-        "patterns": ["^\\s*(에이드)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"]
-      },
-      "response": {
-        "intent": "select_category",
-        "response_text": "에이드 메뉴 보여드릴게요.",
-        "audio_segments": ["에이드", " 메뉴 보여드릴게요."],
-        "next_stage": "menu_browse",
-        "actions": [
-          { "type": "navigate", "target": "category", "category_name": "에이드" },
-          { "type": "speak", "text": "에이드 메뉴 보여드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "scroll_more",
-      "description": "더 보기 (메뉴 스크롤)",
-      "match": {
-        "stages": ["menu_browse"],
-        "patterns": ["(더\\s*보|다음|아래|더\\s*있)"]
-      },
-      "response": {
-        "intent": "scroll_more",
-        "response_text": "더 보여드릴게요.",
-        "audio_segments": ["더 보여드릴게요."],
-        "actions": [
-          { "type": "scroll", "direction": "down" },
-          { "type": "speak", "text": "더 보여드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "scroll_back",
-      "description": "위로 / 이전",
-      "match": {
-        "stages": ["menu_browse"],
-        "patterns": ["(위로|이전|올려)"]
-      },
-      "response": {
-        "intent": "scroll_back",
-        "response_text": "위로 올려드릴게요.",
-        "audio_segments": ["위로 올려드릴게요."],
-        "actions": [
-          { "type": "scroll", "direction": "up" },
-          { "type": "speak", "text": "위로 올려드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "go_cart",
-      "description": "장바구니 보기",
-      "match": {
-        "stages": ["category_browse", "menu_browse", "menu_select", "cart_review"],
-        "patterns": ["(장바구니|카트|담은\\s*거|뭐\\s*담)"]
-      },
-      "response": {
-        "intent": "view_cart",
-        "response_text": "장바구니 열어드릴게요.",
-        "audio_segments": ["장바구니 열어드릴게요."],
-        "next_stage": "cart_review",
-        "actions": [
-          { "type": "navigate", "target": "cart" },
-          { "type": "speak", "text": "장바구니 열어드릴게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "go_payment",
-      "description": "결제 진행",
-      "match": {
-        "stages": ["cart_review", "menu_select", "option_select"],
-        "patterns": ["(결제|계산|주문\\s*할래|주문\\s*하|주문\\s*완료|결제할게|이거\\s*주세요)"]
-      },
-      "response": {
-        "intent": "go_payment",
-        "response_text": "결제 화면으로 이동할게요.",
-        "audio_segments": ["결제 화면으로 이동할게요."],
-        "next_stage": "payment_confirm",
-        "actions": [
-          { "type": "navigate", "target": "payment" },
-          { "type": "speak", "text": "결제 화면으로 이동할게요." }
-        ],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "place_order_confirm",
-      "description": "결제 확정",
-      "match": {
-        "stages": ["payment_confirm"],
-        "patterns": ["(진행|결제|네|좋아|확인|할게|맞아)"]
-      },
-      "response": {
-        "intent": "place_order",
-        "response_text": "결제를 진행할게요.",
-        "audio_segments": ["결제를 진행할게요."],
-        "next_stage": "farewell",
-        "actions": [
-          { "type": "place_order" },
-          { "type": "speak", "text": "결제를 진행할게요." }
-        ],
-        "requires_user_input": false,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "farewell",
-      "description": "주문 완료 인사",
-      "match": {
-        "stages": ["farewell"],
-        "patterns": [".*"]
-      },
-      "response": {
-        "intent": "farewell",
-        "response_text": "주문 완료되었습니다. 감사합니다.",
-        "audio_segments": ["주문 완료되었습니다.", " 감사합니다."],
-        "actions": [
-          { "type": "speak", "text": "주문 완료되었습니다. 감사합니다." },
-          { "type": "end_conversation" }
-        ],
-        "requires_user_input": false,
-        "end_conversation": true
-      }
-    },
-    {
-      "id": "size_tall",
-      "description": "사이즈 톨 미리 선택",
-      "match": {
-        "stages": ["option_select"],
-        "patterns": ["(톨|보통|기본\\s*사이즈)"]
-      },
-      "response": {
-        "intent": "preview_option",
-        "response_text": "톨 사이즈 선택했어요. 다음 옵션을 알려주세요.",
-        "audio_segments": ["톨 사이즈 선택했어요.", " 다음 옵션을 알려주세요."],
-        "actions": [{ "type": "speak", "text": "톨 사이즈 선택했어요. 다음 옵션을 알려주세요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "temp_ice",
-      "description": "아이스 선택",
-      "match": {
-        "stages": ["option_select"],
-        "patterns": ["(아이스|차갑|시원|얼음)"]
-      },
-      "response": {
-        "intent": "preview_option",
-        "response_text": "차갑게 준비할게요.",
-        "audio_segments": ["차갑게 준비할게요."],
-        "actions": [{ "type": "speak", "text": "차갑게 준비할게요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "temp_hot",
-      "description": "핫 선택",
-      "match": {
-        "stages": ["option_select"],
-        "patterns": ["(핫|따뜻|뜨겁|따듯)"]
-      },
-      "response": {
-        "intent": "preview_option",
-        "response_text": "따뜻하게 준비할게요.",
-        "audio_segments": ["따뜻하게 준비할게요."],
-        "actions": [{ "type": "speak", "text": "따뜻하게 준비할게요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    },
-    {
-      "id": "out_of_scope",
-      "description": "주문과 무관한 잡담",
-      "match": {
-        "stages": ["greeting", "category_browse", "menu_browse", "menu_select", "option_select", "cart_review"],
-        "patterns": ["(날씨|기분|이름이|너는|누구|몇\\s*시|뭐해)"]
-      },
-      "response": {
-        "intent": "out_of_scope",
-        "response_text": "죄송해요, 주문만 도와드릴 수 있어요.",
-        "audio_segments": ["죄송해요,", " 주문만 도와드릴 수 있어요."],
-        "actions": [{ "type": "speak", "text": "죄송해요, 주문만 도와드릴 수 있어요." }],
-        "requires_user_input": true,
-        "end_conversation": false
-      }
-    }
-  ]
+﻿{
+    "templates":  [
+                      {
+                          "id":  "menu_selected",
+                          "text":  "{menu} 선택하셨어요. 옵션을 골라주세요."
+                      },
+                      {
+                          "id":  "menu_added",
+                          "text":  "{menu} 한 잔 담았어요."
+                      },
+                      {
+                          "id":  "menu_ask_temperature",
+                          "text":  "{menu}는 차갑게 드릴까요, 따뜻하게 드릴까요?"
+                      },
+                      {
+                          "id":  "option_chosen",
+                          "text":  "{option} 선택했어요."
+                      },
+                      {
+                          "id":  "option_unavailable",
+                          "text":  "죄송해요, {option} 옵션이 없어요."
+                      },
+                      {
+                          "id":  "cart_total",
+                          "text":  "총 {price}원입니다."
+                      },
+                      {
+                          "id":  "order_summary_simple",
+                          "text":  "{menus} 주문하셨습니다. 총 {price}원입니다."
+                      },
+                      {
+                          "id":  "ask_repeat",
+                          "text":  "잘 못 들었어요. 다시 말씀해 주세요."
+                      },
+                      {
+                          "id":  "ask_quantity",
+                          "text":  "수량은 몇 잔으로 할까요?"
+                      },
+                      {
+                          "id":  "ask_options_required",
+                          "text":  "필수 옵션이 남아 있어요. 옵션을 선택해 주세요."
+                      },
+                      {
+                          "id":  "cart_empty",
+                          "text":  "장바구니가 비어 있어요."
+                      },
+                      {
+                          "id":  "cart_add_confirm",
+                          "text":  "{menu}를 장바구니에 담았어요."
+                      },
+                      {
+                          "id":  "cart_remove_confirm",
+                          "text":  "{menu}를 장바구니에서 빼드릴게요."
+                      }
+                  ],
+    "scenarios":  [
+                      {
+                          "id":  "greet_general",
+                          "description":  "일반 인사말 (greeting 단계 진입)",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting"
+                                                   ],
+                                        "patterns":  [
+                                                         "^(안녕|하이|여보세요|시작|반가워|반갑)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "greet",
+                                           "response_text":  "안녕하세요. 어떤 음료로 주문하시겠어요?",
+                                           "next_stage":  "category_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "안녕하세요. 어떤 음료로 주문하시겠어요?"
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "ask_recommend",
+                          "description":  "추천 요청",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "(추천|뭐가\\s*좋|뭐\\s*먹|아무거나|골라줘|모르겠어요)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "ask_category",
+                                           "response_text":  "어떤 종류가 좋으세요? 커피, 티, 스무디 중에 골라주세요.",
+                                           "next_stage":  "category_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "어떤 종류가 좋으세요? 커피, 티, 스무디 중에 골라주세요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "affirm",
+                          "description":  "긍정 응답",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "^(네|예|좋아|좋습니다|응|맞아|맞습니다|그래|오케이|좋아요)$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "affirm",
+                                           "response_text":  "네, 알겠습니다.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "네, 알겠습니다."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "deny",
+                          "description":  "부정 응답",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "^(아니|아뇨|아니요|싫어|별로|아닙니다)$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "deny",
+                                           "response_text":  "알겠습니다. 다른 걸 도와드릴까요?",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "알겠습니다. 다른 걸 도와드릴까요?"
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "cancel",
+                          "description":  "주문 전체 취소",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "(전부\\s*취소|전체\\s*취소|주문\\s*취소|주문\\s*종료|끝낼래|종료|중단|관둘래|관둬|그만할래|그만)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "cancel",
+                                           "response_text":  "주문을 취소할게요. 다음에 또 오세요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "주문을 취소할게요. 다음에 또 오세요."
+                                                           },
+                                                           {
+                                                               "type":  "end_conversation"
+                                                           }
+                                                       ],
+                                           "requires_user_input":  false,
+                                           "end_conversation":  true
+                                       }
+                      },
+                      {
+                          "id":  "help",
+                          "description":  "도움 요청",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select"
+                                                   ],
+                                        "patterns":  [
+                                                         "(도와|도움|모르겠|어떻게|어렵|헷갈)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "help",
+                                           "response_text":  "원하시는 음료 이름을 말씀해 주세요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "원하시는 음료 이름을 말씀해 주세요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "repeat",
+                          "description":  "다시 말해달라",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review",
+                                                       "payment_confirm"
+                                                   ],
+                                        "patterns":  [
+                                                         "(다시|뭐라고|못\\s*들었|안\\s*들려)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "repeat",
+                                           "response_text":  "다시 말씀드릴게요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "다시 말씀드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "wait",
+                          "description":  "잠시만 / 대기",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "(잠시만|잠깐|기다려)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "wait",
+                                           "response_text":  "네, 천천히 말씀하세요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "네, 천천히 말씀하세요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "category_coffee",
+                          "description":  "커피 카테고리 선택",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "^\\s*(커피)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "select_category",
+                                           "response_text":  "커피 메뉴 보여드릴게요.",
+                                           "next_stage":  "menu_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "category",
+                                                               "category_name":  "커피"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "커피 메뉴 보여드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "category_tea",
+                          "description":  "티 카테고리 선택",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "^\\s*(티|차)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "select_category",
+                                           "response_text":  "티 메뉴 보여드릴게요.",
+                                           "next_stage":  "menu_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "category",
+                                                               "category_name":  "티"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "티 메뉴 보여드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "category_smoothie",
+                          "description":  "스무디 카테고리",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "^\\s*(스무디)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "select_category",
+                                           "response_text":  "스무디 메뉴 보여드릴게요.",
+                                           "next_stage":  "menu_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "category",
+                                                               "category_name":  "스무디"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "스무디 메뉴 보여드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "category_ade",
+                          "description":  "에이드 카테고리",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "^\\s*(에이드)(\\s*(메뉴|종류)?\\s*(보여|보여줘|보여\\s*줘|주세요|줘)?)?\\s*$"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "select_category",
+                                           "response_text":  "에이드 메뉴 보여드릴게요.",
+                                           "next_stage":  "menu_browse",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "category",
+                                                               "category_name":  "에이드"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "에이드 메뉴 보여드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "scroll_more",
+                          "description":  "더 보기 (메뉴 스크롤)",
+                          "match":  {
+                                        "stages":  [
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "(더\\s*보|다음|아래|더\\s*있)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "scroll_more",
+                                           "response_text":  "더 보여드릴게요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "scroll",
+                                                               "direction":  "down"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "더 보여드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "scroll_back",
+                          "description":  "위로 / 이전",
+                          "match":  {
+                                        "stages":  [
+                                                       "menu_browse"
+                                                   ],
+                                        "patterns":  [
+                                                         "(위로|이전|올려)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "scroll_back",
+                                           "response_text":  "위로 올려드릴게요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "scroll",
+                                                               "direction":  "up"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "위로 올려드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "go_cart",
+                          "description":  "장바구니 보기",
+                          "match":  {
+                                        "stages":  [
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "(장바구니|카트|담은\\s*거|뭐\\s*담)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "view_cart",
+                                           "response_text":  "장바구니 열어드릴게요.",
+                                           "next_stage":  "cart_review",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "cart"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "장바구니 열어드릴게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "go_payment",
+                          "description":  "결제 진행",
+                          "match":  {
+                                        "stages":  [
+                                                       "cart_review",
+                                                       "menu_select",
+                                                       "option_select"
+                                                   ],
+                                        "patterns":  [
+                                                         "(결제|계산|주문\\s*할래|주문\\s*하|주문\\s*완료|결제할게|이거\\s*주세요)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "go_payment",
+                                           "response_text":  "결제 화면으로 이동할게요.",
+                                           "next_stage":  "payment_confirm",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "navigate",
+                                                               "target":  "payment"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "결제 화면으로 이동할게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "place_order_confirm",
+                          "description":  "결제 확정",
+                          "match":  {
+                                        "stages":  [
+                                                       "payment_confirm"
+                                                   ],
+                                        "patterns":  [
+                                                         "(진행|결제|네|좋아|확인|할게|맞아)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "place_order",
+                                           "response_text":  "결제를 진행할게요.",
+                                           "next_stage":  "farewell",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "place_order"
+                                                           },
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "결제를 진행할게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  false,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "farewell",
+                          "description":  "주문 완료 인사",
+                          "match":  {
+                                        "stages":  [
+                                                       "farewell"
+                                                   ],
+                                        "patterns":  [
+                                                         ".*"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "farewell",
+                                           "response_text":  "주문 완료되었습니다. 감사합니다.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "주문 완료되었습니다. 감사합니다."
+                                                           },
+                                                           {
+                                                               "type":  "end_conversation"
+                                                           }
+                                                       ],
+                                           "requires_user_input":  false,
+                                           "end_conversation":  true
+                                       }
+                      },
+                      {
+                          "id":  "size_tall",
+                          "description":  "사이즈 톨 미리 선택",
+                          "match":  {
+                                        "stages":  [
+                                                       "option_select"
+                                                   ],
+                                        "patterns":  [
+                                                         "(톨|보통|기본\\s*사이즈)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "preview_option",
+                                           "response_text":  "톨 사이즈 선택했어요. 다음 옵션을 알려주세요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "톨 사이즈 선택했어요. 다음 옵션을 알려주세요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "temp_ice",
+                          "description":  "아이스 선택",
+                          "match":  {
+                                        "stages":  [
+                                                       "option_select"
+                                                   ],
+                                        "patterns":  [
+                                                         "(아이스|차갑|시원|얼음)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "preview_option",
+                                           "response_text":  "차갑게 준비할게요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "차갑게 준비할게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "temp_hot",
+                          "description":  "핫 선택",
+                          "match":  {
+                                        "stages":  [
+                                                       "option_select"
+                                                   ],
+                                        "patterns":  [
+                                                         "(핫|따뜻|뜨겁|따듯)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "preview_option",
+                                           "response_text":  "따뜻하게 준비할게요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "따뜻하게 준비할게요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      },
+                      {
+                          "id":  "out_of_scope",
+                          "description":  "주문과 무관한 잡담",
+                          "match":  {
+                                        "stages":  [
+                                                       "greeting",
+                                                       "category_browse",
+                                                       "menu_browse",
+                                                       "menu_select",
+                                                       "option_select",
+                                                       "cart_review"
+                                                   ],
+                                        "patterns":  [
+                                                         "(날씨|기분|이름이|너는|누구|몇\\s*시|뭐해)"
+                                                     ]
+                                    },
+                          "response":  {
+                                           "intent":  "out_of_scope",
+                                           "response_text":  "죄송해요, 주문만 도와드릴 수 있어요.",
+                                           "actions":  [
+                                                           {
+                                                               "type":  "speak",
+                                                               "text":  "죄송해요, 주문만 도와드릴 수 있어요."
+                                                           }
+                                                       ],
+                                           "requires_user_input":  true,
+                                           "end_conversation":  false
+                                       }
+                      }
+                  ]
 }

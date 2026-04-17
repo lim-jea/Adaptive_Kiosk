@@ -19,7 +19,6 @@ from core.database import (
 )
 from core.security import http_basic
 from scripts.seed_menu import seed_menu_data
-from services.chat_service import prewarm_tts_cache
 from services.face_service import face_service
 from services.recommendation_service import (
     get_recommendation_engine,
@@ -117,7 +116,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Trend service initialization failed: %s", exc)
 
-    asyncio.create_task(prewarm_tts_cache(get_session_factory()))
     yield
 
 

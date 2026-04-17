@@ -22,11 +22,6 @@ class Settings(BaseSettings):
     GENAI_TTS_LANGUAGE_CODE: str = "ko-KR"
     GENAI_TTS_VOICE_NAME: str = "kore"
 
-    # Voice 응답 오디오 생성 정책
-    # - True: audio_segments 조합만 시도. 조각 캐시 미스 시 audio_b64=None → 브라우저 TTS 폴백.
-    # - False(기본): 조각 미스면 response_text TTS 캐시(또는 설정에 따라 라이브)까지 시도.
-    VOICE_AUDIO_SEGMENTS_ONLY: bool = False
-
     # Naver DataLab API - 실시간 트렌드 조회
     NAVER_TREND_ENABLED: bool = True
     NAVER_CLIENT_ID: str = ""

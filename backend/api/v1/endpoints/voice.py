@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import settings
 from core.database import get_db
 from crud import chat as chat_crud
 from crud.session import get_session_by_uuid
@@ -30,9 +29,8 @@ from schemas import (
     VoiceStartResponse,
 )
 from schemas import PaginatedResponse, make_error
-from services.canned_responses import compose_audio_from_segments
-from services.chat_prompts import GREETING_BY_PERSONA, decide_persona
 from services.chat_service import process_voice_message, synthesize_speech
+from services.voice_prompting import GREETING_BY_PERSONA, decide_persona
 
 logger = logging.getLogger(__name__)
 
@@ -40,29 +38,15 @@ logger = logging.getLogger(__name__)
 async def _audio_b64_for(response) -> tuple[str | None, str]:
     """응답에 대한 WAV를 base64로 변환.
 
-    - response.audio_segments가 있으면 조각 WAV를 이어붙여 즉시 반환
-    - 없거나 조각 캐시 미스면 response_text 전체 WAV를 시도
-
-    실패/캐시 미스 시 None (프런트는 브라우저 TTS로 폴백).
+    response_text 전체 WAV를 시도하고, 실패/캐시 미스 시 None을 반환한다.
+    프런트는 None일 때 브라우저 TTS로 폴백한다.
 
     Returns:
       (audio_b64_or_none, source)
-      - source: segments|tts|none|error
+      - source: tts|none|error
     """
     t0 = time.perf_counter()
     try:
-        if getattr(response, "audio_segments", None):
-            composed = compose_audio_from_segments(response.audio_segments)  # type: ignore[arg-type]
-            if composed is not None:
-                b64 = base64.b64encode(composed).decode("ascii")
-                logger.info("[voice-metrics] audio_source=segments ms=%.1f segs=%d", (time.perf_counter() - t0) * 1000, len(response.audio_segments))
-                return b64, "segments"
-
-        # 조각 합성만 사용(segments-only) 모드: 조각 캐시 미스면 즉시 브라우저 TTS로 폴백
-        if getattr(settings, "VOICE_AUDIO_SEGMENTS_ONLY", False):
-            logger.info("[voice-metrics] audio_source=none ms=%.1f", (time.perf_counter() - t0) * 1000)
-            return None, "none"
-
         wav = await synthesize_speech(response.response_text)
         if wav:
             b64 = base64.b64encode(wav).decode("ascii")
@@ -179,7 +163,6 @@ async def voice_message(req: VoiceMessageRequest, db: AsyncSession = Depends(get
         req.content,
         persona=persona,
         current_stage=stage,
-        cart_snapshot=req.cart_snapshot,
         selected_category=req.selected_category,
         selected_menu_name=req.selected_menu_name,
     )

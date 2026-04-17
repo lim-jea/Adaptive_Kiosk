@@ -11,11 +11,11 @@ import { useTTS } from './useTTS'
 
 export function useVoiceOrder({
   sessionUuid,
-  cartSnapshot,
   selectedCategory,
   selectedMenuName,
   onAction,
   autoStart = false,
+  ttsRate = 0.8,
 }) {
   const [status, setStatus] = useState('idle') // idle | starting | listening | thinking | speaking | error | ended
   const [persona, setPersona] = useState('unknown')
@@ -25,18 +25,16 @@ export function useVoiceOrder({
   const [error, setError] = useState(null)
 
   const onActionRef = useRef(onAction)
-  const cartSnapshotRef = useRef(cartSnapshot)
   const selectedCategoryRef = useRef(selectedCategory)
   const selectedMenuNameRef = useRef(selectedMenuName)
   const handleAIResponseRef = useRef(null)
   const startedRef = useRef(false)
 
   useEffect(() => { onActionRef.current = onAction }, [onAction])
-  useEffect(() => { cartSnapshotRef.current = cartSnapshot }, [cartSnapshot])
   useEffect(() => { selectedCategoryRef.current = selectedCategory }, [selectedCategory])
   useEffect(() => { selectedMenuNameRef.current = selectedMenuName }, [selectedMenuName])
 
-  const tts = useTTS()
+  const tts = useTTS({ rate: ttsRate })
 
   const dispatchActions = useCallback((actions) => {
     for (const a of actions || []) {
@@ -52,16 +50,9 @@ export function useVoiceOrder({
     setLastUserText(text)
     setStatus('thinking')
     try {
-      const cart = (cartSnapshotRef.current || []).map((i) => ({
-        menu_name: i.menuName,
-        quantity: i.quantity,
-        unit_price: i.unitPrice,
-        option_names: i.optionLabels || [],
-      }))
       const { data } = await api.post('/api/v1/voice/messages', {
         session_uuid: sessionUuid,
         content: text,
-        cart_snapshot: cart,
         selected_category: selectedCategoryRef.current || null,
         selected_menu_name: selectedMenuNameRef.current || null,
       })

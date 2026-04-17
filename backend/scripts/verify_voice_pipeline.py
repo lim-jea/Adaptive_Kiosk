@@ -1,4 +1,4 @@
-"""음성 주문 파이프라인의 핵심 분기(정제→canned→pattern→menu 매칭→조합형 audio_segments)를 빠르게 검증.
+"""음성 주문 파이프라인의 핵심 분기(정제→canned→pattern→menu 매칭)를 빠르게 검증.
 
 - DB 없이도 확인 가능한 범위만 다룬다.
 - 서버 실행/HTTP 호출은 하지 않는다.
@@ -30,7 +30,6 @@ def _summarize(resp) -> dict:
         "end_conversation": getattr(resp, "end_conversation", None),
         "requires_user_input": getattr(resp, "requires_user_input", None),
         "response_text": getattr(resp, "response_text", None),
-        "audio_segments": getattr(resp, "audio_segments", None),
     }
 
 
@@ -38,8 +37,7 @@ def main() -> int:
     _bootstrap_import_path()
 
     from services.canned_responses import match_canned
-    from services.chat_prompts.jailbreak import sanitize_input
-    from services.chat_prompts.matcher import match_pattern, match_menu_name
+    from services.voice_matching import sanitize_input, match_pattern, match_menu_name
 
     fake_menus = [
         "아이스 아메리카노",
@@ -84,7 +82,7 @@ def main() -> int:
     print("\n== Expectations ==")
     print("- '취소' 단독 발화는 canned(cancel)을 타지 않고 pattern(cancel)로 가야 함")
     print("- '전체 취소'는 canned(cancel)로 매칭되어 end_conversation=true 여야 함")
-    print("- 메뉴명 매칭 응답에는 audio_segments가 채워질 수 있음(템플릿 기반)")
+    print("- 메뉴명 매칭 응답은 navigate(menu_detail) + speak 중심으로 생성되어야 함")
 
     return 0
 

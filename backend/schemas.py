@@ -499,12 +499,16 @@ class OptionPreviewAction(BaseModel):
 class CartRemoveAction(BaseModel):
     type: Literal["cart_remove"] = "cart_remove"
     menu_name: str
+    cart_line_id: Optional[str] = None
+    option_item_ids: List[int] = Field(default_factory=list)
 
 
 class CartUpdateAction(BaseModel):
     type: Literal["cart_update"] = "cart_update"
     menu_name: str
     quantity: int
+    cart_line_id: Optional[str] = None
+    option_item_ids: List[int] = Field(default_factory=list)
 
 
 class PlaceOrderAction(BaseModel):
@@ -538,13 +542,14 @@ class AIChatResponse(BaseModel):
     actions: List[AIAction] = Field(default_factory=list)
     requires_user_input: bool = True
     end_conversation: bool = False
-    audio_segments: Optional[List[str]] = None
 
 
 class CartItemSnapshot(BaseModel):
+    line_id: Optional[str] = None
     menu_name: str
     quantity: int
     unit_price: int
+    option_item_ids: List[int] = Field(default_factory=list)
     option_names: List[str] = Field(default_factory=list)
 
 
@@ -564,7 +569,6 @@ class VoiceStartResponse(BaseModel):
 class VoiceMessageRequest(BaseModel):
     session_uuid: str
     content: str
-    cart_snapshot: Optional[List[CartItemSnapshot]] = None
     selected_category: Optional[str] = None
     selected_menu_name: Optional[str] = None
 
