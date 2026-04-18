@@ -8,6 +8,7 @@ from crud.menu import get_option_item_by_id
 from crud.session import get_session_by_uuid, get_session_by_id
 from crud import order as order_crud
 from services.cart_service import calculate_unit_price, get_cart_items_for_checkout
+from services.recommendation_service import append_runtime_order_records, get_recommendation_engine
 from schemas import (
     OrderCreateRequest,
     OrderResponse,
@@ -71,6 +72,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
 
     response_items = []
     total_price = 0
+    runtime_csv_items = []
 
     for item in source_items:
         option_ids = item["selected_option_ids"]
@@ -107,6 +109,14 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         )
 
         total_price += line_total
+        runtime_csv_items.append(
+            {
+                "menu_id": menu.id,
+                "quantity": item["quantity"],
+                "unit_price": server_unit_price,
+                "from_recommendation": item["from_recommendation"],
+            }
+        )
 
         response_items.append(
             OrderItemResponse(
@@ -124,6 +134,10 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         cart.status = "checked_out"
     await db.commit()
     await db.refresh(order)  # server_default 값 (created_at) 로드
+
+    appended = append_runtime_order_records(session, order, runtime_csv_items)
+    if appended:
+        get_recommendation_engine().note_runtime_update()
 
     return OrderResponse(
         order_uuid=order.order_uuid,

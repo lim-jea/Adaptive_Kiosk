@@ -44,7 +44,7 @@ export default function KioskPage() {
     cart.map((item) => ({
       menu_name: item.menuName,
       quantity: item.quantity,
-      from_recommendation: false,
+      from_recommendation: Boolean(item.fromRecommendation),
       selected_options: item.selectedOptions || [],
     }))
   ), [])
@@ -64,6 +64,7 @@ export default function KioskPage() {
       basePrice: item.unit_price - optionExtra,
       unitPrice: item.unit_price,
       quantity: item.quantity,
+      fromRecommendation: Boolean(item.from_recommendation),
       selectedOptions,
       optionLabels,
     }
@@ -132,7 +133,7 @@ export default function KioskPage() {
           items: state.cart.map((item) => ({
             menu_name: item.menuName,
             quantity: item.quantity,
-            from_recommendation: false,
+            from_recommendation: Boolean(item.fromRecommendation),
             selected_options: item.selectedOptions || [],
           })),
         })
@@ -154,10 +155,13 @@ export default function KioskPage() {
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
 
   // 메뉴 클릭 → 상세 (옵션 그룹 포함) 조회 후 모달 오픈
-  const handleMenuClick = useCallback(async (menu) => {
+  const handleMenuClick = useCallback(async (menu, meta = {}) => {
     try {
       const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(menu.name)}`)
-      setOptionMenu(detailRes.data)
+      setOptionMenu({
+        ...detailRes.data,
+        fromRecommendation: Boolean(meta.fromRecommendation),
+      })
     } catch (err) {
       console.error('메뉴 상세 로드 실패:', err)
     }
@@ -175,6 +179,7 @@ export default function KioskPage() {
         basePrice: optionMenu.price,
         unitPrice,
         quantity,
+        fromRecommendation: Boolean(optionMenu.fromRecommendation),
         selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
         optionLabels,
       },
@@ -393,7 +398,7 @@ export default function KioskPage() {
                   ageGroup={state.ageGroup}
                   menus={menus}
                   cartItems={state.cart}
-                  onSelectMenu={(menuName) => {
+                  onSelectMenu={(menuName, meta = {}) => {
                     // 추천 메뉴 클릭 시 카테고리를 전체로 변경하고 메뉴 선택
                     if (activeCategory !== 'all') {
                       setActiveCategory('all')
@@ -401,7 +406,7 @@ export default function KioskPage() {
                     // 메뉴 찾아서 선택
                     const menu = menus.find((m) => m.name === menuName)
                     if (menu) {
-                      handleMenuClick(menu)
+                      handleMenuClick(menu, { fromRecommendation: true, ...meta })
                     }
                   }}
                 />

@@ -396,6 +396,7 @@ class RecommendationItemResponse(BaseModel):
     copurchase_count: Optional[int] = Field(None, description="함께 구매된 횟수")
     strength: Optional[float] = Field(None, description="추천 강도")
     frequency: Optional[str] = Field(None, description="비율 문자열")
+    reasoning: Optional[str] = Field(None, description="추천 이유")
 
 
 class SelectedMenuResponse(BaseModel):

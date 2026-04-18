@@ -1,0 +1,99 @@
+source_product_id,source_product_category,source_product_type,source_product_detail,source_unit_price,normalized_menu_name,normalized_category,target_menu_id,target_menu_name,target_base_price,keep,review_required
+76,Bakery,Biscotti,Chocolate Chip Biscotti,3.5,,,,,,False,True
+76,Bakery,Biscotti,Chocolate Chip Biscotti,4.38,,,,,,False,True
+74,Bakery,Biscotti,Ginger Biscotti,3.5,,,,,,False,True
+74,Bakery,Biscotti,Ginger Biscotti,4.38,,,,,,False,True
+69,Bakery,Biscotti,Hazelnut Biscotti,3.25,,,,,,False,True
+69,Bakery,Biscotti,Hazelnut Biscotti,4.06,,,,,,False,True
+73,Bakery,Pastry,Almond Croissant,3.75,,,,,,False,True
+73,Bakery,Pastry,Almond Croissant,4.69,,,,,,False,True
+71,Bakery,Pastry,Chocolate Croissant,3.75,,,,,,False,True
+71,Bakery,Pastry,Chocolate Croissant,4.69,,,,,,False,True
+75,Bakery,Pastry,Croissant,3.5,,,,,,False,True
+75,Bakery,Pastry,Croissant,4.38,,,,,,False,True
+70,Bakery,Scone,Cranberry Scone,3.25,,,,,,False,True
+70,Bakery,Scone,Cranberry Scone,4.06,,,,,,False,True
+72,Bakery,Scone,Ginger Scone,3.25,,,,,,False,True
+72,Bakery,Scone,Ginger Scone,4.06,,,,,,False,True
+72,Bakery,Scone,Ginger Scone,2.65,,,,,,False,True
+79,Bakery,Scone,Jumbo Savory Scone,3.75,,,,,,False,True
+79,Bakery,Scone,Jumbo Savory Scone,4.69,,,,,,False,True
+77,Bakery,Scone,Oatmeal Scone,3.0,,,,,,False,True
+78,Bakery,Scone,Scottish Cream Scone ,4.5,,,,,,False,True
+78,Bakery,Scone,Scottish Cream Scone ,5.63,,,,,,False,True
+81,Branded,Clothing,I Need My Bean! T-shirt,28.0,,,,,,False,True
+81,Branded,Clothing,I Need My Bean! T-shirt,23.0,,,,,,False,True
+82,Branded,Housewares,I Need My Bean! Diner mug,12.0,,,,,,False,True
+82,Branded,Housewares,I Need My Bean! Diner mug,23.0,,,,,,False,True
+83,Branded,Housewares,I Need My Bean! Latte cup,14.0,,,,,,False,True
+83,Branded,Housewares,I Need My Bean! Latte cup,23.0,,,,,,False,True
+40,Coffee,Barista Espresso,Cappuccino,3.75,카푸치노,커피,6,카푸치노,5200,True,False
+41,Coffee,Barista Espresso,Cappuccino Lg,4.25,카푸치노,커피,6,카푸치노,5200,True,False
+37,Coffee,Barista Espresso,Espresso shot,3.0,에스프레소,커피,1,에스프레소,4000,True,False
+38,Coffee,Barista Espresso,Latte,3.75,따뜻한 카페라떼,커피,4,따뜻한 카페라떼,5200,True,False
+39,Coffee,Barista Espresso,Latte Rg,4.25,따뜻한 카페라떼,커피,4,따뜻한 카페라떼,5200,True,False
+87,Coffee,Barista Espresso,Ouro Brasileiro shot,3.0,에스프레소,커피,1,에스프레소,4000,True,False
+87,Coffee,Barista Espresso,Ouro Brasileiro shot,2.1,에스프레소,커피,1,에스프레소,4000,True,False
+24,Coffee,Drip coffee,Our Old Time Diner Blend Lg,3.0,드립 커피,커피,9,드립 커피,5000,True,False
+23,Coffee,Drip coffee,Our Old Time Diner Blend Rg,2.5,드립 커피,커피,9,드립 커피,5000,True,False
+22,Coffee,Drip coffee,Our Old Time Diner Blend Sm,2.0,드립 커피,커피,9,드립 커피,5000,True,False
+30,Coffee,Gourmet brewed coffee,Columbian Medium Roast Lg,3.0,드립 커피,커피,9,드립 커피,5000,True,False
+29,Coffee,Gourmet brewed coffee,Columbian Medium Roast Rg,2.5,드립 커피,커피,9,드립 커피,5000,True,False
+28,Coffee,Gourmet brewed coffee,Columbian Medium Roast Sm,2.0,드립 커피,커피,9,드립 커피,5000,True,False
+33,Coffee,Gourmet brewed coffee,Ethiopia Lg,3.5,드립 커피,커피,9,드립 커피,5000,True,False
+32,Coffee,Gourmet brewed coffee,Ethiopia Rg,3.0,드립 커피,커피,9,드립 커피,5000,True,False
+31,Coffee,Gourmet brewed coffee,Ethiopia Sm,2.2,드립 커피,커피,9,드립 커피,5000,True,False
+27,Coffee,Organic brewed coffee,Brazilian Lg,3.5,드립 커피,커피,9,드립 커피,5000,True,False
+26,Coffee,Organic brewed coffee,Brazilian Rg,3.0,드립 커피,커피,9,드립 커피,5000,True,False
+25,Coffee,Organic brewed coffee,Brazilian Sm,2.2,드립 커피,커피,9,드립 커피,5000,True,False
+36,Coffee,Premium brewed coffee,Jamaican Coffee River Lg,3.75,드립 커피,커피,9,드립 커피,5000,True,False
+35,Coffee,Premium brewed coffee,Jamaican Coffee River Rg,3.1,드립 커피,커피,9,드립 커피,5000,True,False
+34,Coffee,Premium brewed coffee,Jamaican Coffee River Sm,2.45,드립 커피,커피,9,드립 커피,5000,True,False
+3,Coffee beans,Espresso Beans,Espresso Roast,14.75,,,,,,False,True
+4,Coffee beans,Espresso Beans,Primo Espresso Roast,20.45,,,,,,False,True
+5,Coffee beans,Gourmet Beans,Columbian Medium Roast,15.0,,,,,,False,True
+6,Coffee beans,Gourmet Beans,Ethiopia,21.0,,,,,,False,True
+10,Coffee beans,Green beans,Guatemalan Sustainably Grown,10.0,,,,,,False,True
+2,Coffee beans,House blend Beans,Our Old Time Diner Blend,18.0,,,,,,False,True
+1,Coffee beans,Organic Beans,Brazilian - Organic,18.0,,,,,,False,True
+9,Coffee beans,Organic Beans,Organic Decaf Blend,28.0,,,,,,False,True
+9,Coffee beans,Organic Beans,Organic Decaf Blend,12.0,,,,,,False,True
+9,Coffee beans,Organic Beans,Organic Decaf Blend,22.5,,,,,,False,True
+9,Coffee beans,Organic Beans,Organic Decaf Blend,23.0,,,,,,False,True
+8,Coffee beans,Premium Beans,Civet Cat,45.0,,,,,,False,True
+7,Coffee beans,Premium Beans,Jamacian Coffee River,19.75,,,,,,False,True
+59,Drinking Chocolate,Hot chocolate,Dark chocolate Lg,4.5,,,,,,False,True
+58,Drinking Chocolate,Hot chocolate,Dark chocolate Rg,3.5,,,,,,False,True
+61,Drinking Chocolate,Hot chocolate,Sustainably Grown Organic Lg,4.75,,,,,,False,True
+60,Drinking Chocolate,Hot chocolate,Sustainably Grown Organic Rg,3.75,,,,,,False,True
+63,Flavours,Regular syrup,Carmel syrup,0.8,,,,,,False,True
+84,Flavours,Regular syrup,Chocolate syrup,0.8,,,,,,False,True
+64,Flavours,Regular syrup,Hazelnut syrup,0.8,,,,,,False,True
+65,Flavours,Sugar free syrup,Sugar Free Vanilla syrup,0.8,,,,,,False,True
+14,Loose Tea,Black tea,Earl Grey,8.95,,,,,,False,True
+13,Loose Tea,Black tea,English Breakfast,8.95,,,,,,False,True
+17,Loose Tea,Chai tea,Morning Sunrise Chai,9.5,,,,,,False,True
+18,Loose Tea,Chai tea,Spicy Eye Opener Chai,10.95,,,,,,False,True
+16,Loose Tea,Chai tea,Traditional Blend Chai,8.95,,,,,,False,True
+15,Loose Tea,Green tea,Serenity Green Tea,9.25,,,,,,False,True
+11,Loose Tea,Herbal tea,Lemon Grass,8.95,,,,,,False,True
+12,Loose Tea,Herbal tea,Peppermint,8.95,,,,,,False,True
+21,Packaged Chocolate,Drinking Chocolate,Chili Mayan,13.33,,,,,,False,True
+19,Packaged Chocolate,Drinking Chocolate,Dark chocolate,6.4,,,,,,False,True
+20,Packaged Chocolate,Organic Chocolate,Sustainably Grown Organic,7.6,,,,,,False,True
+51,Tea,Brewed Black tea,Earl Grey Lg,3.0,,,,,,False,True
+50,Tea,Brewed Black tea,Earl Grey Rg,2.5,,,,,,False,True
+49,Tea,Brewed Black tea,English Breakfast Lg,3.0,,,,,,False,True
+48,Tea,Brewed Black tea,English Breakfast Rg,2.5,,,,,,False,True
+55,Tea,Brewed Chai tea,Morning Sunrise Chai Lg,4.0,,,,,,False,True
+54,Tea,Brewed Chai tea,Morning Sunrise Chai Rg,2.5,,,,,,False,True
+57,Tea,Brewed Chai tea,Spicy Eye Opener Chai Lg,3.1,,,,,,False,True
+56,Tea,Brewed Chai tea,Spicy Eye Opener Chai Rg,2.55,,,,,,False,True
+53,Tea,Brewed Chai tea,Traditional Blend Chai Lg,3.0,,,,,,False,True
+52,Tea,Brewed Chai tea,Traditional Blend Chai Rg,2.5,,,,,,False,True
+47,Tea,Brewed Green tea,Serenity Green Tea Lg,3.0,,,,,,False,True
+46,Tea,Brewed Green tea,Serenity Green Tea Rg,2.5,,,,,,False,True
+43,Tea,Brewed herbal tea,Lemon Grass Lg,3.0,,,,,,False,True
+42,Tea,Brewed herbal tea,Lemon Grass Rg,2.5,,,,,,False,True
+45,Tea,Brewed herbal tea,Peppermint Lg,3.0,,,,,,False,True
+44,Tea,Brewed herbal tea,Peppermint Rg,2.5,,,,,,False,True

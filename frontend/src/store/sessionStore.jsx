@@ -65,7 +65,11 @@ function sessionReducer(state, action) {
           ...state,
           cart: state.cart.map((item) =>
             item.cartItemId === newItem.cartItemId
-              ? { ...item, quantity: item.quantity + newItem.quantity }
+              ? {
+                  ...item,
+                  quantity: item.quantity + newItem.quantity,
+                  fromRecommendation: Boolean(item.fromRecommendation || newItem.fromRecommendation),
+                }
               : item
           ),
         }

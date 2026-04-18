@@ -18,6 +18,7 @@ from core.database import (
     initialize_connection_pool,
 )
 from core.security import http_basic
+from scripts.bootstrap_recommendation_data import bootstrap_recommendation_csv_to_db
 from scripts.seed_menu import seed_menu_data
 from services.face_service import face_service
 from services.recommendation_service import (
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
             if factory:
                 async with factory() as db:
                     await seed_menu_data(db)
+                    await bootstrap_recommendation_csv_to_db(db)
 
                 logger.info("Starting recommendation stats batch...")
                 recommendation_engine = get_recommendation_engine()
@@ -72,7 +74,7 @@ async def lifespan(app: FastAPI):
                     async with factory() as db:
                         await initialize_recommendation_engine(db)
 
-                    if recommendation_engine.load_cached_stats(stats, metadata):
+                    if recommendation_engine.load_cached_stats(stats):
                         logger.info("Recommendation system ready (cache enabled)")
                     else:
                         logger.warning("Recommendation cache load failed. Using fallback mode.")
