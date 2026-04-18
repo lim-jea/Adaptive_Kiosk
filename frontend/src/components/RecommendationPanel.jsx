@@ -1,21 +1,39 @@
 import { useEffect, useState } from 'react'
 import api from '../utils/api'
 
-function shortenReasoning(text, mode) {
+function buildCartSourceLabel(cartItems = []) {
+  const names = []
+  const seen = new Set()
+
+  for (const item of cartItems) {
+    const name = item?.menu_name || item?.menuName || item?.name
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    names.push(name)
+  }
+
+  if (names.length === 0) return null
+  if (names.length <= 2) return names.join(', ')
+  return `${names.slice(0, 2).join(', ')}, ...`
+}
+
+function shortenReasoning(text, mode, sourceMenuName = null) {
   if (!text) {
-    return mode === 'CF' ? '장바구니와 잘 어울리는 메뉴예요.' : '지금 조건에서 많이 선택된 메뉴예요.'
+    return mode === 'CF' ? '장바구니 메뉴와 함께 자주 선택돼요.' : '지금 조건에서 많이 선택된 메뉴예요.'
   }
 
   if (mode === 'CF') {
-    const sourceMatch = text.match(/장바구니의 (.+?)를 담은/)
     const percentMatch = text.match(/약 ([0-9.]+)%/)
-    if (sourceMatch && percentMatch) {
-      return `${sourceMatch[1]}와 함께 자주 선택돼요 · ${percentMatch[1]}%`
+    const sourceMatch = text.match(/장바구니의 (.+?)를 담은/)
+    const sourceMenu = sourceMenuName || sourceMatch?.[1] || '장바구니 메뉴'
+    if (percentMatch) {
+      return `${sourceMenu}와 함께 자주 선택돼요 · ${percentMatch[1]}%`
     }
-    return '장바구니와 잘 어울리는 메뉴예요.'
+    return `${sourceMenu}와 함께 자주 선택돼요.`
   }
 
   const percentMatch = text.match(/약 ([0-9.]+)%/)
+
   if (percentMatch) {
     return `지금 조건에서 선택 비중 ${percentMatch[1]}%`
   }
@@ -34,6 +52,7 @@ export default function RecommendationPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('CF')
+  const cartSourceLabel = buildCartSourceLabel(cartItems)
 
   useEffect(() => {
     if (!gender || (!age && !ageGroup)) {
@@ -208,7 +227,11 @@ export default function RecommendationPanel({
           const menuName = rec.menu_name || rec.name
           const finalScore = rec.final_score || rec.score || 0
           const trendWeight = rec.trend_weight || rec.trend_score || 1.0
-          const shortReason = shortenReasoning(rec.reasoning, mode)
+          const shortReason = shortenReasoning(
+            rec.reasoning,
+            mode,
+            cartSourceLabel
+          )
 
           return (
             <button
