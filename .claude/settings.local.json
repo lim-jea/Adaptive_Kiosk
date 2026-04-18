@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(python -c 'import ast; import sys; import os; files=[]; *)",
+      "Bash(python -c ' *)",
+      "Bash(npx eslint *)",
+      "Bash(git log *)"
+    ]
+  }
+}

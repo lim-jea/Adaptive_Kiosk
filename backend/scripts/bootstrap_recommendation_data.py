@@ -11,11 +11,13 @@ import csv
 import logging
 import secrets
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from model import Kiosk, KioskSession, Order, OrderItem
 
 
@@ -39,6 +41,11 @@ def _parse_datetime(value: str | None) -> datetime | None:
             return None
 
 
+def _chunk_rows(rows: list[dict], batch_size: int):
+    for start in range(0, len(rows), batch_size):
+        yield start, rows[start : start + batch_size]
+
+
 async def _ensure_kiosks_from_csv(db: AsyncSession, sessions_rows: list[dict]) -> None:
     kiosk_ids = sorted({int(row.get("kiosk_id") or 1) for row in sessions_rows})
     existing_ids = set((await db.execute(select(Kiosk.id))).scalars().all())
@@ -56,6 +63,136 @@ async def _ensure_kiosks_from_csv(db: AsyncSession, sessions_rows: list[dict]) -
         db.add(kiosk)
 
     await db.flush()
+
+
+async def _bulk_insert_sessions(
+    db: AsyncSession,
+    sessions_rows: list[dict],
+    batch_size: int,
+) -> int:
+    total = len(sessions_rows)
+    total_chunks = ceil(total / batch_size)
+
+    for chunk_index, (start, chunk_rows) in enumerate(_chunk_rows(sessions_rows, batch_size), start=1):
+        payload = []
+        for offset, row in enumerate(chunk_rows, start=1):
+            payload.append(
+                {
+                    "id": start + offset,
+                    "session_uuid": row.get("session_uuid") or secrets.token_hex(16),
+                    "kiosk_id": int(row.get("kiosk_id") or 1),
+                    "started_at": _parse_datetime(row.get("started_at")),
+                    "ended_at": _parse_datetime(row.get("ended_at")),
+                    "end_reason": row.get("end_reason") or None,
+                    "is_simple_mode": _is_truthy(row.get("is_simple_mode")),
+                    "estimated_age_group": row.get("estimated_age_group") or None,
+                    "estimated_gender": row.get("estimated_gender") or None,
+                    "help_triggered": _is_truthy(row.get("help_triggered")),
+                    "status": row.get("status") or "ended",
+                }
+            )
+
+        await db.execute(insert(KioskSession), payload)
+        await db.flush()
+        logger.info(
+            "Recommendation CSV bootstrap: imported sessions chunk %d/%d (%d/%d)",
+            chunk_index,
+            total_chunks,
+            min(start + len(chunk_rows), total),
+            total,
+        )
+
+    return total
+
+
+async def _bulk_insert_orders(
+    db: AsyncSession,
+    order_rows: list[dict],
+    batch_size: int,
+) -> int:
+    total = len(order_rows)
+    total_chunks = ceil(total / batch_size)
+    imported = 0
+
+    for chunk_index, (start, chunk_rows) in enumerate(_chunk_rows(order_rows, batch_size), start=1):
+        payload = []
+        for offset, row in enumerate(chunk_rows, start=1):
+            csv_session_id = int(row.get("session_id") or 0)
+            if csv_session_id <= 0:
+                continue
+            payload.append(
+                {
+                    "id": start + offset,
+                    "order_uuid": row.get("order_uuid") or secrets.token_hex(16),
+                    "session_id": csv_session_id,
+                    "created_at": _parse_datetime(row.get("created_at")),
+                    "total_price": int(float(row.get("total_price") or 0)),
+                    "used_recommendation": _is_truthy(row.get("used_recommendation")),
+                    "status": row.get("status") or "completed",
+                }
+            )
+
+        if not payload:
+            continue
+
+        await db.execute(insert(Order), payload)
+        imported += len(payload)
+        await db.flush()
+        logger.info(
+            "Recommendation CSV bootstrap: imported orders chunk %d/%d (%d/%d)",
+            chunk_index,
+            total_chunks,
+            min(start + len(chunk_rows), total),
+            total,
+        )
+
+    return imported
+
+
+async def _bulk_insert_order_items(
+    db: AsyncSession,
+    item_rows: list[dict],
+    batch_size: int,
+) -> int:
+    total = len(item_rows)
+    total_chunks = ceil(total / batch_size)
+    imported = 0
+
+    for chunk_index, (start, chunk_rows) in enumerate(_chunk_rows(item_rows, batch_size), start=1):
+        payload = []
+        for row in chunk_rows:
+            order_id = int(row.get("order_id") or 0)
+            if order_id <= 0:
+                continue
+            quantity = int(float(row.get("quantity") or 0))
+            unit_price = int(float(row.get("unit_price") or 0))
+            payload.append(
+                {
+                    "order_id": order_id,
+                    "menu_id": int(row.get("menu_id") or 0),
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "line_total": quantity * unit_price,
+                    "from_recommendation": _is_truthy(row.get("from_recommendation")),
+                    "selected_options_json": [],
+                }
+            )
+
+        if not payload:
+            continue
+
+        await db.execute(insert(OrderItem), payload)
+        imported += len(payload)
+        await db.flush()
+        logger.info(
+            "Recommendation CSV bootstrap: imported order_items chunk %d/%d (%d/%d)",
+            chunk_index,
+            total_chunks,
+            min(start + len(chunk_rows), total),
+            total,
+        )
+
+    return imported
 
 
 async def bootstrap_recommendation_csv_to_db(db: AsyncSession) -> bool:
@@ -91,70 +228,25 @@ async def bootstrap_recommendation_csv_to_db(db: AsyncSession) -> bool:
         logger.info("Recommendation CSV bootstrap skipped: source CSV files are empty")
         return False
 
+    batch_size = max(100, int(settings.RECOMMENDATION_BOOTSTRAP_BATCH_SIZE or 2000))
+    logger.info(
+        "Recommendation CSV bootstrap started: sessions=%d, orders=%d, items=%d, batch_size=%d",
+        len(sessions_rows),
+        len(order_rows),
+        len(item_rows),
+        batch_size,
+    )
+
     await _ensure_kiosks_from_csv(db, sessions_rows)
-
-    session_id_map: dict[int, int] = {}
-    order_id_map: dict[int, int] = {}
-
-    for csv_session_id, row in enumerate(sessions_rows, 1):
-        session = KioskSession(
-            session_uuid=row.get("session_uuid") or secrets.token_hex(16),
-            kiosk_id=int(row.get("kiosk_id") or 1),
-            started_at=_parse_datetime(row.get("started_at")),
-            ended_at=_parse_datetime(row.get("ended_at")),
-            end_reason=row.get("end_reason") or None,
-            is_simple_mode=_is_truthy(row.get("is_simple_mode")),
-            estimated_age_group=row.get("estimated_age_group") or None,
-            estimated_gender=row.get("estimated_gender") or None,
-            help_triggered=_is_truthy(row.get("help_triggered")),
-            status=row.get("status") or "ended",
-        )
-        db.add(session)
-        await db.flush()
-        session_id_map[csv_session_id] = session.id
-
-    for csv_order_id, row in enumerate(order_rows, 1):
-        csv_session_id = int(row.get("session_id") or 0)
-        mapped_session_id = session_id_map.get(csv_session_id)
-        if not mapped_session_id:
-            continue
-        order = Order(
-            order_uuid=row.get("order_uuid") or secrets.token_hex(16),
-            session_id=mapped_session_id,
-            created_at=_parse_datetime(row.get("created_at")),
-            total_price=int(float(row.get("total_price") or 0)),
-            used_recommendation=_is_truthy(row.get("used_recommendation")),
-            status=row.get("status") or "completed",
-        )
-        db.add(order)
-        await db.flush()
-        order_id_map[csv_order_id] = order.id
-
-    imported_items = 0
-    for row in item_rows:
-        csv_order_id = int(row.get("order_id") or 0)
-        mapped_order_id = order_id_map.get(csv_order_id)
-        if not mapped_order_id:
-            continue
-        quantity = int(float(row.get("quantity") or 0))
-        unit_price = int(float(row.get("unit_price") or 0))
-        item = OrderItem(
-            order_id=mapped_order_id,
-            menu_id=int(row.get("menu_id") or 0),
-            quantity=quantity,
-            unit_price=unit_price,
-            line_total=quantity * unit_price,
-            from_recommendation=_is_truthy(row.get("from_recommendation")),
-            selected_options_json=[],
-        )
-        db.add(item)
-        imported_items += 1
+    imported_sessions = await _bulk_insert_sessions(db, sessions_rows, batch_size)
+    imported_orders = await _bulk_insert_orders(db, order_rows, batch_size)
+    imported_items = await _bulk_insert_order_items(db, item_rows, batch_size)
 
     await db.commit()
     logger.info(
         "Recommendation CSV bootstrap completed: imported %d sessions, %d orders, %d items into DB",
-        len(session_id_map),
-        len(order_id_map),
+        imported_sessions,
+        imported_orders,
         imported_items,
     )
     return True

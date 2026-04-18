@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     NAVER_CLIENT_SECRET: str = ""
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
 
+    RECOMMENDATION_BOOTSTRAP_ON_STARTUP: bool = True
+    RECOMMENDATION_BOOTSTRAP_BATCH_SIZE: int = 2000
+
     model_config = {
         "env_file": (
             str(Path(__file__).resolve().parents[1] / ".env"),

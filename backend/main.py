@@ -63,7 +63,13 @@ async def lifespan(app: FastAPI):
             if factory:
                 async with factory() as db:
                     await seed_menu_data(db)
-                    await bootstrap_recommendation_csv_to_db(db)
+                    if settings.RECOMMENDATION_BOOTSTRAP_ON_STARTUP:
+                        await bootstrap_recommendation_csv_to_db(db)
+                    else:
+                        logger.info(
+                            "Recommendation CSV bootstrap skipped by env setting "
+                            "(RECOMMENDATION_BOOTSTRAP_ON_STARTUP=false)"
+                        )
 
                 logger.info("Starting recommendation stats batch...")
                 recommendation_engine = get_recommendation_engine()
