@@ -14,6 +14,7 @@ export function useVoiceOrder({
   selectedCategory,
   selectedMenuName,
   onAction,
+  onVoiceEvent,
   autoStart = false,
   ttsRate = 0.8,
 }) {
@@ -25,12 +26,14 @@ export function useVoiceOrder({
   const [error, setError] = useState(null)
 
   const onActionRef = useRef(onAction)
+  const onVoiceEventRef = useRef(onVoiceEvent)
   const selectedCategoryRef = useRef(selectedCategory)
   const selectedMenuNameRef = useRef(selectedMenuName)
   const handleAIResponseRef = useRef(null)
   const startedRef = useRef(false)
 
   useEffect(() => { onActionRef.current = onAction }, [onAction])
+  useEffect(() => { onVoiceEventRef.current = onVoiceEvent }, [onVoiceEvent])
   useEffect(() => { selectedCategoryRef.current = selectedCategory }, [selectedCategory])
   useEffect(() => { selectedMenuNameRef.current = selectedMenuName }, [selectedMenuName])
 
@@ -48,6 +51,7 @@ export function useVoiceOrder({
   const sendMessage = useCallback(async (text) => {
     if (!sessionUuid || !text) return
     setLastUserText(text)
+    try { onVoiceEventRef.current?.('transcript_submitted', { content: text }) } catch {}
     setStatus('thinking')
     try {
       const { data } = await api.post('/api/v1/voice/messages', {
@@ -58,6 +62,14 @@ export function useVoiceOrder({
       })
       setPersona(data.persona)
       setStage(data.current_stage)
+      try {
+        onVoiceEventRef.current?.('response_received', {
+          matched_by: data.matched_by,
+          current_stage: data.current_stage,
+          intent: data.response?.intent,
+          action_types: (data.response?.actions || []).map((action) => action.type),
+        })
+      } catch {}
       await handleAIResponseRef.current?.(data.response, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
@@ -73,6 +85,12 @@ export function useVoiceOrder({
     setStage(resp.next_stage || 'greeting')
     setLastResponseText(resp.response_text || '')
     dispatchActions(resp.actions)
+    try {
+      onVoiceEventRef.current?.('actions_applied', {
+        next_stage: resp.next_stage || 'greeting',
+        action_types: (resp.actions || []).map((action) => action.type),
+      })
+    } catch {}
 
     // TTS 재생 전에 STT를 확실히 끈다 — 스피커 출력이 마이크로 피드백되는 것 방지
     try { stt.stop() } catch {}
@@ -107,6 +125,12 @@ export function useVoiceOrder({
       const { data } = await api.post('/api/v1/voice/start', { session_uuid: sessionUuid })
       setPersona(data.persona)
       setStage(data.current_stage)
+      try {
+        onVoiceEventRef.current?.('start', {
+          persona: data.persona,
+          current_stage: data.current_stage,
+        })
+      } catch {}
       await handleAIResponseRef.current?.(data.greeting, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
@@ -121,6 +145,7 @@ export function useVoiceOrder({
     if (sessionUuid && startedRef.current) {
       try { await api.post('/api/v1/voice/end', { session_uuid: sessionUuid }) } catch {}
     }
+    try { onVoiceEventRef.current?.('end', {}) } catch {}
     startedRef.current = false
     setStatus('ended')
   }, [sessionUuid, stt, tts])

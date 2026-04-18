@@ -1,8 +1,9 @@
 // 결제 페이지 — 결제 수단 선택 → 결제 중 → 완료 처리
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
+import { useLogger } from '../hooks/useLogger'
 
 const PAYMENT_METHODS = [
   {
@@ -46,6 +47,7 @@ const PAYMENT_METHODS = [
 export default function PaymentPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
+  const logger = useLogger(state.sessionUuid)
 
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [status, setStatus] = useState('idle') // idle | processing | done
@@ -53,8 +55,28 @@ export default function PaymentPage() {
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
 
+  useEffect(() => {
+    const enteredAt = Date.now()
+    if (state.sessionUuid) {
+      logger.logScreenEnter('payment', {
+        total_price: totalPrice,
+        total_count: totalCount,
+      })
+    }
+    return () => {
+      if (state.sessionUuid) logger.logScreenExit('payment', Date.now() - enteredAt)
+    }
+  }, [logger, state.sessionUuid, totalCount, totalPrice])
+
   // 결제 수단 선택 → 2초 처리 → 주문 API → 완료 페이지
   const handlePay = useCallback(async (method) => {
+    logger.log('payment', 'payment', {
+      actionName: 'payment_method_select',
+      targetType: 'payment_method',
+      targetId: method.id,
+      targetLabel: method.label,
+      payload: { total_price: totalPrice, total_count: totalCount },
+    })
     setSelectedMethod(method.id)
     setStatus('processing')
 
@@ -67,12 +89,25 @@ export default function PaymentPage() {
         session_uuid: state.sessionUuid,
       })
       orderUuid = res.data.order_uuid
+      logger.log('order', 'payment', {
+        actionName: 'order_submit_success',
+        targetType: 'order',
+        targetId: orderUuid,
+        payload: { total_price: totalPrice, total_count: totalCount },
+        source: 'system',
+      })
     } catch (err) {
       console.error('주문 저장 실패:', err)
+      logger.log('order', 'payment', {
+        actionName: 'order_submit_error',
+        payload: { message: err?.message || 'order_submit_failed' },
+        source: 'system',
+      })
       // 데모용: 실패해도 완료 화면으로 진행
     }
 
     setStatus('done')
+    await logger.flush()
     navigate('/complete', {
       replace: true,
       state: {
@@ -83,7 +118,7 @@ export default function PaymentPage() {
         orderUuid,
       },
     })
-  }, [state, navigate, totalPrice, totalCount])
+  }, [logger, navigate, state, totalCount, totalPrice])
 
   // 결제 중 오버레이
   if (status === 'processing') {
@@ -104,7 +139,14 @@ export default function PaymentPage() {
       {/* 헤더 */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center sticky top-0 z-10">
         <button
-          onClick={() => navigate('/kiosk')}
+          onClick={() => {
+            logger.log('navigation', 'payment', {
+              actionName: 'back_to_kiosk',
+              targetType: 'button',
+              targetLabel: 'back',
+            })
+            navigate('/kiosk')
+          }}
           className="text-gray-500 hover:text-gray-700 p-2 -ml-2 mr-2"
         >
           ← 뒤로

@@ -186,6 +186,31 @@ class RecommendationEvent(Base):
     led_to_order = Column(Boolean, default=False, nullable=False)
 
 
+class SessionActivityLog(Base):
+    __tablename__ = "session_activity_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("kiosk_sessions.id"), nullable=False)
+    seq = Column(Integer, nullable=False)
+    occurred_at = Column(DateTime, nullable=False)
+    event_type = Column(String(30), nullable=False)
+    screen_name = Column(String(30), nullable=True)
+    action_name = Column(String(50), nullable=False)
+    target_type = Column(String(30), nullable=True)
+    target_id = Column(String(100), nullable=True)
+    target_label = Column(String(200), nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    source = Column(String(20), nullable=False, default="ui")
+    payload_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_activity_session_seq", "session_id", "seq"),
+        Index("ix_activity_session_time", "session_id", "occurred_at"),
+        Index("ix_activity_event_type", "event_type"),
+    )
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
@@ -220,5 +245,6 @@ __all__ = [
     "OrderItem",
     "VisionEvent",
     "RecommendationEvent",
+    "SessionActivityLog",
     "ChatMessage",
 ]

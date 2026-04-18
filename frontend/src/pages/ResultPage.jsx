@@ -2,6 +2,8 @@
 
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useSession } from '../store/sessionStore.jsx'
+import { useEffect } from 'react'
+import { useLogger } from '../hooks/useLogger'
 
 const GENDER_LABEL = {
   male: '남성',
@@ -28,6 +30,22 @@ export default function ResultPage() {
     should_use_simple_mode,
     sessionUuid,
   } = location.state || {}
+  const logger = useLogger(sessionUuid)
+
+  useEffect(() => {
+    const enteredAt = Date.now()
+    if (sessionUuid) {
+      logger.logScreenEnter('result', {
+        age_group,
+        gender,
+        age_est,
+        should_use_simple_mode,
+      })
+    }
+    return () => {
+      if (sessionUuid) logger.logScreenExit('result', Date.now() - enteredAt)
+    }
+  }, [age_est, age_group, gender, logger, sessionUuid, should_use_simple_mode])
 
   if (!age_group) {
     navigate('/', { replace: true })
@@ -35,6 +53,12 @@ export default function ResultPage() {
   }
 
   const handleOrder = () => {
+    logger.log('navigation', 'result', {
+      actionName: 'go_to_kiosk',
+      targetType: 'button',
+      targetLabel: 'order_start',
+      payload: { should_use_simple_mode },
+    })
     dispatch({
       type: ACTIONS.SET_VISION,
       payload: {
@@ -48,6 +72,11 @@ export default function ResultPage() {
   }
 
   const handleRetry = () => {
+    logger.log('navigation', 'result', {
+      actionName: 'retry_from_result',
+      targetType: 'button',
+      targetLabel: 'retry',
+    })
     dispatch({ type: ACTIONS.CLEAR_SESSION })
     navigate('/')
   }

@@ -447,6 +447,35 @@ class SuggestResponse(BaseModel):
 
 
 # ============================================================================
+# Session Activity Logs
+# ============================================================================
+
+
+class ActivityLogItemRequest(BaseModel):
+    seq: int = Field(..., ge=1)
+    occurred_at: datetime
+    event_type: str = Field(..., min_length=1, max_length=30)
+    screen_name: Optional[str] = Field(None, max_length=30)
+    action_name: str = Field(..., min_length=1, max_length=50)
+    target_type: Optional[str] = Field(None, max_length=30)
+    target_id: Optional[str] = Field(None, max_length=100)
+    target_label: Optional[str] = Field(None, max_length=200)
+    duration_ms: Optional[int] = Field(None, ge=0)
+    source: str = Field(default="ui", min_length=1, max_length=20)
+    payload_json: Optional[Dict[str, Any]] = None
+
+
+class ActivityLogBatchRequest(BaseModel):
+    session_uuid: str = Field(..., min_length=32, max_length=32)
+    events: List[ActivityLogItemRequest] = Field(default_factory=list)
+
+
+class ActivityLogBatchResponse(BaseModel):
+    session_uuid: str
+    inserted_count: int
+
+
+# ============================================================================
 # Chat / Voice
 # ============================================================================
 

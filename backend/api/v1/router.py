@@ -7,6 +7,7 @@ from api.v1.endpoints.option import router as option_router
 from api.v1.endpoints.cart import router as cart_router
 from api.v1.endpoints.order import router as order_router
 from api.v1.endpoints.analytics import router as analytics_router
+from api.v1.endpoints.logs import router as logs_router
 from api.v1.endpoints.face import router as face_router
 from api.v1.endpoints.voice import router as voice_router
 from api.v1.endpoints.recommendation import router as recommendation_router
@@ -21,6 +22,7 @@ v1_router.include_router(option_router)
 v1_router.include_router(cart_router)
 v1_router.include_router(order_router)
 v1_router.include_router(analytics_router)
+v1_router.include_router(logs_router)
 v1_router.include_router(face_router)
 v1_router.include_router(voice_router)
 

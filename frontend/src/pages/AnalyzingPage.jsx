@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
+import { useLogger } from '../hooks/useLogger'
 
 export default function AnalyzingPage() {
   const navigate = useNavigate()
@@ -12,6 +13,7 @@ export default function AnalyzingPage() {
 
   // CameraPage에서 전달된 데이터
   const { frames, sessionUuid } = location.state || {}
+  const logger = useLogger(sessionUuid)
 
   const [error, setError] = useState(null)
   const [dots, setDots] = useState('')
@@ -24,6 +26,9 @@ export default function AnalyzingPage() {
   }, [])
 
   useEffect(() => {
+    const enteredAt = Date.now()
+    if (sessionUuid) logger.logScreenEnter('analyzing')
+
     if (!frames || !sessionUuid) {
       navigate('/', { replace: true })
       return
@@ -31,6 +36,11 @@ export default function AnalyzingPage() {
 
     const analyze = async () => {
       try {
+        logger.log('vision', 'analyzing', {
+          actionName: 'face_analysis_start',
+          source: 'system',
+          payload: { frame_count: frames.length },
+        })
         const response = await api.post('/api/v1/face/analyze', {
           session_uuid: sessionUuid,
           frames,
@@ -54,6 +64,21 @@ export default function AnalyzingPage() {
           },
         })
 
+        logger.log('vision', 'analyzing', {
+          actionName: 'face_analysis_complete',
+          source: 'system',
+          payload: {
+            age_group,
+            gender,
+            age_est,
+            should_use_simple_mode,
+          },
+        })
+        logger.logScreenExit('analyzing', Date.now() - enteredAt, {
+          reason: 'analysis_complete',
+        })
+        await logger.flush()
+
         navigate('/result', {
           replace: true,
           state: {
@@ -70,10 +95,20 @@ export default function AnalyzingPage() {
             || '분석 중 오류가 발생했습니다.'
         setError(message)
         console.error('얼굴 분석 실패:', err)
+        logger.log('vision', 'analyzing', {
+          actionName: 'face_analysis_error',
+          source: 'system',
+          payload: { message },
+        })
       }
     }
 
     analyze()
+    return () => {
+      if (sessionUuid) {
+        logger.logScreenExit('analyzing', Date.now() - enteredAt)
+      }
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

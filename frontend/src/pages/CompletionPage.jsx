@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
+import { useLogger } from '../hooks/useLogger'
 
 // 스탬프 카드 시뮬레이션 (실제 DB 연동은 추후)
 const TOTAL_STAMPS = 10
@@ -18,18 +19,37 @@ export default function CompletionPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { state, dispatch, ACTIONS } = useSession()
+  const logger = useLogger(state.sessionUuid)
 
   const { paymentMethod, totalPrice, isMembership } = location.state || {}
+
+  useEffect(() => {
+    const enteredAt = Date.now()
+    if (state.sessionUuid) {
+      logger.logScreenEnter('completion', {
+        payment_method: paymentMethod,
+        total_price: totalPrice,
+      })
+    }
+    return () => {
+      if (state.sessionUuid) logger.logScreenExit('completion', Date.now() - enteredAt)
+    }
+  }, [logger, paymentMethod, state.sessionUuid, totalPrice])
 
   // 마운트 시 세션을 ended 상태로 PATCH (한 번만)
   useEffect(() => {
     const endSession = async () => {
       if (!state.sessionUuid) return
       try {
+        logger.log('session', 'completion', {
+          actionName: 'session_complete',
+          source: 'system',
+        })
         await api.patch(`/api/v1/sessions/${state.sessionUuid}`, {
           status: 'ended',
           end_reason: 'completed',
         })
+        await logger.flush()
       } catch (err) {
         console.warn('세션 종료 실패 (무시):', err.message)
       }
@@ -74,13 +94,24 @@ export default function CompletionPage() {
     return () => clearInterval(timer)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleGoHome = () => {
+  const handleGoHome = async () => {
+    logger.log('navigation', 'completion', {
+      actionName: 'go_home',
+      targetType: 'button',
+      targetLabel: 'home',
+    })
+    await logger.flush()
     dispatch({ type: ACTIONS.CLEAR_SESSION })
     navigate('/', { replace: true })
   }
 
   const handleParking = () => {
     if (parkingDone) return
+    logger.log('click', 'completion', {
+      actionName: 'parking_register',
+      targetType: 'button',
+      targetLabel: 'parking_register',
+    })
     setParkingDone(true)
     setParkingToast(true)
     setTimeout(() => setParkingToast(false), 3000)

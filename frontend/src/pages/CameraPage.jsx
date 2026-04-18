@@ -5,10 +5,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCamera } from '../hooks/useCamera'
 import api from '../utils/api'
+import { useLogger } from '../hooks/useLogger'
 
 export default function CameraPage() {
   const navigate = useNavigate()
   const { videoRef, error, startCamera, captureFrames, stopCamera } = useCamera()
+  const sessionUuid = typeof window !== 'undefined' ? sessionStorage.getItem('session_uuid') : null
+  const logger = useLogger(sessionUuid)
 
   const [isCapturing, setIsCapturing] = useState(false)  // 촬영 중 상태
   const [progress, setProgress] = useState(0)            // 진행 바 (0~100)
@@ -19,17 +22,26 @@ export default function CameraPage() {
 
   // 컴포넌트 마운트 시 카메라 시작
   useEffect(() => {
+    const enteredAt = Date.now()
+    if (sessionUuid) logger.logScreenEnter('camera')
+
     startCamera().catch((err) => {
       setCamError(err.message)
     })
 
     // 언마운트 시 카메라 정리
     return () => {
+      if (sessionUuid) logger.logScreenExit('camera', Date.now() - enteredAt)
       stopCamera()
     }
-  }, [startCamera, stopCamera])
+  }, [logger, sessionUuid, startCamera, stopCamera])
 
   const handleRetryCamera = useCallback(async () => {
+    logger.log('click', 'camera', {
+      actionName: 'camera_retry',
+      targetType: 'button',
+      targetLabel: 'camera_retry',
+    })
     setCamError(null)
     stopCamera()
     try {
@@ -37,7 +49,7 @@ export default function CameraPage() {
     } catch (err) {
       setCamError(err.message)
     }
-  }, [startCamera, stopCamera])
+  }, [logger, startCamera, stopCamera])
 
   /**
    * 촬영 시작 — 5장 캡처 후 AnalyzingPage로 이동
@@ -46,6 +58,11 @@ export default function CameraPage() {
     if (isCapturing) return
     setIsCapturing(true)
     setProgress(0)
+    logger.log('camera', 'camera', {
+      actionName: 'capture_start',
+      targetType: 'button',
+      targetLabel: 'capture_start',
+    })
 
     try {
       // session_uuid는 LandingPage에서 이미 발급됨
@@ -67,15 +84,24 @@ export default function CameraPage() {
       clearInterval(progressInterval)
       setProgress(100)
       await new Promise((r) => setTimeout(r, 300))
+      logger.log('camera', 'camera', {
+        actionName: 'capture_complete',
+        payload: { frame_count: captureResult.frames?.length || 0 },
+      })
+      await logger.flush(sessionUuid)
 
       navigate('/analyzing', { state: { ...captureResult, sessionUuid } })
     } catch (err) {
       console.error('촬영 오류:', err)
+      logger.log('camera', 'camera', {
+        actionName: 'capture_error',
+        payload: { message: err?.message || 'capture_failed' },
+      })
       setCamError('촬영 중 오류가 발생했습니다. 다시 시도해주세요.')
       setIsCapturing(false)
       setProgress(0)
     }
-  }, [isCapturing, captureFrames, navigate])
+  }, [captureFrames, isCapturing, logger, navigate])
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center">
@@ -173,7 +199,15 @@ export default function CameraPage() {
 
       {/* 뒤로가기 */}
       <button
-        onClick={() => navigate('/')}
+        onClick={async () => {
+          logger.log('navigation', 'camera', {
+            actionName: 'back_home',
+            targetType: 'button',
+            targetLabel: 'home',
+          })
+          await logger.flush()
+          navigate('/')
+        }}
         disabled={isCapturing}
         className="mt-4 text-gray-400 hover:text-gray-200 text-sm py-2 px-4"
       >

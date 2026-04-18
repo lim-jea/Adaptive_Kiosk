@@ -1,28 +1,49 @@
 // 랜딩 페이지 — 키오스크 시작 화면
 // "시작하기" 버튼 클릭 시 세션 시작(X-API-Key) 후 CameraPage 이동
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
+import { useLogger } from '../hooks/useLogger'
 
 export default function LandingPage() {
   const navigate = useNavigate()
   const { dispatch, ACTIONS } = useSession()
+  const logger = useLogger()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const enteredAt = Date.now()
+    logger.logScreenEnter('landing')
+    return () => {
+      logger.logScreenExit('landing', Date.now() - enteredAt)
+    }
+  }, [logger])
 
   const handleStart = async () => {
     setLoading(true)
     setError(null)
 
     try {
+      logger.log('click', 'landing', {
+        actionName: 'start_click',
+        targetType: 'button',
+        targetLabel: 'start',
+      })
       // 세션 생성 (X-API-Key는 axios 인터셉터에서 자동 첨부)
       const sessionRes = await api.post('/api/v1/sessions')
       const { session_uuid } = sessionRes.data
 
       dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
       sessionStorage.setItem('session_uuid', session_uuid)
+      logger.log('session', 'landing', {
+        actionName: 'session_start',
+        source: 'system',
+        payload: { session_uuid },
+      })
+      await logger.flush(session_uuid)
 
       navigate('/camera')
     } catch (err) {

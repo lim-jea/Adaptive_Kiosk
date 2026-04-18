@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useVoiceOrder } from '../hooks/useVoiceOrder'
+import { useLogger } from '../hooks/useLogger'
 import VoiceOverlay from '../components/VoiceOverlay'
 import RecommendationPanel from '../components/RecommendationPanel'
 
@@ -27,6 +28,7 @@ function sameOptionSelection(item, optionItemIds = []) {
 export default function KioskPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
+  const logger = useLogger(state.sessionUuid)
 
   const [categories, setCategories] = useState([])
   const [menus, setMenus] = useState([])
@@ -96,6 +98,18 @@ export default function KioskPage() {
   }, [])
 
   useEffect(() => {
+    const enteredAt = Date.now()
+    if (state.sessionUuid) {
+      logger.logScreenEnter('kiosk', {
+        is_simple_mode: state.isSimpleMode,
+      })
+    }
+    return () => {
+      if (state.sessionUuid) logger.logScreenExit('kiosk', Date.now() - enteredAt)
+    }
+  }, [logger, state.isSimpleMode, state.sessionUuid])
+
+  useEffect(() => {
     const loadServerCart = async () => {
       if (!state.sessionUuid) {
         cartLoadedRef.current = false
@@ -154,8 +168,24 @@ export default function KioskPage() {
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
 
+  const handleCategoryChange = useCallback((categoryName) => {
+    logger.log('navigation', 'kiosk', {
+      actionName: 'category_tab_click',
+      targetType: 'category',
+      targetLabel: categoryName,
+    })
+    setActiveCategory(categoryName)
+  }, [logger])
+
   // 메뉴 클릭 → 상세 (옵션 그룹 포함) 조회 후 모달 오픈
   const handleMenuClick = useCallback(async (menu, meta = {}) => {
+    logger.log(meta.fromRecommendation ? 'recommendation' : 'click', 'kiosk', {
+      actionName: meta.fromRecommendation ? 'recommendation_click' : 'menu_click',
+      targetType: 'menu',
+      targetId: menu.id,
+      targetLabel: menu.name,
+      source: meta.fromRecommendation ? 'recommendation' : 'ui',
+    })
     try {
       const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(menu.name)}`)
       setOptionMenu({
@@ -165,10 +195,22 @@ export default function KioskPage() {
     } catch (err) {
       console.error('메뉴 상세 로드 실패:', err)
     }
-  }, [])
+  }, [logger])
 
   const handleConfirmOption = useCallback(({ selectedOptionIds, optionLabels, quantity, unitPrice }) => {
     const cartItemId = `${optionMenu.name}_${[...selectedOptionIds].sort().join('-')}`
+    logger.log('cart', 'kiosk', {
+      actionName: 'cart_add',
+      targetType: 'menu',
+      targetId: optionMenu.id,
+      targetLabel: optionMenu.name,
+      payload: {
+        quantity,
+        option_item_ids: selectedOptionIds,
+        option_labels: optionLabels,
+        from_recommendation: Boolean(optionMenu.fromRecommendation),
+      },
+    })
     dispatch({
       type: ACTIONS.ADD_TO_CART,
       payload: {
@@ -186,25 +228,46 @@ export default function KioskPage() {
     })
     setOptionMenu(null)
     setCartOpen(true)
-  }, [optionMenu, dispatch, ACTIONS])
+  }, [optionMenu, logger, dispatch, ACTIONS])
 
   const handleQtyChange = useCallback((cartItemId, delta) => {
     const item = state.cart.find((i) => i.cartItemId === cartItemId)
     if (!item) return
+    logger.log('cart', 'kiosk', {
+      actionName: 'cart_qty_change',
+      targetType: 'cart_item',
+      targetId: cartItemId,
+      targetLabel: item.menuName,
+      payload: {
+        previous_quantity: item.quantity,
+        next_quantity: item.quantity + delta,
+      },
+    })
     dispatch({
       type: ACTIONS.UPDATE_CART_QTY,
       payload: { cartItemId, quantity: item.quantity + delta },
     })
-  }, [state.cart, dispatch, ACTIONS])
+  }, [state.cart, logger, dispatch, ACTIONS])
 
   const handleOrder = useCallback(() => {
     if (state.cart.length === 0 || !state.sessionUuid) return
+    logger.log('navigation', 'kiosk', {
+      actionName: 'go_to_payment',
+      targetType: 'button',
+      targetLabel: 'payment',
+      payload: { total_price: totalPrice, total_count: totalCount },
+    })
     navigate('/payment')
-  }, [state.cart, state.sessionUuid, navigate])
+  }, [logger, navigate, state.cart.length, state.sessionUuid, totalCount, totalPrice])
 
   const handleBack = useCallback(() => {
+    logger.log('navigation', 'kiosk', {
+      actionName: 'back_home',
+      targetType: 'button',
+      targetLabel: 'home',
+    })
     navigate('/')
-  }, [navigate])
+  }, [logger, navigate])
 
   // ─── 음성 주문 통합 ─────────────────────────────────────────────────
   // 액션 핸들러는 비동기 fetch 도중 cart가 바뀌어도 항상 최신 cart를 보도록 ref 사용
@@ -212,6 +275,11 @@ export default function KioskPage() {
   useEffect(() => { cartRef.current = state.cart }, [state.cart])
 
   const handleVoiceAction = useCallback(async (action) => {
+    logger.log('voice', 'kiosk', {
+      actionName: 'voice_action_applied',
+      source: 'voice',
+      payload: { type: action.type },
+    })
     switch (action.type) {
       case 'navigate': {
         // 옵션 모달이 열린 상태에서 다른 화면(카테고리/결제/카트 등)으로 이동하면
@@ -234,6 +302,12 @@ export default function KioskPage() {
             setOptionMenu(detail.data)
           } catch (e) { console.error(e) }
         } else if (action.target === 'cart') {
+          logger.log('navigation', 'kiosk', {
+            actionName: 'cart_open',
+            source: 'voice',
+            targetType: 'panel',
+            targetLabel: 'cart',
+          })
           setCartOpen(true)
         } else if (action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
@@ -251,6 +325,13 @@ export default function KioskPage() {
           } catch (e) { console.error(e) }
         }
         setOptionPreview(action.option_item_ids || [])
+        logger.log('option', 'kiosk', {
+          actionName: 'option_preview',
+          source: 'voice',
+          targetType: 'menu',
+          targetLabel: action.menu_name,
+          payload: { option_item_ids: action.option_item_ids || [] },
+        })
         flash(`option:${action.menu_name}`)
         break
       }
@@ -307,6 +388,15 @@ export default function KioskPage() {
           item = candidates[candidates.length - 1] || null
         }
         if (item) dispatch({ type: ACTIONS.REMOVE_FROM_CART, payload: { cartItemId: item.cartItemId } })
+        if (item) {
+          logger.log('cart', 'kiosk', {
+            actionName: 'cart_remove',
+            source: 'voice',
+            targetType: 'cart_item',
+            targetId: item.cartItemId,
+            targetLabel: item.menuName,
+          })
+        }
         break
       }
       case 'cart_update': {
@@ -326,6 +416,16 @@ export default function KioskPage() {
           type: ACTIONS.UPDATE_CART_QTY,
           payload: { cartItemId: item.cartItemId, quantity: action.quantity },
         })
+        if (item) {
+          logger.log('cart', 'kiosk', {
+            actionName: 'cart_qty_change',
+            source: 'voice',
+            targetType: 'cart_item',
+            targetId: item.cartItemId,
+            targetLabel: item.menuName,
+            payload: { next_quantity: action.quantity },
+          })
+        }
         break
       }
       case 'place_order': {
@@ -340,13 +440,20 @@ export default function KioskPage() {
       }
       default: break
     }
-  }, [dispatch, ACTIONS, navigate])
+  }, [dispatch, ACTIONS, logger, navigate])
 
   const voice = useVoiceOrder({
     sessionUuid: state.sessionUuid,
     selectedCategory: activeCategory === 'all' ? null : activeCategory,
     selectedMenuName: optionMenu?.name || null,
     onAction: handleVoiceAction,
+    onVoiceEvent: (eventName, payload = {}) => {
+      logger.log('voice', 'kiosk', {
+        actionName: eventName,
+        source: 'voice',
+        payload,
+      })
+    },
     autoStart: state.isSimpleMode,
     ttsRate: state.isSimpleMode ? 0.65 : 0.85,
   })
@@ -368,7 +475,7 @@ export default function KioskPage() {
           label="전체"
           active={activeCategory === 'all'}
           flashing={voiceFlash === 'category:all'}
-          onClick={() => setActiveCategory('all')}
+          onClick={() => handleCategoryChange('all')}
         />
         {categories.map((cat) => (
           <CategoryTab
@@ -376,7 +483,7 @@ export default function KioskPage() {
             label={cat.name}
             active={activeCategory === cat.name}
             flashing={voiceFlash === `category:${cat.name}`}
-            onClick={() => setActiveCategory(cat.name)}
+            onClick={() => handleCategoryChange(cat.name)}
           />
         ))}
       </div>
@@ -494,6 +601,7 @@ export default function KioskPage() {
           previewSelections={optionPreview}
           onClose={() => { setOptionMenu(null); setOptionPreview([]) }}
           onConfirm={handleConfirmOption}
+          onLog={(event) => logger.log(event.eventType, 'kiosk', event)}
         />
       )}
     </div>
@@ -583,7 +691,7 @@ function CartRow({ item, onQtyChange }) {
 }
 
 /** 옵션 선택 모달 — option_groups를 동적으로 렌더링 */
-function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
+function OptionModal({ menu, previewSelections = [], onClose, onConfirm, onLog }) {
   const [selections, setSelections] = useState(() => {
     const init = {}
     for (const g of menu.option_groups || []) {
@@ -633,6 +741,7 @@ function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
   }, [menu, selections])
 
   const toggleOption = (group, itemId) => {
+    const option = group.items.find((i) => i.id === itemId)
     setSelections((prev) => {
       const current = prev[group.id] || []
       const isSelected = current.includes(itemId)
@@ -648,6 +757,17 @@ function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
           next = current
         }
       }
+      onLog?.({
+        eventType: 'option',
+        actionName: isSelected ? 'option_deselect' : 'option_select',
+        targetType: 'option',
+        targetId: itemId,
+        targetLabel: option?.name || String(itemId),
+        payload: {
+          group_name: group.name,
+          menu_name: menu.name,
+        },
+      })
       return { ...prev, [group.id]: next }
     })
   }
@@ -665,6 +785,18 @@ function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
         }
       }
     }
+    onLog?.({
+      eventType: 'option',
+      actionName: 'option_confirm',
+      targetType: 'menu',
+      targetId: menu.id,
+      targetLabel: menu.name,
+      payload: {
+        selected_option_ids: selectedOptionIds,
+        quantity,
+        unit_price: unitPrice,
+      },
+    })
     onConfirm({ selectedOptionIds, optionLabels, quantity, unitPrice })
   }
 
@@ -701,7 +833,16 @@ function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
               )}
             </div>
             <button
-              onClick={onClose}
+              onClick={() => {
+                onLog?.({
+                  eventType: 'option',
+                  actionName: 'option_modal_close',
+                  targetType: 'menu',
+                  targetId: menu.id,
+                  targetLabel: menu.name,
+                })
+                onClose()
+              }}
               className="text-gray-400 hover:text-gray-600 text-3xl leading-none w-8 h-8 flex items-center justify-center"
             >
               ×
@@ -748,14 +889,34 @@ function OptionModal({ menu, previewSelections = [], onClose, onConfirm }) {
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">수량</p>
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                onClick={() => {
+                  onLog?.({
+                    eventType: 'option',
+                    actionName: 'option_quantity_change',
+                    targetType: 'menu',
+                    targetId: menu.id,
+                    targetLabel: menu.name,
+                    payload: { next_quantity: Math.max(1, quantity - 1) },
+                  })
+                  setQuantity((q) => Math.max(1, q - 1))
+                }}
                 className="w-11 h-11 rounded-full border-2 border-gray-200 text-gray-700 text-xl font-bold flex items-center justify-center hover:border-gray-400 transition-colors"
               >
                 −
               </button>
               <span className="text-2xl font-bold text-gray-800 w-8 text-center">{quantity}</span>
               <button
-                onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+                onClick={() => {
+                  onLog?.({
+                    eventType: 'option',
+                    actionName: 'option_quantity_change',
+                    targetType: 'menu',
+                    targetId: menu.id,
+                    targetLabel: menu.name,
+                    payload: { next_quantity: Math.min(10, quantity + 1) },
+                  })
+                  setQuantity((q) => Math.min(10, q + 1))
+                }}
                 className="w-11 h-11 rounded-full bg-amber-500 text-white text-xl font-bold flex items-center justify-center hover:bg-amber-600 transition-colors"
               >
                 +
