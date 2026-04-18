@@ -18,6 +18,7 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   const recognitionRef = useRef(null)
   const onFinalRef = useRef(onFinal)
   const [listening, setListening] = useState(false)
+  const listeningRef = useRef(false)
   const [interim, setInterim] = useState('')
   const [error, setError] = useState(null)
   const supported = !!SpeechRecognition
@@ -97,11 +98,13 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
         setError(e.error || 'unknown')
       }
       setListening(false)
+      listeningRef.current = false
     }
 
     rec.onend = () => {
       clearSilenceTimer()
       setListening(false)
+      listeningRef.current = false
       setInterim('')
       latestInterim.current = ''
     }
@@ -115,17 +118,29 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   }, [supported, lang, clearSilenceTimer, commitInterim])
 
   const start = useCallback(() => {
-    if (!recognitionRef.current || listening) return
+    if (!recognitionRef.current || listeningRef.current) return
     setError(null)
     setInterim('')
     latestInterim.current = ''
-    try {
-      recognitionRef.current.start()
-      setListening(true)
-    } catch (e) {
-      setError(e.message)
+
+    // InvalidStateError: 이전 recognition 세션이 아직 정리 중일 때 발생.
+    // TTS 종료 직후 start() 시 Chrome에서 종종 터지므로 짧은 간격으로 재시도한다.
+    const tryStart = (retriesLeft) => {
+      if (!recognitionRef.current || listeningRef.current) return
+      try {
+        recognitionRef.current.start()
+        listeningRef.current = true
+        setListening(true)
+      } catch (e) {
+        if (e.name === 'InvalidStateError' && retriesLeft > 0) {
+          setTimeout(() => tryStart(retriesLeft - 1), 150)
+        } else if (e.name !== 'InvalidStateError') {
+          setError(e.message)
+        }
+      }
     }
-  }, [listening])
+    tryStart(3)
+  }, [])
 
   const stop = useCallback(() => {
     clearSilenceTimer()
