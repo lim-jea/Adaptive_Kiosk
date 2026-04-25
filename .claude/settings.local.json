@@ -5,7 +5,9 @@
       "Bash(python -c 'import ast; import sys; import os; files=[]; *)",
       "Bash(python -c ' *)",
       "Bash(npx eslint *)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(uv --version)",
+      "Bash(npm --version)"
     ]
   }
 }
