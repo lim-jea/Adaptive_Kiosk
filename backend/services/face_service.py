@@ -1,158 +1,316 @@
 """
-얼굴 분석 서비스 (Cafe Kiosk InsightFace 코드 통합).
+Face analysis service backed by the shared 0424 model.
 
-InsightFace 설치 실패 시 mock 모드로 폴백하여 서버는 계속 동작.
-- buffalo_m 모델: 첫 실행 시 ~/.insightface/models/ 에 자동 다운로드 (~300MB)
-- mock 모드: 임의의 분석 결과 반환 (개발/테스트용)
+The imported model code is kept as close as practical to the original shared
+script. This service layer only adapts it to the existing API contract:
+`analyze(List[str]) -> FaceAnalysisResult`.
 """
-import gc
+
+from __future__ import annotations
+
+import asyncio
 import base64
 import logging
-import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# InsightFace는 무거운 의존성이라 import 실패 시 mock 모드로 동작
 try:
     import cv2
     import numpy as np
-    INSIGHTFACE_AVAILABLE = True
-except ImportError:
-    logger.warning("OpenCV/numpy not installed — face_service will run in mock mode")
-    INSIGHTFACE_AVAILABLE = False
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from insightface.app import FaceAnalysis
+
+    RUNTIME_AVAILABLE = True
+except ImportError as exc:
+    logger.warning("Vision dependencies unavailable: %s", exc)
+    cv2 = None
+    np = None
+    torch = None
+    nn = None
+    F = None
+    FaceAnalysis = None
+    RUNTIME_AVAILABLE = False
 
 
 @dataclass
 class FaceAnalysisResult:
-    age_group: str        # 어린이/청년/중장년/노년
-    gender: str           # male/female/unknown
-    age_est: int          # 추정 나이
-    confidence: float     # 0.0~1.0
+    age_group: str
+    gender: str
+    age_est: int
+    confidence: float
 
 
 def _age_to_group(age: float) -> str:
     if age <= 12:
-        return "어린이"
-    elif age <= 35:
+        return "아동"
+    if age <= 35:
         return "청년"
-    elif age <= 55:
+    if age <= 55:
         return "중장년"
-    else:
-        return "노년"
+    return "노년"
+
+
+def _normalize_gender(gender_value: int) -> str:
+    return "male" if gender_value == 1 else "female"
+
+
+if RUNTIME_AVAILABLE:
+    class ResidualBlock(nn.Module):
+        def __init__(self, dim: int, dropout: float = 0.5):
+            super().__init__()
+            self.fc1 = nn.Linear(dim, dim)
+            self.bn1 = nn.BatchNorm1d(dim)
+            self.fc2 = nn.Linear(dim, dim)
+            self.bn2 = nn.BatchNorm1d(dim)
+            self.dropout = nn.Dropout(dropout)
+            self.gelu = nn.GELU()
+
+        def forward(self, x):
+            residual = x
+            out = self.gelu(self.bn1(self.fc1(x)))
+            out = self.dropout(out)
+            out = self.bn2(self.fc2(out))
+            return self.gelu(out + residual)
+
+
+    class FeatureAttention(nn.Module):
+        def __init__(self, dim: int, num_heads: int = 8):
+            super().__init__()
+            self.attention = nn.MultiheadAttention(
+                embed_dim=dim,
+                num_heads=num_heads,
+                batch_first=True,
+                dropout=0.3,
+            )
+
+        def forward(self, x):
+            x_seq = x.unsqueeze(1)
+            attn_output, _ = self.attention(x_seq, x_seq, x_seq)
+            return attn_output.squeeze(1)
+
+
+    class KioskMultiTaskHead(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.attention_layer = FeatureAttention(dim=512, num_heads=8)
+
+            self.age_network = nn.Sequential(
+                nn.Linear(512, 512),
+                nn.BatchNorm1d(512),
+                nn.GELU(),
+                nn.Dropout(0.5),
+                ResidualBlock(512, dropout=0.5),
+                ResidualBlock(512, dropout=0.5),
+                nn.Linear(512, 256),
+                nn.BatchNorm1d(256),
+                nn.GELU(),
+                nn.Dropout(0.5),
+                nn.Linear(256, 101),
+            )
+            self.register_buffer("age_bins", torch.arange(0, 101, dtype=torch.float32))
+
+            self.gender_network = nn.Sequential(
+                nn.Linear(512, 256),
+                nn.BatchNorm1d(256),
+                nn.GELU(),
+                nn.Dropout(0.5),
+                ResidualBlock(256, dropout=0.5),
+                nn.Linear(256, 1),
+            )
+
+        def forward(self, features):
+            x = F.normalize(features, p=2, dim=1)
+            attended_features = self.attention_layer(x)
+            fused_features = x + attended_features
+
+            gender_logits = self.gender_network(fused_features)
+            age_logits = self.age_network(fused_features)
+            age_probs = F.softmax(age_logits, dim=1)
+            expected_age = torch.sum(age_probs * self.age_bins, dim=1, keepdim=True)
+            return age_logits, expected_age, gender_logits
+else:
+    class KioskMultiTaskHead:  # pragma: no cover - only used in missing-dependency fallback
+        pass
 
 
 class FaceService:
-    """InsightFace 기반 얼굴 분석 싱글턴.
-    설치 실패 시 mock 모드로 동작."""
-
     def __init__(self):
         self._app = None
+        self._model = None
+        self._device = None
         self._loaded = False
-        self._mock_mode = not INSIGHTFACE_AVAILABLE
+        self._load_error: Optional[str] = None
+        self._model_path = self._resolve_model_path(settings.FACE_MODEL_PATH)
+        self._insightface_model_name = settings.FACE_INSIGHTFACE_MODEL_NAME
+        self._det_score_threshold = settings.FACE_DETECTION_SCORE_THRESHOLD
+        self._min_face_size = settings.FACE_MIN_FACE_SIZE
+        self._min_valid_frames = settings.FACE_MIN_VALID_FRAMES
+
+    @staticmethod
+    def _resolve_model_path(model_path: str) -> Path:
+        path = Path(model_path)
+        if path.is_absolute():
+            return path
+        backend_root = Path(__file__).resolve().parents[1]
+        repo_root = backend_root.parent
+        backend_relative = backend_root / path
+        if backend_relative.exists():
+            return backend_relative
+        return repo_root / path
 
     async def load_models(self):
-        """InsightFace buffalo_m 모델 로드. 실패 시 mock 모드."""
         if self._loaded:
             return
 
-        if self._mock_mode:
-            logger.info("FaceService: running in MOCK mode (no InsightFace)")
+        if not RUNTIME_AVAILABLE:
+            self._load_error = "required vision packages are not installed"
+            self._loaded = True
+            return
+
+        if not self._model_path.exists():
+            self._load_error = f"model weights not found: {self._model_path}"
             self._loaded = True
             return
 
         try:
-            from insightface.app import FaceAnalysis
+            self._device = torch.device(
+                "cuda" if settings.FACE_USE_CUDA and torch.cuda.is_available() else "cpu"
+            )
 
-            logger.info("Loading InsightFace buffalo_m model...")
-            self._app = FaceAnalysis(name="buffalo_m", providers=["CPUExecutionProvider"])
-            self._app.prepare(ctx_id=0, det_size=(320, 320))
-            logger.info("InsightFace model loaded successfully.")
+            self._model = KioskMultiTaskHead().to(self._device)
+            state_dict = torch.load(self._model_path, map_location=self._device)
+            self._model.load_state_dict(state_dict)
+            self._model.eval()
+
+            providers = ["CPUExecutionProvider"]
+            if settings.FACE_USE_CUDA and torch.cuda.is_available():
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+            self._app = FaceAnalysis(
+                name=self._insightface_model_name,
+                providers=providers,
+            )
+            ctx_id = 0 if settings.FACE_USE_CUDA and torch.cuda.is_available() else -1
+            self._app.prepare(
+                ctx_id=ctx_id,
+                det_size=(
+                    settings.FACE_DETECTION_WIDTH,
+                    settings.FACE_DETECTION_HEIGHT,
+                ),
+            )
+
             self._loaded = True
-        except Exception as e:
-            logger.warning(f"InsightFace load failed: {e}. Falling back to MOCK mode.")
-            self._mock_mode = True
+            self._load_error = None
+            logger.info(
+                "Face service ready with shared 0424 model (%s, insightface=%s)",
+                self._model_path,
+                self._insightface_model_name,
+            )
+        except Exception as exc:
             self._loaded = True
+            self._load_error = str(exc)
+            logger.warning("Face service model load failed: %s", exc)
 
     def _decode_frame(self, b64_str: str):
-        """Base64 → OpenCV 이미지"""
         try:
             if "," in b64_str:
                 b64_str = b64_str.split(",", 1)[1]
             img_bytes = base64.b64decode(b64_str)
             arr = np.frombuffer(img_bytes, dtype=np.uint8)
             return cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        except Exception as e:
-            logger.warning(f"Frame decode failed: {e}")
+        except Exception as exc:
+            logger.warning("Frame decode failed: %s", exc)
             return None
 
-    def _analyze_single_frame(self, img) -> Optional[dict]:
-        if img is None or self._app is None:
+    def _infer_face(self, face) -> Optional[tuple[int, int]]:
+        bbox = face.bbox.astype(int)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        if width < self._min_face_size or height < self._min_face_size:
             return None
-        faces = self._app.get(img)
-        if not faces:
+        if float(face.det_score) < self._det_score_threshold:
             return None
-        # 가장 큰 얼굴 선택
-        face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-        return {
-            "age": float(face.age) if hasattr(face, "age") else 30.0,
-            "gender": "male" if (hasattr(face, "gender") and face.gender == 1) else "female",
-        }
+        if not hasattr(face, "embedding") or face.embedding is None:
+            return None
 
-    def _mock_result(self) -> FaceAnalysisResult:
-        """개발/테스트용 mock 결과"""
-        age = random.randint(20, 70)
+        embedding = torch.from_numpy(face.embedding).float().unsqueeze(0).to(self._device)
+        with torch.no_grad():
+            _, expected_age, gender_logits = self._model(embedding)
+
+        age = int(torch.round(expected_age).item())
+        gender_prob = torch.sigmoid(gender_logits).item()
+        gender_value = 1 if gender_prob >= 0.5 else 0
+        return age, gender_value
+
+    def _analyze_frame(self, frame) -> Optional[tuple[int, int]]:
+        if self._app is None or self._model is None or frame is None:
+            return None
+
+        faces = self._app.get(frame, max_num=3)
+        for face in faces:
+            result = self._infer_face(face)
+            if result is not None:
+                return result
+        return None
+
+    def _fallback_result(self) -> FaceAnalysisResult:
+        logger.warning("Using fallback face analysis result: %s", self._load_error)
         return FaceAnalysisResult(
-            age_group=_age_to_group(age),
-            gender=random.choice(["male", "female"]),
-            age_est=age,
-            confidence=0.85,
+            age_group="청년",
+            gender="unknown",
+            age_est=25,
+            confidence=0.0,
+        )
+
+    def _analyze_sync(self, frames_b64: list[str]) -> FaceAnalysisResult:
+        ages: list[int] = []
+        genders: list[int] = []
+
+        for b64 in frames_b64:
+            frame = self._decode_frame(b64)
+            result = self._analyze_frame(frame)
+            if result is None:
+                continue
+            age, gender_value = result
+            ages.append(age)
+            genders.append(gender_value)
+            if len(ages) >= self._min_valid_frames:
+                break
+
+        if not ages:
+            logger.warning("No usable faces detected from provided frames")
+            return FaceAnalysisResult(
+                age_group="청년",
+                gender="unknown",
+                age_est=25,
+                confidence=0.0,
+            )
+
+        final_age = int(np.median(ages))
+        final_gender_value = 1 if sum(genders) > (len(genders) / 2) else 0
+        confidence = min(1.0, len(ages) / max(1, len(frames_b64)))
+        return FaceAnalysisResult(
+            age_group=_age_to_group(final_age),
+            gender=_normalize_gender(final_gender_value),
+            age_est=final_age,
+            confidence=confidence,
         )
 
     async def analyze(self, frames_b64: list[str]) -> FaceAnalysisResult:
-        """프레임 분석 후 평균값 반환. 분석 후 메모리 즉시 파기."""
         if not self._loaded:
             await self.load_models()
 
-        if self._mock_mode:
-            return self._mock_result()
+        if self._app is None or self._model is None or self._device is None:
+            return self._fallback_result()
 
-        ages, genders, frames = [], [], []
-        try:
-            for b64 in frames_b64:
-                img = self._decode_frame(b64)
-                if img is not None:
-                    frames.append(img)
-
-            if not frames:
-                logger.warning("No valid frames — returning default")
-                return FaceAnalysisResult("청년", "unknown", 25, 0.0)
-
-            for img in frames:
-                result = self._analyze_single_frame(img)
-                if result:
-                    ages.append(result["age"])
-                    genders.append(result["gender"])
-
-            if not ages:
-                logger.warning("No faces detected — returning default")
-                return FaceAnalysisResult("청년", "unknown", 25, 0.0)
-
-            avg_age = sum(ages) / len(ages)
-            gender = "male" if genders.count("male") >= genders.count("female") else "female"
-            return FaceAnalysisResult(
-                age_group=_age_to_group(avg_age),
-                gender=gender,
-                age_est=round(avg_age),
-                confidence=min(1.0, len(ages) / len(frames_b64)),
-            )
-        finally:
-            for img in frames:
-                del img
-            frames.clear()
-            gc.collect()
+        return await asyncio.to_thread(self._analyze_sync, frames_b64)
 
 
-# 전역 싱글턴
 face_service = FaceService()
