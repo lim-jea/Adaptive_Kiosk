@@ -18,7 +18,7 @@ services:
         VITE_KIOSK_API_KEY: ${VITE_KIOSK_API_KEY}
         VITE_ENCRYPTION_ENABLED: "false"
     ports:
-      - "3000:80"
+      - "4000:80"
     depends_on:
       - backend
     restart: unless-stopped
