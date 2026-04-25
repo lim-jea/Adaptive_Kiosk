@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import api from '../utils/api'
+import { logClientTiming } from '../utils/api'
 
 let sharedBuffer = []
 let sharedSeq = 1
@@ -21,14 +22,23 @@ async function flushBuffered(sessionUuid) {
 
   const events = [...sharedBuffer]
   sharedBuffer = []
+  const startedAt = performance.now()
 
   flushInFlight = api
     .post('/api/v1/logs/batch', {
       session_uuid: sessionUuid,
       events,
     })
-    .then(() => events.length)
+    .then(() => {
+      logClientTiming('logger.flush', performance.now() - startedAt, {
+        event_count: events.length,
+      })
+      return events.length
+    })
     .catch((err) => {
+      logClientTiming('logger.flush.error', performance.now() - startedAt, {
+        event_count: events.length,
+      })
       sharedBuffer = [...events, ...sharedBuffer]
       throw err
     })

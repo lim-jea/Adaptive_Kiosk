@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 
@@ -29,6 +29,7 @@ export default function LandingPage() {
   }, [logger])
 
   const createSession = async () => {
+    const startedAt = performance.now()
     const sessionRes = await api.post('/api/v1/sessions')
     const { session_uuid } = sessionRes.data
     dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
@@ -40,6 +41,9 @@ export default function LandingPage() {
     })
     // 로그 flush는 네비게이션을 막을 필요 없음 — fire-and-forget
     logger.flush(session_uuid).catch(() => {})
+    logClientTiming('landing.createSession', performance.now() - startedAt, {
+      session_uuid,
+    })
     return session_uuid
   }
 

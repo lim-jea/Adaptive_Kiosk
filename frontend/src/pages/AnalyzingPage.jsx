@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import api from '../utils/api'
+import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 
@@ -35,6 +35,7 @@ export default function AnalyzingPage() {
     }
 
     const analyze = async () => {
+      const startedAt = performance.now()
       try {
         logger.log('vision', 'analyzing', {
           actionName: 'face_analysis_start',
@@ -44,6 +45,9 @@ export default function AnalyzingPage() {
         const response = await api.post('/api/v1/face/analyze', {
           session_uuid: sessionUuid,
           frames,
+        })
+        logClientTiming('analyzing.faceAnalyze', performance.now() - startedAt, {
+          frame_count: frames.length,
         })
 
         const {
@@ -80,7 +84,11 @@ export default function AnalyzingPage() {
         logger.logScreenExit('analyzing', Date.now() - enteredAt, {
           reason: 'analysis_complete',
         })
+        const flushStartedAt = performance.now()
         await logger.flush()
+        logClientTiming('analyzing.loggerFlush', performance.now() - flushStartedAt, {
+          session_uuid: sessionUuid,
+        })
 
         navigate('/result', {
           replace: true,
@@ -93,6 +101,9 @@ export default function AnalyzingPage() {
           },
         })
       } catch (err) {
+        logClientTiming('analyzing.faceAnalyze.error', performance.now() - startedAt, {
+          frame_count: frames.length,
+        })
         const message = err.response?.data?.error?.message
             || err.response?.data?.detail
             || '분석 중 오류가 발생했습니다.'

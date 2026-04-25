@@ -2,6 +2,7 @@ import asyncio
 import logging
 import secrets
 import sys
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
@@ -164,6 +165,40 @@ async def docs_protect_middleware(request: Request, call_next):
                 headers={"WWW-Authenticate": "Basic"},
             )
     response = await call_next(request)
+    return response
+
+
+@app.middleware("http")
+async def request_timing_middleware(request: Request, call_next):
+    started_at = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        if settings.REQUEST_TIMING_LOG_ENABLED:
+            logger.exception(
+                "HTTP %s %s -> 500 (%.1fms)",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+        raise
+
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
+
+    if settings.REQUEST_TIMING_LOG_ENABLED:
+        level = logging.WARNING if elapsed_ms >= settings.REQUEST_TIMING_SLOW_MS else logging.INFO
+        logger.log(
+            level,
+            "HTTP %s %s -> %s (%.1fms)%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+            " [slow]" if elapsed_ms >= settings.REQUEST_TIMING_SLOW_MS else "",
+        )
+
     return response
 
 

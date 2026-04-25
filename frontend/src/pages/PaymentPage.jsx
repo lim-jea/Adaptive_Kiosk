@@ -1,7 +1,7 @@
 // 결제 페이지 — 결제 수단 선택 → 결제 중 → 완료 처리
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 
@@ -83,12 +83,16 @@ export default function PaymentPage() {
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     let orderUuid = null
+    const orderStartedAt = performance.now()
     try {
       // 주문 생성: 서버에 저장된 cart를 기준으로 생성
       const res = await api.post('/api/v1/orders', {
         session_uuid: state.sessionUuid,
       })
       orderUuid = res.data.order_uuid
+      logClientTiming('payment.createOrder', performance.now() - orderStartedAt, {
+        order_uuid: orderUuid,
+      })
       logger.log('order', 'payment', {
         actionName: 'order_submit_success',
         targetType: 'order',
@@ -97,6 +101,9 @@ export default function PaymentPage() {
         source: 'system',
       })
     } catch (err) {
+      logClientTiming('payment.createOrder.error', performance.now() - orderStartedAt, {
+        session_uuid: state.sessionUuid,
+      })
       console.error('주문 저장 실패:', err)
       logger.log('order', 'payment', {
         actionName: 'order_submit_error',
@@ -107,7 +114,11 @@ export default function PaymentPage() {
     }
 
     setStatus('done')
+    const flushStartedAt = performance.now()
     await logger.flush()
+    logClientTiming('payment.loggerFlush', performance.now() - flushStartedAt, {
+      session_uuid: state.sessionUuid,
+    })
     navigate('/complete', {
       replace: true,
       state: {

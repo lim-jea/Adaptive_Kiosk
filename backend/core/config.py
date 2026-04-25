@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     STARTUP_DB_WRITE_ENABLED: bool = True
     RECOMMENDATION_BOOTSTRAP_ON_STARTUP: bool = True
     RECOMMENDATION_BOOTSTRAP_BATCH_SIZE: int = 2000
+    REQUEST_TIMING_LOG_ENABLED: bool = True
+    REQUEST_TIMING_SLOW_MS: int = 800
 
     model_config = {
         "env_file": (

@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import { useLogger } from '../hooks/useLogger'
@@ -81,6 +81,7 @@ export default function KioskPage() {
   // 마운트 시 카테고리 + 메뉴 동시 로드
   useEffect(() => {
     const loadAll = async () => {
+      const startedAt = performance.now()
       try {
         const [catRes, menuRes] = await Promise.all([
           api.get('/api/v1/categories', { params: { limit: 1000 } }),
@@ -88,7 +89,12 @@ export default function KioskPage() {
         ])
         setCategories(catRes.data.items || [])
         setMenus(menuRes.data.items || [])
+        logClientTiming('kiosk.loadMenusAndCategories', performance.now() - startedAt, {
+          category_count: (catRes.data.items || []).length,
+          menu_count: (menuRes.data.items || []).length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.loadMenusAndCategories.error', performance.now() - startedAt)
         console.error('메뉴 로드 실패:', err)
       } finally {
         setLoading(false)
@@ -117,6 +123,7 @@ export default function KioskPage() {
         return
       }
 
+      const startedAt = performance.now()
       try {
         const { data } = await api.get(`/api/v1/carts/${state.sessionUuid}`)
         const localCart = mapServerCartToLocal(data.items || [])
@@ -125,7 +132,11 @@ export default function KioskPage() {
           type: ACTIONS.REPLACE_CART,
           payload: { cart: localCart },
         })
+        logClientTiming('kiosk.loadServerCart', performance.now() - startedAt, {
+          item_count: localCart.length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.loadServerCart.error', performance.now() - startedAt)
         console.error('서버 장바구니 로드 실패:', err)
       } finally {
         cartLoadedRef.current = true
@@ -142,6 +153,7 @@ export default function KioskPage() {
       const signature = serializeCartForSync(state.cart)
       if (signature === lastSyncedCartRef.current) return
 
+      const startedAt = performance.now()
       try {
         await api.put(`/api/v1/carts/${state.sessionUuid}`, {
           items: state.cart.map((item) => ({
@@ -152,7 +164,13 @@ export default function KioskPage() {
           })),
         })
         lastSyncedCartRef.current = signature
+        logClientTiming('kiosk.syncCartToServer', performance.now() - startedAt, {
+          item_count: state.cart.length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.syncCartToServer.error', performance.now() - startedAt, {
+          item_count: state.cart.length,
+        })
         console.error('서버 장바구니 동기화 실패:', err)
       }
     }
@@ -186,13 +204,20 @@ export default function KioskPage() {
       targetLabel: menu.name,
       source: meta.fromRecommendation ? 'recommendation' : 'ui',
     })
+    const startedAt = performance.now()
     try {
       const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(menu.name)}`)
       setOptionMenu({
         ...detailRes.data,
         fromRecommendation: Boolean(meta.fromRecommendation),
       })
+      logClientTiming('kiosk.loadMenuDetail', performance.now() - startedAt, {
+        menu_name: menu.name,
+      })
     } catch (err) {
+      logClientTiming('kiosk.loadMenuDetail.error', performance.now() - startedAt, {
+        menu_name: menu.name,
+      })
       console.error('메뉴 상세 로드 실패:', err)
     }
   }, [logger])
