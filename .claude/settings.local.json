@@ -7,7 +7,10 @@
       "Bash(npx eslint *)",
       "Bash(git log *)",
       "Bash(uv --version)",
-      "Bash(npm --version)"
+      "Bash(npm --version)",
+      "Bash(docker info *)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)"
     ]
   }
 }

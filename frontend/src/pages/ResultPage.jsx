@@ -14,7 +14,7 @@ const GENDER_LABEL = {
 const AGE_GROUP_EMOJI = {
   어린이: '🧒',
   청년: '😊',
-  중장년: '🙂',
+  중년: '🙂',
   노년: '👴',
 }
 
