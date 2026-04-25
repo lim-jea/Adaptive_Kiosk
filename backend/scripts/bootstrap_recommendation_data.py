@@ -25,6 +25,48 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
+def _sample_markers(items: list[str]) -> list[str]:
+    if not items:
+        return []
+    indexes = sorted({0, len(items) // 2, len(items) - 1})
+    return [items[index] for index in indexes if items[index]]
+
+
+def _read_csv_markers(path: Path, key_field: str) -> list[str]:
+    with path.open("r", encoding="utf-8-sig", newline="") as file:
+        rows = [row.get(key_field, "") for row in csv.DictReader(file)]
+    return _sample_markers(rows)
+
+
+async def _bootstrap_markers_already_present(
+    db: AsyncSession,
+    sessions_path: Path,
+    orders_path: Path,
+) -> bool:
+    session_markers = _read_csv_markers(sessions_path, "session_uuid")
+    order_markers = _read_csv_markers(orders_path, "order_uuid")
+    if not session_markers or not order_markers:
+        return False
+
+    existing_sessions = set(
+        (
+            await db.execute(
+                select(KioskSession.session_uuid).where(KioskSession.session_uuid.in_(session_markers))
+            )
+        ).scalars().all()
+    )
+    existing_orders = set(
+        (
+            await db.execute(
+                select(Order.order_uuid).where(Order.order_uuid.in_(order_markers))
+            )
+        ).scalars().all()
+    )
+    return all(marker in existing_sessions for marker in session_markers) and all(
+        marker in existing_orders for marker in order_markers
+    )
+
+
 def _is_truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
 
@@ -196,6 +238,17 @@ async def _bulk_insert_order_items(
 
 
 async def bootstrap_recommendation_csv_to_db(db: AsyncSession) -> bool:
+    sessions_path = DATA_DIR / "kiosk_sessions.csv"
+    orders_path = DATA_DIR / "orders.csv"
+    items_path = DATA_DIR / "order_items.csv"
+    if not sessions_path.exists() or not orders_path.exists() or not items_path.exists():
+        logger.info("Recommendation CSV bootstrap skipped: source CSV files not found")
+        return False
+
+    if await _bootstrap_markers_already_present(db, sessions_path, orders_path):
+        logger.info("Recommendation CSV bootstrap skipped: sample CSV markers already exist in DB")
+        return False
+
     session_count = (await db.execute(select(func.count(KioskSession.id)))).scalar() or 0
     order_count = (await db.execute(select(func.count(Order.id)))).scalar() or 0
     item_count = (await db.execute(select(func.count(OrderItem.id)))).scalar() or 0
@@ -208,13 +261,6 @@ async def bootstrap_recommendation_csv_to_db(db: AsyncSession) -> bool:
             order_count,
             item_count,
         )
-        return False
-
-    sessions_path = DATA_DIR / "kiosk_sessions.csv"
-    orders_path = DATA_DIR / "orders.csv"
-    items_path = DATA_DIR / "order_items.csv"
-    if not sessions_path.exists() or not orders_path.exists() or not items_path.exists():
-        logger.info("Recommendation CSV bootstrap skipped: source CSV files not found")
         return False
 
     with sessions_path.open("r", encoding="utf-8-sig", newline="") as file:
