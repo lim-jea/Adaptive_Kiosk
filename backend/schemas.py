@@ -416,8 +416,11 @@ class ModeAResponse(BaseModel):
 class CFScoreBreakdown(BaseModel):
     profile_popularity: float = Field(..., description="프로필 인기도")
     global_popularity: float = Field(..., description="전체 평균 인기도")
+    base_score: Optional[float] = Field(None, description="프로필/전체 인기도 보정 점수")
     cart_cf_score: Optional[float] = Field(None, description="장바구니 기반 협업 필터링 점수")
     cf_score: float = Field(..., description="CF 점수")
+    cart_support_count: Optional[int] = Field(None, description="근거가 된 장바구니 메뉴 수")
+    cart_support_ratio: Optional[float] = Field(None, description="장바구니 근거 비율")
 
 
 class IntegratedRecommendationItem(BaseModel):

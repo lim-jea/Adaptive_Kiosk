@@ -1,43 +1,49 @@
 import { useEffect, useState } from 'react'
 import api from '../utils/api'
 
-function buildCartSourceLabel(cartItems = []) {
-  const names = []
-  const seen = new Set()
-
-  for (const item of cartItems) {
-    const name = item?.menu_name || item?.menuName || item?.name
-    if (!name || seen.has(name)) continue
-    seen.add(name)
-    names.push(name)
-  }
-
-  if (names.length === 0) return null
-  if (names.length <= 2) return names.join(', ')
-  return `${names.slice(0, 2).join(', ')}, ...`
+function formatPercent(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '0.0%'
+  return `${(num * 100).toFixed(1)}%`
 }
 
-function shortenReasoning(text, mode, sourceMenuName = null) {
-  if (!text) {
-    return mode === 'CF' ? '장바구니 메뉴와 함께 자주 선택돼요.' : '지금 조건에서 많이 선택된 메뉴예요.'
+function buildCompactReasoning(rec, mode) {
+  if (!rec?.reasoning) {
+    return mode === 'CF'
+      ? '장바구니와의 연관도와 현재 프로필을 함께 반영했어요.'
+      : '현재 조건에서 많이 선택된 메뉴예요.'
   }
 
+  const breakdown = rec.cf_breakdown || {}
   if (mode === 'CF') {
-    const percentMatch = text.match(/약 ([0-9.]+)%/)
-    const sourceMatch = text.match(/장바구니의 (.+?)를 담은/)
-    const sourceMenu = sourceMenuName || sourceMatch?.[1] || '장바구니 메뉴'
-    if (percentMatch) {
-      return `${sourceMenu}와 함께 자주 선택돼요 · ${percentMatch[1]}%`
+    if (Number(breakdown.cart_support_count) > 0) {
+      return `장바구니 ${breakdown.cart_support_count}개 메뉴 근거를 반영했어요.`
     }
-    return `${sourceMenu}와 함께 자주 선택돼요.`
+    return '현재 프로필과 전체 선호도를 함께 반영했어요.'
   }
 
-  const percentMatch = text.match(/약 ([0-9.]+)%/)
-
+  const percentMatch = rec.reasoning.match(/약 ([0-9.]+)%/)
   if (percentMatch) {
-    return `지금 조건에서 선택 비중 ${percentMatch[1]}%`
+    return `현재 조건에서 선택 비중 ${percentMatch[1]}%`
   }
-  return '지금 조건에서 많이 선택된 메뉴예요.'
+  return '현재 조건에서 많이 선택된 메뉴예요.'
+}
+
+function buildScoreSummary(rec, mode) {
+  const breakdown = rec?.cf_breakdown || {}
+  if (mode === 'CF') {
+    return [
+      { label: '기본', value: formatPercent(breakdown.base_score) },
+      { label: '장바구니', value: formatPercent(breakdown.cart_cf_score) },
+      { label: '최종', value: Number(rec?.final_score || 0).toFixed(3) },
+    ]
+  }
+
+  return [
+    { label: '선택 비중', value: formatPercent(rec?.popularity) },
+    { label: '트렌드', value: `${Number(rec?.trend_weight || rec?.trend_score || 1).toFixed(2)}x` },
+    { label: '최종', value: Number(rec?.final_score || rec?.score || 0).toFixed(3) },
+  ]
 }
 
 export default function RecommendationPanel({
@@ -52,7 +58,6 @@ export default function RecommendationPanel({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('CF')
-  const cartSourceLabel = buildCartSourceLabel(cartItems)
 
   useEffect(() => {
     if (!gender || (!age && !ageGroup)) {
@@ -227,11 +232,9 @@ export default function RecommendationPanel({
           const menuName = rec.menu_name || rec.name
           const finalScore = rec.final_score || rec.score || 0
           const trendWeight = rec.trend_weight || rec.trend_score || 1.0
-          const shortReason = shortenReasoning(
-            rec.reasoning,
-            mode,
-            cartSourceLabel
-          )
+          const breakdown = rec.cf_breakdown || {}
+          const compactReason = buildCompactReasoning(rec, mode)
+          const scoreSummary = buildScoreSummary(rec, mode)
 
           return (
             <button
@@ -262,8 +265,26 @@ export default function RecommendationPanel({
               </h3>
 
               <p className="text-sm font-medium leading-5 text-amber-800 min-h-[40px]">
-                {shortReason}
+                {compactReason}
               </p>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {scoreSummary.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-lg bg-amber-50 border border-amber-100 px-2 py-2 text-center"
+                  >
+                    <div className="text-[11px] text-amber-700 font-medium">{item.label}</div>
+                    <div className="text-xs font-bold text-amber-900 mt-1">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {mode === 'CF' && Number(breakdown.cart_support_count) > 0 && (
+                <p className="mt-2 text-[11px] text-amber-700">
+                  장바구니 {breakdown.cart_support_count}개 메뉴 근거 반영
+                </p>
+              )}
 
               <div className="mt-3 flex items-center justify-between text-xs text-amber-700">
                 <span className="px-2 py-1 rounded-full bg-amber-100 font-semibold">

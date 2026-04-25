@@ -47,11 +47,14 @@ export default function AnalyzingPage() {
         })
 
         const {
-          age_group,
+          age_group: raw_age_group,
           gender,
           age_est,
           should_use_simple_mode,
         } = response.data
+
+        // 백엔드 "중장년" → 프론트 통일 레이블 "중년"으로 정규화
+        const age_group = raw_age_group === '중장년' ? '중년' : raw_age_group
 
         // 전역 상태에 비전 결과 저장
         dispatch({

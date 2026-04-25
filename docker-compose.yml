@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5000
+        VITE_KIOSK_API_KEY: ${VITE_KIOSK_API_KEY}
+        VITE_ENCRYPTION_ENABLED: "false"
+    ports:
+      - "4000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

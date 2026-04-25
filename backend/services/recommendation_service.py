@@ -352,48 +352,105 @@ class RecommendationEngine:
                     values.append(float(rec["popularity"]))
         return round(sum(values) / len(values), 4) if values else 0.0
 
-    def _get_cart_cf_score(self, candidate_menu_id: int, cart_items: List[int]) -> float:
+    @staticmethod
+    def _clamp_score(value: float) -> float:
+        return max(0.0, min(float(value), 1.0))
+
+    def _combine_independent_scores(self, scores: List[float]) -> float:
+        combined = 0.0
+        for score in scores:
+            score = self._clamp_score(score)
+            combined = 1.0 - ((1.0 - combined) * (1.0 - score))
+        return round(self._clamp_score(combined), 4)
+
+    def _get_profile_base_score(
+        self,
+        profile_popularity: float,
+        global_popularity: float,
+        total_orders: int,
+    ) -> float:
+        sample_size = max(int(total_orders or 0), 0)
+        profile_weight = sample_size / (sample_size + 20) if sample_size > 0 else 0.0
+        base_score = (profile_popularity * profile_weight) + (
+            global_popularity * (1.0 - profile_weight)
+        )
+        return round(self._clamp_score(base_score), 4)
+
+    def _get_cart_signals(
+        self,
+        candidate_menu_id: int,
+        cart_items: List[int],
+    ) -> List[Dict[str, float | int | str]]:
         if not cart_items:
-            return 0.0
-        strengths = []
+            return []
+        signals: List[Dict[str, float | int | str]] = []
         for selected_id in cart_items:
             cached_pairs = self._co_purchase_stats.get(self._co_purchase_cache_key(selected_id), {})
             for pair_stats in cached_pairs.values():
                 if int(pair_stats.get("other_menu_id", -1)) == int(candidate_menu_id):
-                    strengths.append(float(pair_stats.get("strength", 0.0)))
-        if not strengths:
-            return 0.0
-        strongest = max(strengths)
-        average = sum(strengths) / len(strengths)
-        coverage_bonus = min(0.03, 0.01 * max(len(strengths) - 1, 0))
-        return round((strongest * 0.75) + (average * 0.25) + coverage_bonus, 4)
+                    signals.append(
+                        {
+                            "source_menu_id": int(selected_id),
+                            "source_menu_name": self.menu_id_to_name.get(
+                                int(selected_id), f"Menu_{selected_id}"
+                            ),
+                            "count": int(pair_stats.get("count", 0)),
+                            "strength": float(pair_stats.get("strength", 0.0)),
+                        }
+                    )
+        return signals
 
-    def _get_best_cart_evidence(
+    def _get_cart_evidence(
         self,
         candidate_menu_id: int,
         cart_items: List[int],
     ) -> Dict[str, float | int | str] | None:
-        best: Dict[str, float | int | str] | None = None
-        for selected_id in cart_items:
-            cached_pairs = self._co_purchase_stats.get(self._co_purchase_cache_key(selected_id), {})
-            for pair_stats in cached_pairs.values():
-                if int(pair_stats.get("other_menu_id", -1)) != int(candidate_menu_id):
-                    continue
-                candidate = {
-                    "source_menu_id": int(selected_id),
-                    "source_menu_name": self.menu_id_to_name.get(int(selected_id), f"Menu_{selected_id}"),
-                    "count": int(pair_stats.get("count", 0)),
-                    "strength": float(pair_stats.get("strength", 0.0)),
-                }
-                if best is None or (
-                    candidate["strength"] > best["strength"]
-                    or (
-                        candidate["strength"] == best["strength"]
-                        and candidate["count"] > best["count"]
-                    )
-                ):
-                    best = candidate
-        return best
+        signals = self._get_cart_signals(candidate_menu_id, cart_items)
+        if not signals:
+            return None
+
+        best = max(
+            signals,
+            key=lambda item: (float(item["strength"]), int(item["count"])),
+        )
+        combined_strength = self._combine_independent_scores(
+            [float(item["strength"]) for item in signals]
+        )
+        cart_size = len(set(int(menu_id) for menu_id in cart_items))
+        support_count = len({int(item["source_menu_id"]) for item in signals})
+        support_ratio = round(support_count / cart_size, 4) if cart_size else 0.0
+
+        return {
+            **best,
+            "support_count": support_count,
+            "cart_size": cart_size,
+            "support_ratio": support_ratio,
+            "combined_strength": combined_strength,
+        }
+
+    def _build_integrated_reasoning(
+        self,
+        profile_popularity: float,
+        global_popularity: float,
+        base_score: float,
+        cart_evidence: Dict[str, float | int | str] | None,
+        cf_score: float,
+        trend_score: float,
+    ) -> str:
+        if cart_evidence and float(cart_evidence["combined_strength"]) > 0:
+            return (
+                f"프로필 선호 {profile_popularity * 100:.1f}%, 전체 선호 {global_popularity * 100:.1f}%를 "
+                f"보정한 기본 점수 {base_score * 100:.1f}%에 "
+                f"장바구니 {int(cart_evidence['cart_size'])}개 중 {int(cart_evidence['support_count'])}개 메뉴의 "
+                f"공동선택 신호 {float(cart_evidence['combined_strength']) * 100:.1f}%를 결합해 "
+                f"추천 점수 {cf_score * 100:.1f}%를 계산하고, 트렌드 가중치 {trend_score:.2f}배를 반영해 순위를 정했어요."
+            )
+
+        return (
+            f"프로필 선호 {profile_popularity * 100:.1f}%와 전체 선호 {global_popularity * 100:.1f}%를 "
+            f"보정한 추천 점수는 {base_score * 100:.1f}%이고, "
+            f"트렌드 가중치 {trend_score:.2f}배를 반영해 순위를 계산했어요."
+        )
 
     def _build_trend_weight(
         self,
@@ -520,28 +577,36 @@ class RecommendationEngine:
         for menu_id in candidate_menu_ids:
             profile_popularity = profile_map.get(menu_id, 0.0)
             global_popularity = self._get_global_popularity(menu_id)
-            profile_score = round((profile_popularity * 0.6) + (global_popularity * 0.4), 4)
-            cart_cf_score = self._get_cart_cf_score(menu_id, cart_items)
-            cf_score = round((profile_score * 0.4) + (cart_cf_score * 0.6), 4) if cart_items else profile_score
+            base_score = self._get_profile_base_score(
+                profile_popularity,
+                global_popularity,
+                int(profile_data.get("total_orders", 0)),
+            )
+            cart_evidence = self._get_cart_evidence(menu_id, cart_items)
+            cart_cf_score = (
+                float(cart_evidence["combined_strength"])
+                if cart_evidence is not None
+                else 0.0
+            )
+            cf_score = (
+                self._combine_independent_scores([base_score, cart_cf_score])
+                if cart_items
+                else base_score
+            )
 
             menu_name = self.menu_id_to_name.get(menu_id, f"Menu_{menu_id}")
             trend_score = self._build_trend_weight(
                 menu_name, gender, age_group, hour, include_trend
             )
             final_score = round(cf_score * trend_score, 4)
-            cart_evidence = self._get_best_cart_evidence(menu_id, cart_items)
-
-            if cart_evidence and float(cart_evidence["strength"]) > 0:
-                reasoning = (
-                    f"장바구니의 {cart_evidence['source_menu_name']}를 담은 다른 주문 중 "
-                    f"약 {float(cart_evidence['strength']) * 100:.1f}%에서 함께 선택됐어요. "
-                    f"({int(cart_evidence['count'])}건 근거)"
-                )
-            else:
-                reasoning = (
-                    f"같은 성별/연령대/시간대 주문 데이터에서 "
-                    f"선택 비중이 약 {profile_popularity * 100:.1f}%인 메뉴예요."
-                )
+            reasoning = self._build_integrated_reasoning(
+                profile_popularity=profile_popularity,
+                global_popularity=global_popularity,
+                base_score=base_score,
+                cart_evidence=cart_evidence,
+                cf_score=cf_score,
+                trend_score=trend_score,
+            )
 
             recommendations.append(
                 {
@@ -551,8 +616,19 @@ class RecommendationEngine:
                     "cf_breakdown": {
                         "profile_popularity": round(profile_popularity, 4),
                         "global_popularity": round(global_popularity, 4),
+                        "base_score": round(base_score, 4),
                         "cart_cf_score": round(cart_cf_score, 4),
                         "cf_score": round(cf_score, 4),
+                        "cart_support_count": (
+                            int(cart_evidence["support_count"])
+                            if cart_evidence is not None
+                            else 0
+                        ),
+                        "cart_support_ratio": (
+                            round(float(cart_evidence["support_ratio"]), 4)
+                            if cart_evidence is not None
+                            else 0.0
+                        ),
                     },
                     "trend_score": round(trend_score, 2),
                     "final_score": final_score,

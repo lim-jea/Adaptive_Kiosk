@@ -29,7 +29,10 @@ env.zip
 *.key
 *credentials*
 backend/.env
+backend/.env copy
 frontend/.env
+frontend/.env copy
+.env copy
 
 # ─── Node.js / Frontend ───
 node_modules/
