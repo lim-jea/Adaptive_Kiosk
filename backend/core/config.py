@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     NAVER_CLIENT_SECRET: str = ""
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
 
+    STARTUP_DB_WRITE_ENABLED: bool = True
     RECOMMENDATION_BOOTSTRAP_ON_STARTUP: bool = True
     RECOMMENDATION_BOOTSTRAP_BATCH_SIZE: int = 2000
     RECOMMENDATION_PRECOMPUTE_LOG_INTERVAL: int = 500
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
             ".env",
         ),
         "env_file_encoding": "utf-8",
+        "extra": "ignore",
     }
 
 
