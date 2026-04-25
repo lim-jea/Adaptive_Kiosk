@@ -55,21 +55,27 @@ async def lifespan(app: FastAPI):
         await initialize_connection_pool()
         engine = get_engine()
         if engine is not None:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            logger.info("Database tables created successfully.")
+            if settings.STARTUP_DB_WRITE_ENABLED:
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+                logger.info("Database tables created successfully.")
+            else:
+                logger.info("Startup DB writes disabled. Skipping create_all.")
 
             factory = get_session_factory()
             if factory:
                 async with factory() as db:
-                    await seed_menu_data(db)
-                    if settings.RECOMMENDATION_BOOTSTRAP_ON_STARTUP:
-                        await bootstrap_recommendation_csv_to_db(db)
+                    if settings.STARTUP_DB_WRITE_ENABLED:
+                        await seed_menu_data(db)
+                        if settings.RECOMMENDATION_BOOTSTRAP_ON_STARTUP:
+                            await bootstrap_recommendation_csv_to_db(db)
+                        else:
+                            logger.info(
+                                "Recommendation CSV bootstrap skipped by env setting "
+                                "(RECOMMENDATION_BOOTSTRAP_ON_STARTUP=false)"
+                            )
                     else:
-                        logger.info(
-                            "Recommendation CSV bootstrap skipped by env setting "
-                            "(RECOMMENDATION_BOOTSTRAP_ON_STARTUP=false)"
-                        )
+                        logger.info("Startup DB writes disabled. Skipping seed/bootstrap.")
 
                 logger.info("Starting recommendation stats batch...")
                 recommendation_engine = get_recommendation_engine()
