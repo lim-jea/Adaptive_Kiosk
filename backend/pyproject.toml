@@ -17,4 +17,7 @@ dependencies = [
     "cryptography>=44.0.0",
     "google-genai>=1.0.0",
     "pandas>=3.0.2",
+    "insightface>=0.7.3",
+    "opencv-python-headless>=4.13.0.92",
+    "onnxruntime>=1.25.1",
 ]
