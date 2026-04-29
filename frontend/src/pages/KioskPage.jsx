@@ -486,11 +486,14 @@ export default function KioskPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 헤더 */}
-      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <button onClick={handleBack} className="text-gray-500 hover:text-gray-700 p-2 -ml-2">
+      <header className="bg-gradient-to-r from-amber-950 to-amber-900 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-lg">
+        <button onClick={handleBack} className="text-amber-400 hover:text-amber-200 p-2 -ml-2 text-sm font-medium">
           ← 뒤로
         </button>
-        <h1 className="text-lg font-bold text-amber-900">메뉴 주문</h1>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">☕</span>
+          <h1 className="text-base font-black text-white tracking-widest">BREW AI</h1>
+        </div>
         <div className="w-10" />
       </header>
 
@@ -661,23 +664,36 @@ function MenuCard({ menu, cartCount, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden text-left active:scale-95 transition-transform w-full"
+      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden text-left active:scale-95 transition-all duration-150 w-full hover:shadow-md hover:border-amber-200"
     >
-      <div className="relative h-28 bg-amber-50 flex items-center justify-center text-5xl">
-        {menu.image_url
-          ? <img src={menu.image_url} alt={menu.name} className="h-full w-full object-cover" />
-          : (menu.icon_emoji || '🍽️')}
+      <div className="relative overflow-hidden" style={{ paddingBottom: '75%' }}>
+        <div className="absolute inset-0">
+          {menu.image_url
+            ? <img
+                src={menu.image_url}
+                alt={menu.name}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                  e.target.nextSibling.style.display = 'flex'
+                }}
+              />
+            : null}
+          <div
+            className="h-full w-full bg-amber-50 items-center justify-center text-5xl"
+            style={{ display: menu.image_url ? 'none' : 'flex' }}
+          >
+            {menu.icon_emoji || '🍽️'}
+          </div>
+        </div>
         {cartCount > 0 && (
-          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shadow">
+          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shadow-lg z-10">
             {cartCount}
           </span>
         )}
       </div>
       <div className="p-3">
-        <p className="font-semibold text-gray-800 text-sm leading-tight mb-1 line-clamp-1">{menu.name}</p>
-        {menu.description && (
-          <p className="text-xs text-gray-400 mb-1 line-clamp-1">{menu.description}</p>
-        )}
+        <p className="font-semibold text-gray-800 text-sm leading-tight mb-1 line-clamp-2">{menu.name}</p>
         <p className="text-amber-600 font-bold text-sm">{menu.price.toLocaleString()}원~</p>
       </div>
     </button>
