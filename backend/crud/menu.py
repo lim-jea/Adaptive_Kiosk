@@ -103,9 +103,14 @@ async def get_menus(
     limit: int = 100,
     sort_by: str = "name",
     sort_order: str = "asc",
+    include_unavailable: bool = False,
 ) -> Tuple[list[dict[str, Any]], int]:
-    base = select(Menu).where(Menu.is_available == True)
-    count_q = select(func.count(Menu.id)).where(Menu.is_available == True)
+    base = select(Menu)
+    count_q = select(func.count(Menu.id))
+
+    if not include_unavailable:
+        base = base.where(Menu.is_available == True)
+        count_q = count_q.where(Menu.is_available == True)
 
     if category_name:
         base = base.where(Menu.category == category_name)
@@ -121,6 +126,11 @@ async def get_menus(
 
 async def get_menu_by_name(db: AsyncSession, menu_name: str) -> Optional[Menu]:
     result = await db.execute(select(Menu).where(Menu.name == menu_name))
+    return result.scalar_one_or_none()
+
+
+async def get_menu_by_id(db: AsyncSession, menu_id: int) -> Optional[Menu]:
+    result = await db.execute(select(Menu).where(Menu.id == menu_id))
     return result.scalar_one_or_none()
 
 
@@ -148,6 +158,27 @@ async def create_menu(db: AsyncSession, data: dict[str, Any]) -> Menu:
     await db.commit()
     await db.refresh(menu)
     return menu
+
+
+async def update_menu(db: AsyncSession, menu_id: int, data: dict[str, Any]) -> Optional[Menu]:
+    menu = await get_menu_by_id(db, menu_id)
+    if not menu:
+        return None
+
+    for field, value in data.items():
+        setattr(menu, field, value)
+
+    await db.commit()
+    await db.refresh(menu)
+    return menu
+
+
+async def set_menu_availability(
+    db: AsyncSession,
+    menu_id: int,
+    is_available: bool,
+) -> Optional[Menu]:
+    return await update_menu(db, menu_id, {"is_available": is_available})
 
 
 async def get_option_groups(

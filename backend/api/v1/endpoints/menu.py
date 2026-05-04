@@ -8,12 +8,16 @@ from crud.menu import (
     get_menus,
     get_menu_detail,
     create_menu,
+    update_menu,
+    set_menu_availability,
 )
 from schemas import (
+    AvailabilityUpdateRequest,
     CategoryListRequest,
     CategoryResponse,
     MenuListRequest,
     MenuCreateRequest,
+    MenuUpdateRequest,
     MenuListResponse,
     MenuDetailResponse,
 )
@@ -48,6 +52,7 @@ async def list_menus(
         limit=req.limit,
         sort_by=req.sort_by,
         sort_order=req.sort_order,
+        include_unavailable=req.include_unavailable,
     )
     return PaginatedResponse(items=items, total=total, skip=req.skip, limit=req.limit)
 
@@ -67,6 +72,41 @@ async def create_menu_endpoint(
     if data.get("serving_temperature") and hasattr(data["serving_temperature"], "value"):
         data["serving_temperature"] = data["serving_temperature"].value
     return await create_menu(db, data)
+
+
+@router.patch("/menus/{menu_id}", response_model=MenuListResponse)
+async def update_menu_endpoint(
+    menu_id: int,
+    req: MenuUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    data = req.model_dump(exclude_unset=True)
+    if data.get("serving_temperature") and hasattr(data["serving_temperature"], "value"):
+        data["serving_temperature"] = data["serving_temperature"].value
+    menu = await update_menu(db, menu_id, data)
+    if not menu:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("MENU_NOT_FOUND", "Menu not found", menu_id=menu_id),
+        )
+    return menu
+
+
+@router.patch("/menus/{menu_id}/availability", response_model=MenuListResponse)
+async def update_menu_availability_endpoint(
+    menu_id: int,
+    req: AvailabilityUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    menu = await set_menu_availability(db, menu_id, req.is_available)
+    if not menu:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("MENU_NOT_FOUND", "Menu not found", menu_id=menu_id),
+        )
+    return menu
 
 
 @router.get("/menus/{menu_name}", response_model=MenuDetailResponse)

@@ -50,6 +50,19 @@ async def list_kiosks(
     return list(rows), total
 
 
+async def update_kiosk(db: AsyncSession, kiosk_id: int, updates: dict) -> Optional[Kiosk]:
+    kiosk = await get_kiosk_by_id(db, kiosk_id)
+    if not kiosk:
+        return None
+
+    for field, value in updates.items():
+        setattr(kiosk, field, value)
+
+    await db.commit()
+    await db.refresh(kiosk)
+    return kiosk
+
+
 async def update_last_seen(db: AsyncSession, kiosk: Kiosk) -> None:
     kiosk.last_seen_at = datetime.now(timezone.utc)
     await db.commit()

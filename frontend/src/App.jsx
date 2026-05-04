@@ -10,6 +10,12 @@ import ResultPage from './pages/ResultPage'
 import KioskPage from './pages/KioskPage'
 import PaymentPage from './pages/PaymentPage'
 import CompletionPage from './pages/CompletionPage'
+import AdminLayout from './pages/admin/AdminLayout'
+import AdminLoginPage from './pages/admin/AdminLoginPage'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import AdminMenuPage from './pages/admin/AdminMenuPage'
+import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminKiosksPage from './pages/admin/AdminKiosksPage'
 
 export default function App() {
   return (
@@ -23,6 +29,13 @@ export default function App() {
           <Route path="/kiosk" element={<KioskPage />} />
           <Route path="/payment" element={<PaymentPage />} />
           <Route path="/complete" element={<CompletionPage />} />
+          <Route path="/admin/login" element={<AdminLoginPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboardPage />} />
+            <Route path="menus" element={<AdminMenuPage />} />
+            <Route path="orders" element={<AdminOrdersPage />} />
+            <Route path="kiosks" element={<AdminKiosksPage />} />
+          </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

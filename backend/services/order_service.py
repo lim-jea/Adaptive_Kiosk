@@ -1,4 +1,6 @@
 """주문 비즈니스 로직 - 가격 검증, 옵션 처리, 응답 구성"""
+from datetime import datetime
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,3 +191,61 @@ async def get_order_response(db: AsyncSession, order_uuid: str) -> OrderResponse
         status=order.status,
         items=response_items,
     )
+
+
+async def list_order_responses(
+    db: AsyncSession,
+    *,
+    status: str | None = None,
+    kiosk_id: int | None = None,
+    used_recommendation: bool | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> tuple[list[OrderResponse], int]:
+    orders, total = await order_crud.list_orders(
+        db,
+        status=status,
+        kiosk_id=kiosk_id,
+        used_recommendation=used_recommendation,
+        start_date=start_date,
+        end_date=end_date,
+        skip=skip,
+        limit=limit,
+    )
+
+    responses = []
+    for order in orders:
+        session = await get_session_by_id(db, order.session_id)
+        response_items = []
+        for item in order.items:
+            option_snapshots = item.selected_options_json or []
+            response_items.append(
+                OrderItemResponse(
+                    id=item.id,
+                    menu_name=item.menu_name_snapshot or "",
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    from_recommendation=item.from_recommendation,
+                    options=[
+                        OrderItemOptionResponse(
+                            option_name=option["option_name"],
+                            extra_price=option["extra_price"],
+                        )
+                        for option in option_snapshots
+                    ],
+                )
+            )
+        responses.append(
+            OrderResponse(
+                order_uuid=order.order_uuid,
+                session_uuid=session.session_uuid if session else "",
+                created_at=order.created_at,
+                total_price=order.total_price,
+                used_recommendation=order.used_recommendation,
+                status=order.status,
+                items=response_items,
+            )
+        )
+    return responses, total

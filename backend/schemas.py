@@ -47,6 +47,12 @@ class KioskCreateRequest(BaseModel):
     location: Optional[str] = Field(None, max_length=200, examples=["서울 강남점 1층 입구"])
 
 
+class KioskUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    location: Optional[str] = Field(None, max_length=200)
+    is_active: Optional[bool] = None
+
+
 class KioskListRequest(BaseModel):
     is_active: Optional[bool] = None
     skip: int = Field(0, ge=0)
@@ -110,6 +116,7 @@ class MenuListRequest(BaseModel):
     limit: int = Field(100, ge=1, le=1000)
     sort_by: str = Field("name")
     sort_order: str = Field("asc", pattern="^(asc|desc)$")
+    include_unavailable: bool = False
 
 
 class CategoryListRequest(BaseModel):
@@ -127,6 +134,23 @@ class MenuCreateRequest(BaseModel):
     is_caffeinated: bool = False
     description: Optional[str] = Field(None, max_length=255)
     image_url: Optional[str] = Field(None, max_length=500)
+
+
+class MenuUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    category: Optional[str] = Field(None, min_length=1)
+    price: Optional[int] = Field(None, ge=0)
+    icon_emoji: Optional[str] = Field(None, max_length=10)
+    calories: Optional[int] = Field(None, ge=0)
+    serving_temperature: Optional[ServingTemperature] = None
+    is_caffeinated: Optional[bool] = None
+    description: Optional[str] = Field(None, max_length=255)
+    image_url: Optional[str] = Field(None, max_length=500)
+    is_available: Optional[bool] = None
+
+
+class AvailabilityUpdateRequest(BaseModel):
+    is_available: bool
 
 
 class OptionItemResponse(BaseModel):
