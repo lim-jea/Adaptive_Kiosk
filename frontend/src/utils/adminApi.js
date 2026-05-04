@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 const ADMIN_KEY_STORAGE = 'admin_api_key'
+const LOGIN_PATH = '/admin/login'
 
 export function getStoredAdminKey() {
   return sessionStorage.getItem(ADMIN_KEY_STORAGE) || ''
@@ -30,5 +31,18 @@ adminApi.interceptors.request.use((config) => {
   }
   return config
 })
+
+adminApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearStoredAdminKey()
+      if (typeof window !== 'undefined' && window.location.pathname !== LOGIN_PATH) {
+        window.location.assign(LOGIN_PATH)
+      }
+    }
+    return Promise.reject(error)
+  }
+)
 
 export default adminApi

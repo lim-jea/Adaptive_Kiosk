@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from core.enums import OrderStatus
 from core.security import verify_credentials
 from services.order_service import create_order, get_order_response, list_order_responses
 from schemas import OrderCreateRequest, OrderResponse, PaginatedResponse, make_error
@@ -22,7 +23,7 @@ async def create_order_endpoint(
 
 @router.get("", response_model=PaginatedResponse[OrderResponse])
 async def list_orders_endpoint(
-    status_value: str | None = Query(None, alias="status"),
+    order_status: OrderStatus | None = Query(None, alias="status"),
     kiosk_id: int | None = Query(None),
     used_recommendation: bool | None = Query(None),
     start_date: datetime | None = Query(None),
@@ -32,9 +33,10 @@ async def list_orders_endpoint(
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_credentials),
 ):
+    """주문 목록. 상태/키오스크/추천사용/기간 필터 + 페이지네이션. 관리자 인증 필요."""
     items, total = await list_order_responses(
         db,
-        status=status_value,
+        status=order_status.value if order_status else None,
         kiosk_id=kiosk_id,
         used_recommendation=used_recommendation,
         start_date=start_date,

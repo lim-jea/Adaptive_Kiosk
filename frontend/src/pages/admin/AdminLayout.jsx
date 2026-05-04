@@ -3,7 +3,9 @@ import { clearStoredAdminKey, getStoredAdminKey } from '../../utils/adminApi'
 
 const navItems = [
   { to: '/admin', label: '대시보드', end: true },
+  { to: '/admin/analytics', label: '분석' },
   { to: '/admin/menus', label: '메뉴 관리' },
+  { to: '/admin/options', label: '옵션 카탈로그' },
   { to: '/admin/orders', label: '주문 조회' },
   { to: '/admin/kiosks', label: '키오스크' },
 ]

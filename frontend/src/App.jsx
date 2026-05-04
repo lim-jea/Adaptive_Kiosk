@@ -14,8 +14,14 @@ import AdminLayout from './pages/admin/AdminLayout'
 import AdminLoginPage from './pages/admin/AdminLoginPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminMenuPage from './pages/admin/AdminMenuPage'
+import AdminOptionsPage from './pages/admin/AdminOptionsPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminKiosksPage from './pages/admin/AdminKiosksPage'
+import AdminAnalyticsLayout, {
+  AnalyticsRevenueTab,
+  AnalyticsUsersTab,
+  AnalyticsRecommendationsTab,
+} from './pages/admin/AdminAnalyticsPage'
 
 export default function App() {
   return (
@@ -32,7 +38,13 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboardPage />} />
+            <Route path="analytics" element={<AdminAnalyticsLayout />}>
+              <Route index element={<AnalyticsRevenueTab />} />
+              <Route path="users" element={<AnalyticsUsersTab />} />
+              <Route path="recommendations" element={<AnalyticsRecommendationsTab />} />
+            </Route>
             <Route path="menus" element={<AdminMenuPage />} />
+            <Route path="options" element={<AdminOptionsPage />} />
             <Route path="orders" element={<AdminOrdersPage />} />
             <Route path="kiosks" element={<AdminKiosksPage />} />
           </Route>

@@ -147,10 +147,12 @@ class MenuUpdateRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=255)
     image_url: Optional[str] = Field(None, max_length=500)
     is_available: Optional[bool] = None
+    # 인라인 옵션 편집: 명시되면 해당 그룹들을 통째로 교체. 미지정이면 기존 옵션 보존.
+    option_groups: Optional[List["OptionGroupUpsertRequest"]] = None
 
 
-class AvailabilityUpdateRequest(BaseModel):
-    is_available: bool
+class MenuCreateInlineRequest(MenuCreateRequest):
+    option_groups: Optional[List["OptionGroupUpsertRequest"]] = None
 
 
 class OptionItemResponse(BaseModel):
@@ -361,6 +363,115 @@ class OrderAnalytics(BaseModel):
     avg_order_price: float
     recommendation_used_count: int
     recommendation_used_rate: float
+
+
+# --- Analytics: timeseries / breakdowns ---
+
+class TimeseriesBucket(BaseModel):
+    bucket: datetime
+    orders: int = 0
+    revenue: int = 0
+    sessions: int = 0
+    simple_mode_sessions: int = 0
+    help_triggered: int = 0
+
+
+class HourOfDayPoint(BaseModel):
+    hour: int  # 0..23
+    orders: int
+    revenue: int
+    sessions: int
+
+
+class MenuRankingItem(BaseModel):
+    menu_id: Optional[int] = None
+    name: str
+    quantity: int
+    revenue: int
+
+
+class CategoryBreakdownItem(BaseModel):
+    category: str
+    quantity: int
+    revenue: int
+    share: float  # 0..1
+
+
+class OptionUsageItem(BaseModel):
+    group_name: str
+    option_name: str
+    count: int
+    share: float  # 같은 그룹 내 비중
+
+
+class DemographicsCell(BaseModel):
+    age_group: Optional[str] = None
+    gender: Optional[str] = None
+    sessions: int
+    orders: int
+    revenue: int
+
+
+class FunnelResponse(BaseModel):
+    sessions: int
+    sessions_with_cart: int
+    sessions_with_order: int
+    cart_conversion: float
+    order_conversion: float
+
+
+class SessionDurationByAge(BaseModel):
+    age_group: Optional[str] = None
+    avg_seconds: float
+    sample: int
+
+
+class SessionDurationStats(BaseModel):
+    sample: int
+    avg_seconds: float
+    by_age_group: List[SessionDurationByAge] = Field(default_factory=list)
+
+
+# --- Option catalog (전역 옵션 뷰) ---
+
+class OptionCatalogMenuRef(BaseModel):
+    id: int
+    name: str
+
+
+class OptionCatalogItem(BaseModel):
+    """카탈로그 단위의 옵션. (group_name, option_name) 조합 = 카탈로그 키."""
+    group_name: str
+    option_name: str
+    avg_extra_price: int
+    used_in_menus: List[OptionCatalogMenuRef] = Field(default_factory=list)
+
+
+class OptionCatalogGroup(BaseModel):
+    """카탈로그 단위의 옵션 그룹. group_name = 카탈로그 키."""
+    group_name: str
+    representative_min_select: int
+    representative_max_select: int
+    representative_is_required: bool
+    items: List[OptionCatalogItem] = Field(default_factory=list)
+    used_in_menus: List[OptionCatalogMenuRef] = Field(default_factory=list)
+
+
+class RecommendationFunnel(BaseModel):
+    shown: int
+    clicked: int
+    led_to_order: int
+    ctr: float
+    cvr: float
+
+
+class RecommendationBreakdownItem(BaseModel):
+    key: str
+    shown: int
+    clicked: int
+    led_to_order: int
+    ctr: float
+    cvr: float
 
 
 class FaceAnalyzeRequest(BaseModel):
@@ -657,3 +768,8 @@ class ChatMessageItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# Forward reference 해소
+MenuUpdateRequest.model_rebuild()
+MenuCreateInlineRequest.model_rebuild()
