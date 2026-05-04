@@ -2,131 +2,73 @@
 
 합성 주문 데이터 구축용 작업 폴더다.
 
-목표는 외부 카페 주문 데이터셋을 현재 프로젝트 구조에 맞게 가공해서,
-추천 시스템과 분석 기능이 바로 읽을 수 있는 CSV를 생성하는 것이다.
+목표는 추천 엔진(`backend/services/recommendation_service.py`)이 바로 읽을 수 있는 CSV를 생성하는 것이다.
 
-## 왜 별도 폴더로 분리하나
+> **현재 채택안 (2026-05-05)**: `recommendation_test/generate_synth_v2.py` 의 prior 기반 합성. 격리 검증 완료.
+> 자세한 내용 → [docs/review/08_TODAY_WORKLOG_2026-05-05.md](../docs/review/08_TODAY_WORKLOG_2026-05-05.md), [docs/review/09_BACKEND_INTEGRATION_PLAN.md](../docs/review/09_BACKEND_INTEGRATION_PLAN.md).
 
-- `backend/` 런타임 코드와 데이터 생성 코드를 분리하기 위해
-- 데이터 전처리, 합성, 검증 로직을 독립적으로 관리하기 위해
-- 나중에 다른 데이터셋이나 생성 규칙을 실험하기 쉽게 만들기 위해
-
-## 현재 기준 산출물
-
-최종 산출물은 아래 3개를 우선 목표로 한다.
-
-- `backend/data/kiosk_sessions.csv`
-- `backend/data/orders.csv`
-- `backend/data/order_items.csv`
-
-선택 산출물:
-
-- `backend/data/recommendation_events.csv`
-- `backend/data/cart_snapshots.csv`
-
-## 현재 추천 시스템과 연결되는 핵심 포인트
-
-- `RecommendationEngine`은 현재 `orders.csv`, `order_items.csv`, `kiosk_sessions.csv`를 읽는다.
-- `mode_a`는 `성별 × 연령대 × 시간대` 통계를 쓴다.
-- `mode_b`는 `같은 주문 안의 공구매 관계`를 쓴다.
-
-즉 합성 데이터도 최소한 아래는 보장해야 한다.
-
-- 주문 시간
-- 주문별 아이템 묶음
-- 메뉴 id
-- 수량
-- 세션별 성별/연령대
-
-## 권장 작업 순서
-
-1. 원본 데이터셋을 `raw/`에 저장
-2. 메뉴 매핑 규칙 작성
-3. 주문 헤더/주문 아이템 추출
-4. 세션 프로필 합성
-5. 옵션 및 추천 관련 플래그 합성
-6. CSV 검증
-7. `backend/data/`로 내보내기
-
-## 폴더 제안
+## 폴더 구조
 
 ```text
 create_data/
-├── README.md
-├── PLAN.md
-├── SCHEMA.md
-├── raw/                 # 원본 데이터셋
-├── interim/             # 중간 가공 결과
-├── output/              # 최종 생성 CSV
-├── build_dataset.py     # 매핑/생성/검증 통합 스크립트
-└── scripts/             # 과거 스크립트 폴더 (정리 대상)
+├── README.md / PLAN.md / SCHEMA.md
+├── notebooks/              # 활성 EDA·합성 검증 노트북
+│   ├── 01_eda_and_preprocess[_colab].ipynb
+│   ├── 02_opensurvey_eda_validate.ipynb
+│   └── 03_build_and_validate_synthetic.ipynb
+├── raw/                    # 원본 prior 데이터
+│   └── kr_synthetic/       # OpenSurvey 카페 응답 + rec_* 합성 origin
+├── interim/                # 노트북 중간 산출
+├── output/                 # 03 노트북 실행 결과 (참고용 노트북 사본)
+└── recommendation_test/    # ★ 격리 검증 + v2 생성기 (현재 핵심 작업 폴더)
 ```
 
-## 현재 추천 데이터셋 방향
+> 거부된 모델 시도 / 외부 데이터 / 대체된 합성 산출은 **repo 외부**의 `../research_archive/` 로 이동되어 보존된다 (git 미추적). 자세한 내역은 그 폴더의 `INDEX.md` 참조.
 
-메인 베이스 데이터셋:
+## 활성 작업 흐름 (v2 채택안 기준)
 
-- Kaggle `Coffee Shop Sales`
+```powershell
+cd create_data/recommendation_test
 
-이 데이터셋은 주문 로그와 메뉴 축을 제공하므로,
-현재 프로젝트에서는 `옵션`, `성별`, `연령대`, `추천 사용 여부`를 합성해서 붙이는 방식이 적절하다.
+# (1) 합성 데이터 생성 (prior + softmax cap 6%)
+python generate_synth_v2.py --n-sessions 50000 --seed 42
 
-## 바로 사용할 스크립트
+# (2) backend 스키마로 변환
+python sync_synthetic_data.py --source source_synthetic2 --target data2
 
-- `build_dataset.py`
-  - 원본 상품 매핑 생성
-  - 세션/주문/주문아이템 CSV 생성
-  - 출력 검증
-  - 필요 시 `backend/data/`로 바로 반영
+# (3) 격리 검증 (legacy + v1 + v2 비교 리포트)
+python run_test.py --compare
 
-## 원본 파일 위치
-
-아래 위치에 원본 파일을 넣으면 됩니다.
-
-- [create_data/raw](C:\Users\jeayy\Desktop\26년도 산학협력캡스톤\Adaptive_Kiosk\create_data\raw)
-
-지원 형식:
-
-- `.csv`
-- `.xlsx`
-- `.xls`
-
-필수 컬럼은 아래와 같습니다.
-
-- `transaction_id`
-- `transaction_date`
-- `transaction_time`
-- `transaction_qty`
-- `product_id`
-- `unit_price`
-- `product_category`
-- `product_type`
-- `product_detail`
-
-엑셀 파일(`.xlsx`)을 그대로 쓰려면 현재 Python 환경에 `openpyxl`이 필요합니다.
-설치가 번거로우면 엑셀에서 CSV로 한 번 저장해서 넣는 방식이 가장 간단합니다.
-
-## 기본 사용 순서
-
-```bash
-cd create_data
-python build_dataset.py
+# (4) 통과 시 backend 반영 — 절차는 09_BACKEND_INTEGRATION_PLAN.md
 ```
 
-`backend/data/`에 바로 덮어쓰고 싶으면:
+## 추천 엔진과 연결되는 데이터 보장 사항
 
-```bash
-python build_dataset.py --publish-to-backend
-```
+`RecommendationEngine` 이 사용하는 컬럼:
 
-메뉴 매핑만 다시 만들고 싶으면:
+- 주문 시간 (`orders.created_at`)
+- 주문별 아이템 묶음 (`order_items.order_id`)
+- 메뉴 id (`order_items.menu_id`) — backend `seed_menu` 22 메뉴 1-based ID
+- 세션별 성별·연령대 (`kiosk_sessions.estimated_gender`, `estimated_age_group`) — 한국어 라벨 (`남`/`여`, `20대`~`50대`)
 
-```bash
-python build_dataset.py --mapping-only
-```
+## 거부/대체된 자료 (repo 밖 보존)
 
-생성 결과만 다시 검증하고 싶으면:
+본 폴더에서 빠진 옛 시도들은 모두 **repo 외부**의 `../research_archive/` 에 보존되어 있다 (git 미추적). 폴더 구조:
 
-```bash
-python build_dataset.py --validate-only
-```
+- `rejected_notebooks/` — Item2Vec / FM / LightFM / ALS 학습 노트북 (효과 없음)
+- `rejected_artifacts/` — 학습 산출물
+- `early_cf_attempts/` — user/item-based CF 초기 시도 (외부 데이터 mismatch)
+- `external_datasets/` — Bread Basket / Restaurant_Orders / Maven Coffee Shop / Starbucks 등 외부 라이선스 데이터
+- `superseded_synthetic/` — backend 미반영 v0 합성 데이터
+- `deprecated_scripts/` — `build_dataset.py` 등 사용 종료 스크립트
+- `INDEX.md` — 각 폴더의 보존 사유와 거부 사유 요약
+
+캡스톤 보고서 작성 시에는 `../research_archive/INDEX.md` 의 §7 인용 가이드를 참고.
+
+## 캡스톤 보고서에서의 인용 가이드
+
+데이터 생성 의사결정 트리:
+1. **외부 공개 데이터 직접 사용** → mismatch 로 거부 (research_archive/external_datasets/)
+2. **Maven Coffee Shop 가공** → backend 의 현재 데이터로 반영. 한국 카페 메뉴와 mismatch.
+3. **OpenSurvey prior 합성 v1** → 통계량은 풍부하나 단일 메뉴(말차) 도배 + 컨텍스트 분리력 부족
+4. **prior 기반 합성 v2** ← **현재 채택안**. 명시적 prior + softmax cap + backend period 정렬

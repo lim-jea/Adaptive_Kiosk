@@ -1,0 +1,413 @@
+{
+  "legacy": {
+    "label": "legacy",
+    "rows": {
+      "sessions": 2000,
+      "orders": 11729,
+      "items": 17529
+    },
+    "profile_stats": {
+      "n_keys": 40,
+      "sample_keys": [
+        "gender:F,age:20~29,period:afternoon",
+        "gender:F,age:20~29,period:evening",
+        "gender:F,age:20~29,period:lunch",
+        "gender:F,age:20~29,period:morning",
+        "gender:F,age:20~29,period:night",
+        "gender:F,age:30~39,period:afternoon",
+        "gender:F,age:30~39,period:evening",
+        "gender:F,age:30~39,period:lunch"
+      ],
+      "avg_recs_per_key": 10.0,
+      "avg_total_orders_per_key": 293.2
+    },
+    "co_purchase_stats": {
+      "n_menus": 21,
+      "avg_pairs": 18.67
+    },
+    "sample_recommendations": {
+      "female/20s/9h": [
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0984
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0895
+        },
+        {
+          "menu_name": "자몽에이드",
+          "menu_id": 19,
+          "popularity": 0.0895
+        },
+        {
+          "menu_name": "바닐라 라떼",
+          "menu_id": 10,
+          "popularity": 0.0694
+        },
+        {
+          "menu_name": "아이스 카페라떼",
+          "menu_id": 5,
+          "popularity": 0.0694
+        }
+      ],
+      "female/30s/13h": [
+        {
+          "menu_name": "레몬에이드",
+          "menu_id": 18,
+          "popularity": 0.0907
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0851
+        },
+        {
+          "menu_name": "바닐라 라떼",
+          "menu_id": 10,
+          "popularity": 0.0794
+        },
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0775
+        },
+        {
+          "menu_name": "카라멜 마끼아또",
+          "menu_id": 11,
+          "popularity": 0.0699
+        }
+      ],
+      "male/30s/19h": [
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.1373
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0858
+        },
+        {
+          "menu_name": "카라멜 마끼아또",
+          "menu_id": 11,
+          "popularity": 0.0809
+        },
+        {
+          "menu_name": "프라푸치노",
+          "menu_id": 12,
+          "popularity": 0.0686
+        },
+        {
+          "menu_name": "따뜻한 카페라떼",
+          "menu_id": 4,
+          "popularity": 0.0686
+        }
+      ],
+      "male/50s/8h": [
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0922
+        },
+        {
+          "menu_name": "바닐라 라떼",
+          "menu_id": 10,
+          "popularity": 0.0875
+        },
+        {
+          "menu_name": "레몬에이드",
+          "menu_id": 18,
+          "popularity": 0.0781
+        },
+        {
+          "menu_name": "콜드브루",
+          "menu_id": 7,
+          "popularity": 0.0766
+        },
+        {
+          "menu_name": "카라멜 마끼아또",
+          "menu_id": 11,
+          "popularity": 0.0688
+        }
+      ]
+    }
+  },
+  "synth": {
+    "label": "synth",
+    "rows": {
+      "sessions": 45709,
+      "orders": 45709,
+      "items": 60248
+    },
+    "profile_stats": {
+      "n_keys": 40,
+      "sample_keys": [
+        "gender:남,age:20대,period:afternoon",
+        "gender:남,age:20대,period:evening",
+        "gender:남,age:20대,period:lunch",
+        "gender:남,age:20대,period:morning",
+        "gender:남,age:20대,period:night",
+        "gender:남,age:30대,period:afternoon",
+        "gender:남,age:30대,period:evening",
+        "gender:남,age:30대,period:lunch"
+      ],
+      "avg_recs_per_key": 10.0,
+      "avg_total_orders_per_key": 1009.0
+    },
+    "co_purchase_stats": {
+      "n_menus": 22,
+      "avg_pairs": 20.27
+    },
+    "sample_recommendations": {
+      "female/20s/9h": [
+        {
+          "menu_name": "말차 프라페",
+          "menu_id": 13,
+          "popularity": 0.1051
+        },
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0896
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0853
+        },
+        {
+          "menu_name": "복숭아 아이스티",
+          "menu_id": 16,
+          "popularity": 0.0689
+        },
+        {
+          "menu_name": "녹차 라떼",
+          "menu_id": 14,
+          "popularity": 0.0603
+        }
+      ],
+      "female/30s/13h": [
+        {
+          "menu_name": "말차 프라페",
+          "menu_id": 13,
+          "popularity": 0.0913
+        },
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0832
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.078
+        },
+        {
+          "menu_name": "복숭아 아이스티",
+          "menu_id": 16,
+          "popularity": 0.0699
+        },
+        {
+          "menu_name": "녹차 라떼",
+          "menu_id": 14,
+          "popularity": 0.0601
+        }
+      ],
+      "male/30s/19h": [
+        {
+          "menu_name": "말차 프라페",
+          "menu_id": 13,
+          "popularity": 0.0973
+        },
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0929
+        },
+        {
+          "menu_name": "복숭아 아이스티",
+          "menu_id": 16,
+          "popularity": 0.0815
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0745
+        },
+        {
+          "menu_name": "녹차 라떼",
+          "menu_id": 14,
+          "popularity": 0.0632
+        }
+      ],
+      "male/50s/8h": [
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0992
+        },
+        {
+          "menu_name": "말차 프라페",
+          "menu_id": 13,
+          "popularity": 0.0981
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0787
+        },
+        {
+          "menu_name": "복숭아 아이스티",
+          "menu_id": 16,
+          "popularity": 0.0776
+        },
+        {
+          "menu_name": "녹차 라떼",
+          "menu_id": 14,
+          "popularity": 0.0676
+        }
+      ]
+    }
+  },
+  "synth2": {
+    "label": "synth2",
+    "rows": {
+      "sessions": 50000,
+      "orders": 50000,
+      "items": 83042
+    },
+    "profile_stats": {
+      "n_keys": 40,
+      "sample_keys": [
+        "gender:남,age:20대,period:afternoon",
+        "gender:남,age:20대,period:evening",
+        "gender:남,age:20대,period:lunch",
+        "gender:남,age:20대,period:morning",
+        "gender:남,age:20대,period:night",
+        "gender:남,age:30대,period:afternoon",
+        "gender:남,age:30대,period:evening",
+        "gender:남,age:30대,period:lunch"
+      ],
+      "avg_recs_per_key": 10.0,
+      "avg_total_orders_per_key": 1250.0
+    },
+    "co_purchase_stats": {
+      "n_menus": 22,
+      "avg_pairs": 21.0
+    },
+    "sample_recommendations": {
+      "female/20s/9h": [
+        {
+          "menu_name": "콜드브루",
+          "menu_id": 7,
+          "popularity": 0.0622
+        },
+        {
+          "menu_name": "따뜻한 아메리카노",
+          "menu_id": 2,
+          "popularity": 0.0617
+        },
+        {
+          "menu_name": "카라멜 마끼아또",
+          "menu_id": 11,
+          "popularity": 0.0605
+        },
+        {
+          "menu_name": "드립 커피",
+          "menu_id": 9,
+          "popularity": 0.0565
+        },
+        {
+          "menu_name": "레몬에이드",
+          "menu_id": 18,
+          "popularity": 0.0558
+        }
+      ],
+      "female/30s/13h": [
+        {
+          "menu_name": "콜드브루 라떼",
+          "menu_id": 8,
+          "popularity": 0.0605
+        },
+        {
+          "menu_name": "따뜻한 카페라떼",
+          "menu_id": 4,
+          "popularity": 0.0586
+        },
+        {
+          "menu_name": "아이스 카페라떼",
+          "menu_id": 5,
+          "popularity": 0.0583
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.0571
+        },
+        {
+          "menu_name": "프라푸치노",
+          "menu_id": 12,
+          "popularity": 0.0546
+        }
+      ],
+      "male/30s/19h": [
+        {
+          "menu_name": "따뜻한 카페라떼",
+          "menu_id": 4,
+          "popularity": 0.0623
+        },
+        {
+          "menu_name": "캐모마일 티",
+          "menu_id": 15,
+          "popularity": 0.0617
+        },
+        {
+          "menu_name": "자몽 허니 블랙 티",
+          "menu_id": 17,
+          "popularity": 0.0596
+        },
+        {
+          "menu_name": "복숭아 아이스티",
+          "menu_id": 16,
+          "popularity": 0.0568
+        },
+        {
+          "menu_name": "콜드브루 라떼",
+          "menu_id": 8,
+          "popularity": 0.0546
+        }
+      ],
+      "male/50s/8h": [
+        {
+          "menu_name": "드립 커피",
+          "menu_id": 9,
+          "popularity": 0.0699
+        },
+        {
+          "menu_name": "에스프레소",
+          "menu_id": 1,
+          "popularity": 0.0648
+        },
+        {
+          "menu_name": "콜드브루",
+          "menu_id": 7,
+          "popularity": 0.0604
+        },
+        {
+          "menu_name": "자몽 허니 블랙 티",
+          "menu_id": 17,
+          "popularity": 0.059
+        },
+        {
+          "menu_name": "아이스 아메리카노",
+          "menu_id": 3,
+          "popularity": 0.059
+        }
+      ]
+    }
+  }
+}
