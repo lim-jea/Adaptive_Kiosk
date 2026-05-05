@@ -5,7 +5,8 @@
 ## 0. 채택안 요약
 
 - **추천 알고리즘**: backend 기존 `services/recommendation_service.py` 의 통계 기반 엔진 그대로. 코드 변경 없음.
-- **추천 데이터**: `create_data/recommendation_test/data2/` 의 3개 CSV (v2 합성 결과).
+- **추천 데이터**: `create_data/recommendation_test/data2/` 의 3개 CSV (v2 합성 결과). **2026-05-05 backend 반영 완료**.
+- **데이터 라벨 표준**: `estimated_gender ∈ {F, M}`, `estimated_age_group ∈ {20~29, 30~39, 40~49, 50+}`. backend 의 `recommendation_utils` / `trend_service` / 프론트 송신 형식과 일관. **새 후보(v3, …) 도 동일 라벨 사용 필수.**
 - **거부**: Item2Vec / FM / LightFM / ALS 등 모든 학습형 모델 — WEAK 판정으로 미채택. 자세한 내용은 [02_CHANGE_REQUESTS.md](02_CHANGE_REQUESTS.md) 의 CHANGE-014/015 REJECTED 참고.
 
 ## 1. 사전 조건 — 격리 검증 완료 확인

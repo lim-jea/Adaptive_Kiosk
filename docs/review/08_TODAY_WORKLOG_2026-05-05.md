@@ -220,6 +220,29 @@ git 에 commit 될 대상은 다음으로 좁혀진다 — **합성 데이터 �
 - `docs/review/*.md` (검토 로그 + 08·09)
 - 기타 한국어 docs 3개
 
+### 8-3. backend 반영 + 라벨 표준 통일 (오늘 마지막)
+
+(1) `backend/data/{kiosk_sessions, orders, order_items}.csv` 를 v2 (data2) 로 교체. 기존 legacy 데이터는 `backend/data/_legacy/` 에 백업 (롤백 가능).
+
+(2) **첫 시도에서 추천이 비었음** — 프론트 호출 `gender=M, age=52` → backend lookup 키 `M/50+/afternoon`, 그러나 v2 데이터는 한국어 라벨(`남`, `50대`) 로 적재되어 매칭 실패 (로그: `CF engine error: No data for profile: M/50+/afternoon`).
+
+(3) 사용자 결정: **API I/O 형식은 그대로 유지** (프론트 분들 코드 무수정), backend 처리만 조정. 분석 결과:
+- backend 내부 표준은 이미 `M/F` + `20~29 / 30~39 / 40~49 / 50+` (utils/recommendation_utils.py, services/trend_service.py 의 Naver 매핑, 검증 docs 모두 동일)
+- 프론트 송신 형식도 동일 표준
+- → **데이터 라벨만 표준에 맞추는 게 backend·프론트 무수정으로 끝낼 수 있는 유일한 방법**
+
+(4) 변경:
+- `generate_synth_v2.py`: `GENDER_DIST`, `AGE_DIST`, `GENDER_AGE_ADJ` 의 키를 `F/M` + `20~29/30~39/40~49/50+` 로 통일
+- `sync_synthetic_data.py`: `GENDER_MAP`, `AGE_MAP` 추가 → 한국어 입력도 받지만 출력은 표준 영어
+- v2 재생성 + sync + backend/data 재반영
+- backend 재기동 후 추천 정상 작동 확인 ✅
+
+(5) 변경하지 않은 것:
+- 프론트 코드
+- backend `recommendation_utils.py`, `recommendation_service.py`, `trend_service.py`
+- API request/response schema
+- 추천 알고리즘
+
 ## 9. 다음 회차 시작점
 
 1. (선택) v2 안정성 점검: `--seed` 를 바꿔 재생성 후 같은 점검 항목이 모두 만족되는지 확인.

@@ -28,8 +28,14 @@ DEFAULT_MAPPING = HERE / "menu_id_mapping.json"
 # ─── 컬럼 매핑 ─────────────────────────────────────────────────────────────────
 
 GENDER_MAP = {
-    # 합성 데이터 표기 → backend 표기 (backend는 String(10)이므로 자유, 한국어 유지)
-    "남": "남", "여": "여", "F": "여", "M": "남",
+    # 합성 데이터 표기 → backend 표기 (backend recommendation_utils 표준: M/F)
+    "M": "M", "F": "F", "남": "M", "여": "F",
+}
+
+AGE_MAP = {
+    # 한국어/영어 모든 표기 → backend 표준 (20~29 / 30~39 / 40~49 / 50+)
+    "20대": "20~29", "30대": "30~39", "40대": "40~49", "50대": "50+",
+    "20~29": "20~29", "30~39": "30~39", "40~49": "40~49", "50+": "50+",
 }
 
 
@@ -53,7 +59,8 @@ def transform_sessions(src: pd.DataFrame) -> pd.DataFrame:
     out["ended_at"] = pd.to_datetime(src["ended_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     out["end_reason"] = "completed"
     out["is_simple_mode"] = 0
-    out["estimated_age_group"] = src["age_10"].astype(str)
+    age_raw = src["age_10"].astype(str)
+    out["estimated_age_group"] = age_raw.map(AGE_MAP).fillna(age_raw).astype(str)
     out["estimated_gender"] = src["sex"].map(GENDER_MAP).fillna(src["sex"]).astype(str)
     out["help_triggered"] = 0
     out["status"] = "ended"

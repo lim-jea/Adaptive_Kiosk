@@ -74,14 +74,14 @@ _install_model_stub()
 _install_trend_stub()
 
 HERE = Path(__file__).resolve().parent
-LEGACY_DIR = HERE / "legacy_data"
-SYNTH_DIR  = HERE / "data"
+# v1(legacy + synth) 산출물은 v2 채택 후 정리됨.
+# backend/data/_legacy/ 가 legacy 백업, 신 후보(v3 등)는 data3/, data4/ … 추가.
+LEGACY_DIR = HERE.parent.parent / "backend" / "data" / "_legacy"  # backend 백업 폴더
 SYNTH2_DIR = HERE / "data2"
 ENGINE_PATH = HERE / "recommendation_service_copy.py"
 
 DATASET_DIRS = {
     "legacy": LEGACY_DIR,
-    "synth":  SYNTH_DIR,
     "synth2": SYNTH2_DIR,
 }
 
@@ -291,13 +291,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", choices=list(DATASET_DIRS.keys()), default=None)
     ap.add_argument("--compare", action="store_true",
-                    help="legacy + synth + synth2 (있는 데이터셋만) 비교 리포트")
+                    help="legacy + synth2 (등록된 데이터셋) 비교 리포트")
     ap.add_argument("--compare-sets", nargs="+", default=None,
-                    help="비교 대상 명시 (예: legacy synth2)")
+                    help="비교 대상 명시 (예: legacy synth2 synth3)")
     args = ap.parse_args()
 
     if args.compare or args.compare_sets:
-        targets = args.compare_sets or ["legacy", "synth", "synth2"]
+        targets = args.compare_sets or list(DATASET_DIRS.keys())
         results = {}
         for label in targets:
             d = DATASET_DIRS.get(label)
