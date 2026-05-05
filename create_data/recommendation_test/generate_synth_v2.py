@@ -22,6 +22,7 @@ v2 의 개선 목표:
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import random
 from collections import Counter
@@ -182,9 +183,94 @@ def sample_session_count(target: int, rng: np.random.Generator) -> int:
     return target
 
 
+# ─── 대시보드 분석 위젯이 의미 있는 분포를 보여주기 위한 prior ───────────────
+# 이 보강 컬럼들은 추천 산식(_compute_profile_stats / _compute_co_purchase_stats) 에
+# 들어가지 않는다 → 추천 결과 byte-level 동일 보장.
+
+# Order.used_recommendation: 추천 사용률 (한 주문 단위)
+USED_RECOMMENDATION_RATE = 0.15           # 15%
+
+# OrderItem.from_recommendation: used_recommendation=True 인 주문 안 라인 중에서만 True
+FROM_RECOMMENDATION_RATE_GIVEN_USED = 0.55  # 추천 사용 주문 안 라인의 55%가 추천 출처
+
+# KioskSession.is_simple_mode: 50대 이상은 더 자주 사용
+SIMPLE_MODE_RATE = {"20~29": 0.02, "30~39": 0.02, "40~49": 0.04, "50+": 0.12}
+
+# KioskSession.help_triggered: 도움 호출 빈도
+HELP_TRIGGERED_RATE = {"20~29": 0.01, "30~39": 0.01, "40~49": 0.03, "50+": 0.07}
+
+# KioskSession.end_reason 분포
+END_REASON_DIST = {"completed": 0.88, "abandoned": 0.07, "timeout": 0.03, "error": 0.02}
+
+# Order.status 분포 (운영 가정)
+ORDER_STATUS_DIST = {"completed": 0.95, "cancelled": 0.04, "refunded": 0.01}
+
+# 옵션 카탈로그 prior (group_name + option_name 만 분석에 사용 → option_item_id 는 임의 정수 OK)
+# seed_menu.py 의 카탈로그를 단순화. ID 는 분석에 안 쓰이므로 25 부터 임의 부여.
+OPTION_CATALOG = {
+    "사이즈": [(25, "Tall", 0), (26, "Grande", 500), (27, "Venti", 1000)],
+    "온도":   [(29, "HOT", 0), (30, "ICE", 0)],
+    "샷 추가": [(31, "샷 추가 (+1)", 500)],
+    "시럽":   [(33, "바닐라 시럽", 500), (34, "헤이즐넛 시럽", 500), (35, "카라멜 시럽", 500)],
+    "휘핑크림": [(37, "휘핑크림 추가", 500)],
+    "당도":   [(39, "기본", 0), (40, "덜 달게", 0), (41, "더 달게", 0)],
+}
+
+# 메뉴별 사용 가능한 옵션 그룹 (간단화 — 실제 seed_menu 와 100% 매칭은 아니어도 분석 위젯 의미 있음)
+MENU_OPTION_GROUPS: dict[int, list[str]] = {
+    # 커피류: 사이즈, 온도, 샷, 시럽
+    1: ["사이즈"], 2: ["사이즈","샷 추가"], 3: ["사이즈","샷 추가"],
+    4: ["사이즈","샷 추가","시럽"], 5: ["사이즈","샷 추가","시럽"],
+    6: ["사이즈","샷 추가"], 7: ["사이즈"], 8: ["사이즈","샷 추가","시럽"],
+    9: ["사이즈"], 10: ["사이즈","샷 추가","시럽","휘핑크림"],
+    11: ["사이즈","샷 추가","시럽"],
+    # 디저트/스무디: 휘핑크림, 당도
+    12: ["사이즈","휘핑크림","당도"], 13: ["사이즈","휘핑크림","당도"],
+    14: ["사이즈","휘핑크림","당도"],
+    # 티: 온도, 당도
+    15: ["사이즈","온도","당도"], 16: ["사이즈","당도"],
+    17: ["사이즈","당도"],
+    # 에이드/스무디/주스: 사이즈, 당도
+    18: ["사이즈","당도"], 19: ["사이즈","당도"], 20: ["사이즈","당도"],
+    21: ["사이즈","당도"], 22: ["사이즈"],
+}
+
+
+def sample_options_for_menu(menu_id: int, rng: np.random.Generator) -> list[dict]:
+    """메뉴에 어울리는 옵션 그룹에서 1~2개 선택해 selected_options_json 형태 dict list 반환."""
+    groups = MENU_OPTION_GROUPS.get(menu_id, ["사이즈"])
+    # 평균 1.5개 그룹에서 옵션 선택
+    n_groups = min(len(groups), 1 + int(rng.poisson(0.7)))
+    chosen_groups = rng.choice(groups, size=n_groups, replace=False) if len(groups) >= n_groups else groups
+    selected: list[dict] = []
+    for g in chosen_groups:
+        items = OPTION_CATALOG.get(g, [])
+        if not items:
+            continue
+        idx = int(rng.integers(0, len(items)))
+        oid, oname, extra = items[idx]
+        selected.append({
+            "option_item_id": int(oid),
+            "option_name": oname,
+            "extra_price": int(extra),
+            "group_name": g,
+        })
+    return selected
+
+
+def _sample_from_dist(dist: dict[str, float], rng: np.random.Generator) -> str:
+    keys = list(dist.keys())
+    probs = np.array(list(dist.values()))
+    probs = probs / probs.sum()
+    return keys[rng.choice(len(keys), p=probs)]
+
+
 def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
     rng = np.random.default_rng(seed)
     py_rand = random.Random(seed)
+    # 보강 컬럼 추첨 전용 RNG — 메뉴/주문 추첨 rng 의 state 를 절대 건드리지 않게 분리.
+    # 같은 seed 라도 보강 추첨이 메뉴 분포에 영향 0 → 추천 결과 byte-level 동일 보장.
+    enrich_rng = np.random.default_rng(seed + 9_999_991)
 
     # 1. 세션 발생
     sessions = []
@@ -206,6 +292,13 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
         started = base_date + pd.Timedelta(days=day_off, hours=hour, minutes=minute)
         ended = started + pd.Timedelta(minutes=int(rng.integers(2, 8)))
 
+        # 인구별 prior 적용해서 is_simple_mode / help_triggered 분포 부여 (enrich_rng 사용 — 메뉴 rng 무영향)
+        sm_rate = SIMPLE_MODE_RATE.get(age, 0.02)
+        ht_rate = HELP_TRIGGERED_RATE.get(age, 0.01)
+        is_simple_mode = int(enrich_rng.random() < sm_rate)
+        help_triggered = int(enrich_rng.random() < ht_rate)
+        end_reason = _sample_from_dist(END_REASON_DIST, enrich_rng)
+
         sessions.append({
             "session_id": sid,
             "user_id": f"U{sid % 9999:04d}",
@@ -218,6 +311,9 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
             "is_holiday": 0, "is_exam_period": 0, "is_promo": 0,
             "temp_c": int(rng.integers(0, 30)),
             "is_raining": 0, "is_snowing": 0, "pm25_ugm3": int(rng.integers(10, 80)),
+            "is_simple_mode": is_simple_mode,
+            "help_triggered": help_triggered,
+            "end_reason": end_reason,
         })
 
     sessions_df = pd.DataFrame(sessions)
@@ -233,6 +329,10 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
     # 컨텍스트별 분포를 캐시해서 동일 (gender,age,period) 안에선 같은 logit 사용
     # (실제 사람의 메뉴 선호가 시간대 안에서 안정적이라는 가정)
     ctx_logits_cache: dict[tuple[str, str, str], np.ndarray] = {}
+
+    rec_events_rows: list[dict] = []
+    rec_event_id_seq = 0
+    category_by_mid = {m[0]: m[3] for m in MENU_CATALOG}
 
     for s in sessions:
         gender, age = s["sex"], s["age_10"]
@@ -251,6 +351,10 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
         order_id_seq += 1
         order_id = order_id_seq
 
+        # 주문 단위 used_recommendation / order.status (enrich_rng 사용)
+        used_recommendation = int(enrich_rng.random() < USED_RECOMMENDATION_RATE)
+        order_status = _sample_from_dist(ORDER_STATUS_DIST, enrich_rng)
+
         # 한 주문 안에서는 동일 메뉴 중복 방지
         chosen_mids = rng.choice(MENU_IDS, size=n_items, replace=False, p=probs)
         line_total = 0
@@ -261,6 +365,16 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
             qty = 1 if rng.random() > 0.05 else 2
             unit_price = int(mrow[8])
             line_total += unit_price * qty
+
+            # 라인별 from_recommendation: 추천 사용 주문에서만 일정 비율 True (enrich_rng)
+            if used_recommendation and enrich_rng.random() < FROM_RECOMMENDATION_RATE_GIVEN_USED:
+                from_rec = 1
+            else:
+                from_rec = 0
+
+            # selected options (group_name + option_name 키 포함, enrich_rng)
+            selected_opts = sample_options_for_menu(mid_int, enrich_rng)
+
             items_rows.append({
                 "order_id": order_id,
                 "item_id": mrow[1],
@@ -272,6 +386,8 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
                 "caffeine_mg": mrow[7],
                 "unit_price": unit_price,
                 "quantity": qty,
+                "from_recommendation": from_rec,
+                "selected_options_json": json.dumps(selected_opts, ensure_ascii=False),
             })
 
         orders_rows.append({
@@ -281,20 +397,57 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
             "created_at": s["started_at"],
             "total_price": line_total,
             "item_count": n_items,
-            "used_recommendation": 0,
+            "used_recommendation": used_recommendation,
             "is_promo": 0,
             "promo_discount_pct": 0.0,
+            "status": order_status,
         })
+
+        # RecommendationEvent 합성 — 주문이 추천을 사용했으면 1~2개 event 기록 (enrich_rng 만 사용)
+        if used_recommendation:
+            n_ev = 1 + int(enrich_rng.random() < 0.3)  # 70% 1개, 30% 2개
+            for _ in range(n_ev):
+                rec_event_id_seq += 1
+                # 추천 type: situation(mode A) 70%, suggest(mode CF) 30%
+                rec_type = "situation" if enrich_rng.random() < 0.7 else "suggest"
+                # 추천한 메뉴: 그 컨텍스트의 인기 메뉴 중 하나 (enrich_rng 로 추첨)
+                rec_mid = int(enrich_rng.choice(MENU_IDS, p=probs))
+                # was_clicked, led_to_order
+                was_clicked = int(enrich_rng.random() < 0.55)
+                led_to_order = int(was_clicked and enrich_rng.random() < 0.6)
+                rec_events_rows.append({
+                    "id": rec_event_id_seq,
+                    "session_id": s["session_id"],
+                    "created_at": s["started_at"],
+                    "preferred_category": category_by_mid.get(rec_mid, "coffee"),
+                    "recommendation_type": rec_type,
+                    "recommended_menu_id": rec_mid,
+                    "was_clicked": was_clicked,
+                    "led_to_order": led_to_order,
+                })
 
     orders_df = pd.DataFrame(orders_rows)
     items_df = pd.DataFrame(items_rows)
+    rec_events_df = pd.DataFrame(rec_events_rows)
 
     # 3. 검증
     print("\n=== 검증 ===")
     print(f"sessions: {len(sessions_df):,}")
     print(f"orders  : {len(orders_df):,}")
     print(f"items   : {len(items_df):,}")
+    print(f"rec_events: {len(rec_events_df):,}")
     print(f"items/order = {len(items_df)/len(orders_df):.3f}")
+    print()
+    print(f"[대시보드 분포 점검]")
+    print(f"  used_recommendation True 비율: {orders_df['used_recommendation'].mean()*100:.1f}%")
+    print(f"  from_recommendation True 비율: {items_df['from_recommendation'].mean()*100:.1f}%")
+    print(f"  is_simple_mode True 비율: {sessions_df['is_simple_mode'].mean()*100:.1f}%")
+    print(f"  help_triggered True 비율: {sessions_df['help_triggered'].mean()*100:.1f}%")
+    print(f"  end_reason 분포: {dict(sessions_df['end_reason'].value_counts(normalize=True).round(3))}")
+    print(f"  order.status 분포: {dict(orders_df['status'].value_counts(normalize=True).round(3))}")
+    if len(rec_events_df) > 0:
+        print(f"  rec_events.was_clicked: {rec_events_df['was_clicked'].mean()*100:.1f}%")
+        print(f"  rec_events.led_to_order: {rec_events_df['led_to_order'].mean()*100:.1f}%")
 
     # global share
     share = items_df["item_id"].value_counts(normalize=True)
@@ -326,10 +479,16 @@ def generate(n_sessions: int, seed: int, out_dir: Path, max_share: float):
     sessions_df.to_csv(out_dir / "kiosk_sessions.csv", index=False, encoding="utf-8")
     orders_df.to_csv(out_dir / "kiosk_orders.csv", index=False, encoding="utf-8")
     items_df.to_csv(out_dir / "kiosk_order_items.csv", index=False, encoding="utf-8")
-    print(f"\n[saved] {out_dir}/  (kiosk_sessions, kiosk_orders, kiosk_order_items).csv")
+    rec_events_df.to_csv(out_dir / "recommendation_events.csv", index=False, encoding="utf-8")
+    print(f"\n[saved] {out_dir}/  (kiosk_sessions, kiosk_orders, kiosk_order_items, recommendation_events).csv")
 
     return {
-        "rows": {"sessions": len(sessions_df), "orders": len(orders_df), "items": len(items_df)},
+        "rows": {
+            "sessions": len(sessions_df),
+            "orders": len(orders_df),
+            "items": len(items_df),
+            "rec_events": len(rec_events_df),
+        },
         "items_per_order": round(len(items_df) / len(orders_df), 3),
         "max_share_pct": round(share.max() * 100, 2),
         "hhi": round(hhi, 4),

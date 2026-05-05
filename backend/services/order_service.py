@@ -5,8 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from model import Menu
-from crud.menu import get_option_item_by_id
+from model import Menu, Order, OrderItem
 from crud.session import get_session_by_uuid, get_session_by_id
 from crud import order as order_crud
 from services.cart_service import calculate_unit_price, get_cart_items_for_checkout
@@ -18,6 +17,44 @@ from schemas import (
     OrderItemOptionResponse,
 )
 from schemas import make_error
+
+
+# ─── 내부 응답 빌더 (이 파일 내부 전용) ─────────────────────────────────────
+# get_order_response / list_order_responses 가 거의 동일한 응답을 만드므로,
+# 빌드 형식 부분만 dedup. menu_name 결정 등 호출자 차이는 호출자가 책임.
+def _build_order_item_response(item: OrderItem, *, menu_name: str) -> OrderItemResponse:
+    option_snapshots = item.selected_options_json or []
+    return OrderItemResponse(
+        id=item.id,
+        menu_name=menu_name,
+        quantity=item.quantity,
+        unit_price=item.unit_price,
+        from_recommendation=item.from_recommendation,
+        options=[
+            OrderItemOptionResponse(
+                option_name=opt["option_name"],
+                extra_price=opt["extra_price"],
+            )
+            for opt in option_snapshots
+        ],
+    )
+
+
+def _build_order_response(
+    order: Order,
+    *,
+    session_uuid: str,
+    items: list[OrderItemResponse],
+) -> OrderResponse:
+    return OrderResponse(
+        order_uuid=order.order_uuid,
+        session_uuid=session_uuid,
+        created_at=order.created_at,
+        total_price=order.total_price,
+        used_recommendation=order.used_recommendation,
+        status=order.status,
+        items=items,
+    )
 
 
 async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderResponse:
@@ -78,23 +115,24 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
 
     for item in source_items:
         option_ids = item["selected_option_ids"]
-        server_unit_price, menu = await calculate_unit_price(db, item["menu_name"], option_ids)
+        # calculate_unit_price 가 검증된 옵션 객체 list 를 함께 반환하므로
+        # 같은 옵션을 다시 fetch 하지 않는다.
+        server_unit_price, menu, validated_options = await calculate_unit_price(
+            db, item["menu_name"], option_ids
+        )
 
-        selected_options_json = []
-        option_responses = []
-        for option_id in option_ids:
-            oi = await get_option_item_by_id(db, option_id)
-            if oi:
-                selected_options_json.append(
-                    {
-                        "option_item_id": option_id,
-                        "option_name": oi.option_name,
-                        "extra_price": oi.extra_price,
-                    }
-                )
-                option_responses.append(
-                    OrderItemOptionResponse(option_name=oi.option_name, extra_price=oi.extra_price)
-                )
+        selected_options_json = [
+            {
+                "option_item_id": oi.id,
+                "option_name": oi.option_name,
+                "extra_price": oi.extra_price,
+            }
+            for oi in validated_options
+        ]
+        option_responses = [
+            OrderItemOptionResponse(option_name=oi.option_name, extra_price=oi.extra_price)
+            for oi in validated_options
+        ]
 
         line_total = server_unit_price * item["quantity"]
 
@@ -111,12 +149,16 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         )
 
         total_price += line_total
+        # runtime CSV (DB OrderItem mirror) — DB 컬럼 1:1 형식으로 누락 없이 기록
         runtime_csv_items.append(
             {
                 "menu_id": menu.id,
+                "menu_name_snapshot": menu.name,
                 "quantity": item["quantity"],
                 "unit_price": server_unit_price,
+                "line_total": line_total,
                 "from_recommendation": item["from_recommendation"],
+                "selected_options_json": selected_options_json,
             }
         )
 
@@ -160,37 +202,18 @@ async def get_order_response(db: AsyncSession, order_uuid: str) -> OrderResponse
     session = await get_session_by_id(db, order.session_id)
     session_uuid = session.session_uuid if session else ""
 
+    # detail 응답: snapshot 비었을 때 Menu 추가 fetch 로 fallback
     response_items = []
     for item in order.items:
-        menu_result = await db.execute(select(Menu).where(Menu.id == item.menu_id))
-        menu = menu_result.scalar_one_or_none()
-        option_snapshots = item.selected_options_json or []
-        response_items.append(
-            OrderItemResponse(
-                id=item.id,
-                menu_name=item.menu_name_snapshot or (menu.name if menu else ""),
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                from_recommendation=item.from_recommendation,
-                options=[
-                    OrderItemOptionResponse(
-                        option_name=option["option_name"],
-                        extra_price=option["extra_price"],
-                    )
-                    for option in option_snapshots
-                ],
-            )
-        )
+        if item.menu_name_snapshot:
+            menu_name = item.menu_name_snapshot
+        else:
+            menu_result = await db.execute(select(Menu).where(Menu.id == item.menu_id))
+            menu = menu_result.scalar_one_or_none()
+            menu_name = menu.name if menu else ""
+        response_items.append(_build_order_item_response(item, menu_name=menu_name))
 
-    return OrderResponse(
-        order_uuid=order.order_uuid,
-        session_uuid=session_uuid,
-        created_at=order.created_at,
-        total_price=order.total_price,
-        used_recommendation=order.used_recommendation,
-        status=order.status,
-        items=response_items,
-    )
+    return _build_order_response(order, session_uuid=session_uuid, items=response_items)
 
 
 async def list_order_responses(
@@ -215,36 +238,18 @@ async def list_order_responses(
         limit=limit,
     )
 
+    # list 응답: N+1 회피 위해 snapshot 없으면 빈 string (Menu 추가 fetch 안 함)
     responses = []
     for order in orders:
         session = await get_session_by_id(db, order.session_id)
-        response_items = []
-        for item in order.items:
-            option_snapshots = item.selected_options_json or []
-            response_items.append(
-                OrderItemResponse(
-                    id=item.id,
-                    menu_name=item.menu_name_snapshot or "",
-                    quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    from_recommendation=item.from_recommendation,
-                    options=[
-                        OrderItemOptionResponse(
-                            option_name=option["option_name"],
-                            extra_price=option["extra_price"],
-                        )
-                        for option in option_snapshots
-                    ],
-                )
-            )
+        response_items = [
+            _build_order_item_response(item, menu_name=item.menu_name_snapshot or "")
+            for item in order.items
+        ]
         responses.append(
-            OrderResponse(
-                order_uuid=order.order_uuid,
+            _build_order_response(
+                order,
                 session_uuid=session.session_uuid if session else "",
-                created_at=order.created_at,
-                total_price=order.total_price,
-                used_recommendation=order.used_recommendation,
-                status=order.status,
                 items=response_items,
             )
         )

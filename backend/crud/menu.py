@@ -229,6 +229,7 @@ async def replace_menu_option_groups(
     for group in groups:
         await upsert_option_group(
             db,
+            menu=menu,                # 이미 갖고 있는 Menu 객체 그대로 — 재조회 X
             menu_name=menu.name,
             name=group["name"],
             group_order=group.get("group_order", 0),
@@ -245,21 +246,23 @@ async def get_option_groups(
     limit: int = 100,
     menu_name: Optional[str] = None,
 ) -> Tuple[list[dict[str, Any]], int]:
-    if menu_name:
-        detail = await get_menu_detail(db, menu_name)
-        if not detail:
-            return [], 0
-        groups = detail["option_groups"]
-        return groups[skip: skip + limit], len(groups)
-
-    rows = (
-        await db.execute(
-            select(MenuOption)
-            .where(MenuOption.is_available == True)
-            .order_by(MenuOption.group_order, MenuOption.group_name, MenuOption.option_order, MenuOption.id)
+    stmt = (
+        select(MenuOption)
+        .where(MenuOption.is_available == True)
+        .order_by(
+            MenuOption.group_order,
+            MenuOption.group_name,
+            MenuOption.option_order,
+            MenuOption.id,
         )
-    ).scalars().all()
+    )
+    if menu_name:
+        menu = await get_menu_by_name(db, menu_name)
+        if not menu:
+            return [], 0
+        stmt = stmt.where(MenuOption.menu_id == menu.id)
 
+    rows = (await db.execute(stmt)).scalars().all()
     groups = _group_menu_options(list(rows))
     total = len(groups)
     return groups[skip: skip + limit], total
@@ -270,11 +273,29 @@ async def get_option_group_with_items(
     name: str,
     menu_name: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
-    groups, _ = await get_option_groups(db, menu_name=menu_name, skip=0, limit=1000)
-    for group in groups:
-        if group["name"] == name:
-            return group
-    return None
+    stmt = (
+        select(MenuOption)
+        .where(
+            MenuOption.group_name == name,
+            MenuOption.is_available == True,
+        )
+        .order_by(
+            MenuOption.group_order,
+            MenuOption.option_order,
+            MenuOption.id,
+        )
+    )
+    if menu_name:
+        menu = await get_menu_by_name(db, menu_name)
+        if not menu:
+            return None
+        stmt = stmt.where(MenuOption.menu_id == menu.id)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    if not rows:
+        return None
+    groups = _group_menu_options(list(rows))
+    return groups[0] if groups else None
 
 
 async def upsert_option_group(
@@ -287,10 +308,14 @@ async def upsert_option_group(
     min_select: int,
     max_select: int,
     items: list[dict[str, Any]],
+    menu: Optional[Menu] = None,
 ) -> Optional[dict[str, Any]]:
-    menu = await get_menu_by_name(db, menu_name)
-    if not menu:
-        return None
+    """옵션 그룹 통째 교체. caller 가 이미 Menu 객체를 갖고 있으면 `menu=...` 로
+    전달해 메뉴 재조회 round-trip 을 절약할 수 있다 (기본 동작은 menu_name 으로 lookup)."""
+    if menu is None:
+        menu = await get_menu_by_name(db, menu_name)
+        if not menu:
+            return None
 
     existing_rows = (
         await db.execute(

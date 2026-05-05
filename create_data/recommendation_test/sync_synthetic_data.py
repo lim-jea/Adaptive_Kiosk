@@ -57,12 +57,13 @@ def transform_sessions(src: pd.DataFrame) -> pd.DataFrame:
     out["kiosk_id"] = 1
     out["started_at"] = pd.to_datetime(src["started_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     out["ended_at"] = pd.to_datetime(src["ended_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-    out["end_reason"] = "completed"
-    out["is_simple_mode"] = 0
+    # 보강 분포가 source 에 있으면 그대로 사용, 없으면 default (옛 v2 source 호환)
+    out["end_reason"] = src["end_reason"] if "end_reason" in src.columns else "completed"
+    out["is_simple_mode"] = src["is_simple_mode"].astype(int) if "is_simple_mode" in src.columns else 0
     age_raw = src["age_10"].astype(str)
     out["estimated_age_group"] = age_raw.map(AGE_MAP).fillna(age_raw).astype(str)
     out["estimated_gender"] = src["sex"].map(GENDER_MAP).fillna(src["sex"]).astype(str)
-    out["help_triggered"] = 0
+    out["help_triggered"] = src["help_triggered"].astype(int) if "help_triggered" in src.columns else 0
     out["status"] = "ended"
     return out
 
@@ -76,7 +77,7 @@ def transform_orders(src: pd.DataFrame) -> pd.DataFrame:
     out["created_at"] = pd.to_datetime(src["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     out["total_price"] = src["total_price"].astype(int)
     out["used_recommendation"] = src.get("used_recommendation", 0).astype(int)
-    out["status"] = "completed"
+    out["status"] = src["status"] if "status" in src.columns else "completed"
     return out
 
 
@@ -95,6 +96,9 @@ def transform_order_items(src: pd.DataFrame, menu_mapping: dict[str, dict]) -> t
         if spec.get("drop"):
             drop_count[r.item_id] += 1
             continue
+        # 보강 컬럼: source 에 있으면 그대로, 없으면 default
+        from_rec_val = getattr(r, "from_recommendation", 0)
+        sel_opts_val = getattr(r, "selected_options_json", "[]")
         rows.append({
             "order_id": int(r.order_id),
             "menu_id": int(spec["menu_id"]),
@@ -102,8 +106,8 @@ def transform_order_items(src: pd.DataFrame, menu_mapping: dict[str, dict]) -> t
             "quantity": int(getattr(r, "quantity", 1)),
             "unit_price": int(r.unit_price),
             "line_total": int(r.unit_price) * int(getattr(r, "quantity", 1)),
-            "from_recommendation": False,
-            "selected_options_json": "[]",
+            "from_recommendation": bool(int(from_rec_val)) if from_rec_val != "" else False,
+            "selected_options_json": sel_opts_val if sel_opts_val else "[]",
         })
         kept_menus[spec["menu_id"]] += 1
     df = pd.DataFrame(rows)

@@ -10,6 +10,7 @@ from crud.menu import (
     get_option_groups,
     upsert_option_group,
 )
+from services.voice_prompting import invalidate_menu_catalog_cache
 from schemas import (
     OptionCatalogGroup,
     OptionGroupListRequest,
@@ -103,6 +104,7 @@ async def upsert_option_group_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=make_error("MENU_NOT_FOUND", "Menu not found", menu_name=req.menu_name),
         )
+    invalidate_menu_catalog_cache()
     return detail
 
 
@@ -144,4 +146,5 @@ async def upsert_menu_option_group(
                 group_name=req.name,
             ),
         )
+    invalidate_menu_catalog_cache()
     return detail

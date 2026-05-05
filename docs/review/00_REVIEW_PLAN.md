@@ -23,7 +23,7 @@
    - 동작 변경, API 변경, 리팩토링 큰 건은 모두 `02_CHANGE_REQUESTS.md`에 등록 후 진행 결정.
 
 4. **검토 기록**
-   - 각 단위 검토는 `01_REVIEW_LOG.md`에 결과/의문점/결정 사항을 누적 기록.
+   - 각 단위 검토는 일자별 작업 로그(`08_TODAY_WORKLOG_*.md`, `10_CODE_CLEANUP_*.md`)에 누적 기록.
    - 사용자가 던진 질문과 응답도 같은 파일에 시간순으로 기록.
 
 ---
@@ -94,22 +94,18 @@
 
 ```
 docs/review/
-├── 00_REVIEW_PLAN.md           ← 본 문서. 계획.
-├── 01_REVIEW_LOG.md            ← 검토 진행 기록. Phase/단위별 결과 누적.
-├── 02_CHANGE_REQUESTS.md       ← 수정해야 할 항목 목록. 즉시 vs 보류 구분.
-├── 03_DATA_VALIDATION.md       ← 합성 데이터 검증 가이드 (추천 시스템 입력 데이터).
-├── 04_EXTERNAL_DATA_SEARCH.md  ← 외부 카페/소매 데이터 탐색 요건 가이드 (Item2Vec CF용).
-├── 05_DATASET_CANDIDATES.md    ← 외부 데이터 51개 후보 평가 결과 / 다운로드 우선순위.
-├── 06_NOTEBOOK_PLAN.md         ← 카페 추천 ipynb 작업 계획서 (이전 영화 CF 패턴 참고).
-└── 07_RECOMMENDATION_REWORK_PLAN.md  ← 통계 추천 + 합성 데이터 채택 / backend 재정비 계획.
+├── 00_REVIEW_PLAN.md                ← 본 문서. 계획.
+├── 02_CHANGE_REQUESTS.md            ← 수정해야 할 항목 목록. 즉시 vs 보류 구분.
+├── 03_DATA_VALIDATION.md            ← 합성 데이터 검증 가이드.
+├── 05_DATASET_CANDIDATES.md         ← 외부 데이터 후보 평가 (캡스톤 보고서 references).
+├── 07_RECOMMENDATION_REWORK_PLAN.md ← 통계 추천 + 합성 데이터 채택 / backend 재정비 계획.
+├── 08_TODAY_WORKLOG_2026-05-05.md   ← 일자별 작업 로그 (추천 데이터 결정).
+├── 09_BACKEND_INTEGRATION_PLAN.md   ← v2 합성 데이터 backend 적용 가이드.
+└── 10_CODE_CLEANUP_2026-05-05.md    ← 코드 정리 라운드 + 추후 할 일.
 ```
 
-- `01_REVIEW_LOG.md`: 단위별 섹션. 각 섹션 안에는
-  - **요약**: 한 줄 결론.
-  - **확인 사항**: 정상으로 확인된 부분.
-  - **의문 / 결정 필요**: 사용자에게 묻거나 합의 필요.
-  - **수정 제안**: 가벼운 정리 → 즉시 반영, 큰 변경 → CHANGE_REQUESTS로 이동.
-  - **사용자 Q & A**: 사용자가 묻고 답변한 내용 시간순.
+> 단위별 검토 로그는 `08_*.md`, `10_*.md` 같은 일자별 작업 로그로 통합되어 있다.
+> 옛 `01_REVIEW_LOG.md` (빈 템플릿), `04_EXTERNAL_DATA_SEARCH.md` (모델형 거부됨), `06_NOTEBOOK_PLAN.md` (모델 노트북 REJECTED) 는 사용 중단되어 삭제.
 
 - `02_CHANGE_REQUESTS.md`: 표 형식.
   - ID / 대상 파일 / 분류(즉시/보류/API변경) / 내용 / 영향 범위 / 결정.
@@ -136,7 +132,7 @@ Phase 2는 별도 세션에서 도메인 단위로 진행한다.
 
 1. 사용자가 `1.1 main.py 시작` 같은 신호를 줌.
 2. 어시스턴트가 해당 파일을 끝까지 읽고 **체크리스트 7개 관점으로 분석한 결과**를 답변.
-3. 사용자가 궁금한 부분 질문 → 어시스턴트 답변 → 두 흐름 모두 `01_REVIEW_LOG.md`에 기록.
+3. 사용자가 궁금한 부분 질문 → 어시스턴트 답변 → 두 흐름 모두 일자별 작업 로그에 기록.
 4. 수정 결정이 나면:
    - 안전한 수정 → 즉시 반영하고 로그에 "적용함" 표기.
    - 큰 변경 → `02_CHANGE_REQUESTS.md`로 이관.

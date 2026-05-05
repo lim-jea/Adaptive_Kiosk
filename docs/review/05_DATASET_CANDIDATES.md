@@ -1,8 +1,8 @@
 # 외부 데이터 후보 평가 (51개)
 
 > 입력: 별도 AI 조사 결과 51개 후보.
-> 본 평가는 우리 시스템 요건([04_EXTERNAL_DATA_SEARCH.md](./04_EXTERNAL_DATA_SEARCH.md) §2)에 매칭한 결과.
-> "필요한 데이터를 찾는다"는 목표에 맞춰, 다운로드 우선순위와 차단 조건을 명시.
+> 본 평가는 시스템 요건(카페/소매 도메인, 다중 라인 주문, 익명화된 사용자/세션 키, 메뉴 카탈로그 매핑 가능성)에 매칭한 결과.
+> 모델형 추천이 거부되고 v2 합성 데이터가 채택되어 본 후보 중 직접 사용된 것은 없음. 캡스톤 보고서 references 자료로 보존.
 
 ---
 
@@ -434,7 +434,7 @@ print("rows:", len(df), "orders:", df[order_col].nunique())
 ## 7-C. **최종 채택 (FINAL · 2026-05-04)** — OpenSurvey 자산 발견 후 전면 재정렬
 
 자료조사 폴더에서 OpenSurvey 합성 응답표 + 캡스톤 자체 합성 7종(`rec_*`) 발견 → 데이터 구도 전면 재구성.
-관련 계획: [06_NOTEBOOK_PLAN.md](./06_NOTEBOOK_PLAN.md).
+(이전 모델 노트북 계획은 모두 REJECTED — 통계 기반 + v2 합성 데이터로 노선 변경. 자세한 결정은 [07_RECOMMENDATION_REWORK_PLAN.md](./07_RECOMMENDATION_REWORK_PLAN.md) 참조.)
 
 ### 학습/검증 데이터
 | 역할 | 데이터셋 |
@@ -480,6 +480,6 @@ Item2Vec 학습 메인 → Bread Basket (확정)
 ## 8. 다음 행동
 
 1. 사용자: Step 1의 두 데이터셋(Maven Restaurant Orders + Bread Basket)을 `create_data/raw/`에 다운로드.
-2. 어시스턴트: 5줄짜리 검증 코드를 즉시 실행하여 다중 라인 비율 + 메뉴 종수 + 라이선스 확인 결과를 [01_REVIEW_LOG.md](./01_REVIEW_LOG.md)에 기록.
+2. 어시스턴트: 5줄짜리 검증 코드를 즉시 실행하여 다중 라인 비율 + 메뉴 종수 + 라이선스 확인 결과를 일자별 작업 로그에 기록.
 3. 합격 시: §5 Step 2 진행 (Instacart 카테고리 추출).
-4. 부적합 시: 7-2/7-3 순으로 fallback 또는 [04_EXTERNAL_DATA_SEARCH.md §7](./04_EXTERNAL_DATA_SEARCH.md) 합성 보강(B-1)으로 전환.
+4. 부적합 시: 7-2/7-3 순으로 fallback 또는 OpenSurvey 기반 자체 합성으로 전환 (실제 채택안).

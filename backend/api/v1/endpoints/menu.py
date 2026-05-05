@@ -14,6 +14,7 @@ from crud.menu import (
     soft_delete_option_group,
     update_menu,
 )
+from services.voice_prompting import invalidate_menu_catalog_cache
 from schemas import (
     CategoryListRequest,
     CategoryResponse,
@@ -83,6 +84,7 @@ async def create_menu_endpoint(
     if option_groups is not None:
         await replace_menu_option_groups(db, menu=menu, groups=option_groups)
 
+    invalidate_menu_catalog_cache()
     return await get_menu_detail(db, menu.name, include_unavailable_options=True)
 
 
@@ -111,6 +113,7 @@ async def update_menu_endpoint(
     if option_groups is not None:
         await replace_menu_option_groups(db, menu=menu, groups=option_groups)
 
+    invalidate_menu_catalog_cache()
     return await get_menu_detail(db, menu.name, include_unavailable_options=True)
 
 
@@ -127,6 +130,7 @@ async def delete_menu_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=make_error("MENU_NOT_FOUND", "Menu not found", menu_id=menu_id),
         )
+    invalidate_menu_catalog_cache()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -151,6 +155,7 @@ async def delete_menu_option_group(
                 menu_id=menu_id, group_name=group_name,
             ),
         )
+    invalidate_menu_catalog_cache()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

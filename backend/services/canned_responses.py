@@ -88,14 +88,6 @@ def match_canned(text: str, stage: str) -> AIChatResponse | None:
     return None
 
 
-def all_canned_texts() -> list[str]:
-    return [
-        scenario.response.response_text
-        for scenario in _scenarios
-        if scenario.response.response_text
-    ]
-
-
 def compose_template(template_id: str, **slots) -> str | None:
     for template in _templates:
         if template.get("id") != template_id:
