@@ -103,9 +103,14 @@ async def get_menus(
     limit: int = 100,
     sort_by: str = "name",
     sort_order: str = "asc",
+    include_unavailable: bool = False,
 ) -> Tuple[list[dict[str, Any]], int]:
-    base = select(Menu).where(Menu.is_available == True)
-    count_q = select(func.count(Menu.id)).where(Menu.is_available == True)
+    base = select(Menu)
+    count_q = select(func.count(Menu.id))
+
+    if not include_unavailable:
+        base = base.where(Menu.is_available == True)
+        count_q = count_q.where(Menu.is_available == True)
 
     if category_name:
         base = base.where(Menu.category == category_name)
@@ -124,17 +129,25 @@ async def get_menu_by_name(db: AsyncSession, menu_name: str) -> Optional[Menu]:
     return result.scalar_one_or_none()
 
 
-async def get_menu_detail(db: AsyncSession, menu_name: str) -> Optional[dict[str, Any]]:
+async def get_menu_by_id(db: AsyncSession, menu_id: int) -> Optional[Menu]:
+    result = await db.execute(select(Menu).where(Menu.id == menu_id))
+    return result.scalar_one_or_none()
+
+
+async def get_menu_detail(
+    db: AsyncSession,
+    menu_name: str,
+    *,
+    include_unavailable_options: bool = False,
+) -> Optional[dict[str, Any]]:
     menu = await get_menu_by_name(db, menu_name)
     if not menu:
         return None
 
-    option_rows = (
-        await db.execute(
-            select(MenuOption)
-            .where(MenuOption.menu_id == menu.id, MenuOption.is_available == True)
-        )
-    ).scalars().all()
+    stmt = select(MenuOption).where(MenuOption.menu_id == menu.id)
+    if not include_unavailable_options:
+        stmt = stmt.where(MenuOption.is_available == True)
+    option_rows = (await db.execute(stmt)).scalars().all()
 
     return {
         **_menu_row_to_dict(menu),
@@ -148,6 +161,82 @@ async def create_menu(db: AsyncSession, data: dict[str, Any]) -> Menu:
     await db.commit()
     await db.refresh(menu)
     return menu
+
+
+async def update_menu(db: AsyncSession, menu_id: int, data: dict[str, Any]) -> Optional[Menu]:
+    menu = await get_menu_by_id(db, menu_id)
+    if not menu:
+        return None
+
+    for field, value in data.items():
+        setattr(menu, field, value)
+
+    await db.commit()
+    await db.refresh(menu)
+    return menu
+
+
+async def soft_delete_menu(db: AsyncSession, menu_id: int) -> Optional[Menu]:
+    """메뉴를 숨김(`is_available=False`)으로 처리. 실제 row는 보존."""
+    return await update_menu(db, menu_id, {"is_available": False})
+
+
+async def soft_delete_option_group(
+    db: AsyncSession,
+    *,
+    menu_id: int,
+    group_name: str,
+) -> int:
+    """옵션 그룹의 모든 옵션 아이템을 `is_available=False`로 표시. 영향 받은 row 수 반환."""
+    rows = (
+        await db.execute(
+            select(MenuOption).where(
+                MenuOption.menu_id == menu_id,
+                MenuOption.group_name == group_name,
+            )
+        )
+    ).scalars().all()
+    for row in rows:
+        row.is_available = False
+    await db.commit()
+    return len(rows)
+
+
+async def replace_menu_option_groups(
+    db: AsyncSession,
+    *,
+    menu: Menu,
+    groups: list[dict[str, Any]],
+) -> None:
+    """메뉴 PATCH/POST의 인라인 옵션 편집용. 주어진 그룹 집합을 "정답"으로 간주하여
+    - 새 그룹은 추가/갱신 (`upsert_option_group`)
+    - 클라이언트가 보내지 않은 기존 그룹은 소프트 삭제 (`is_available=False`)
+    빈 리스트가 들어오면 모든 기존 그룹이 비활성화된다 — 명시적 "전체 비움" 의미."""
+    incoming_names = {g["name"] for g in groups if g.get("name")}
+
+    existing_rows = (
+        await db.execute(
+            select(MenuOption.group_name)
+            .where(MenuOption.menu_id == menu.id)
+            .group_by(MenuOption.group_name)
+        )
+    ).all()
+    existing_names = {row[0] for row in existing_rows}
+
+    for stale_name in existing_names - incoming_names:
+        await soft_delete_option_group(db, menu_id=menu.id, group_name=stale_name)
+
+    for group in groups:
+        await upsert_option_group(
+            db,
+            menu_name=menu.name,
+            name=group["name"],
+            group_order=group.get("group_order", 0),
+            is_required=group.get("is_required", True),
+            min_select=group.get("min_select", 1),
+            max_select=group.get("max_select", 1),
+            items=group.get("items", []),
+        )
 
 
 async def get_option_groups(
@@ -240,3 +329,100 @@ async def upsert_option_group(
 async def get_option_item_by_id(db: AsyncSession, option_item_id: int) -> Optional[MenuOption]:
     result = await db.execute(select(MenuOption).where(MenuOption.id == option_item_id))
     return result.scalar_one_or_none()
+
+
+# ============================================================================
+# Option catalog (전역 옵션 뷰) — 메뉴 단위 row를 (group_name, option_name)으로 집계
+# ============================================================================
+
+
+async def get_option_catalog(
+    db: AsyncSession,
+    *,
+    include_unavailable: bool = True,
+) -> list[dict[str, Any]]:
+    """그룹/옵션 카탈로그. 같은 (group_name, option_name)이 여러 메뉴에 분포해 있는
+    경우 사용 메뉴 목록과 평균 추가가격을 함께 반환."""
+    stmt = (
+        select(
+            MenuOption.group_name,
+            MenuOption.option_name,
+            MenuOption.is_required,
+            MenuOption.min_select,
+            MenuOption.max_select,
+            MenuOption.extra_price,
+            MenuOption.menu_id,
+            Menu.name.label("menu_name"),
+        )
+        .join(Menu, Menu.id == MenuOption.menu_id)
+    )
+    if not include_unavailable:
+        stmt = stmt.where(MenuOption.is_available == True)
+    rows = (await db.execute(stmt)).all()
+
+    groups: "OrderedDict[str, dict[str, Any]]" = OrderedDict()
+    for r in rows:
+        g = groups.setdefault(
+            r.group_name,
+            {
+                "group_name": r.group_name,
+                "is_required_votes": [],
+                "min_votes": [],
+                "max_votes": [],
+                "items": OrderedDict(),
+                "used_in_menus": {},
+            },
+        )
+        g["is_required_votes"].append(bool(r.is_required))
+        g["min_votes"].append(int(r.min_select))
+        g["max_votes"].append(int(r.max_select))
+        g["used_in_menus"][r.menu_id] = r.menu_name
+
+        item = g["items"].setdefault(
+            r.option_name,
+            {
+                "group_name": r.group_name,
+                "option_name": r.option_name,
+                "extra_prices": [],
+                "used_in_menus": {},
+            },
+        )
+        item["extra_prices"].append(int(r.extra_price))
+        item["used_in_menus"][r.menu_id] = r.menu_name
+
+    def mode(values: list) -> Any:
+        if not values:
+            return None
+        counts: dict[Any, int] = {}
+        for v in values:
+            counts[v] = counts.get(v, 0) + 1
+        return max(counts.items(), key=lambda kv: kv[1])[0]
+
+    result = []
+    for group in groups.values():
+        items = []
+        for item in group["items"].values():
+            avg_price = round(sum(item["extra_prices"]) / len(item["extra_prices"]))
+            items.append({
+                "group_name": item["group_name"],
+                "option_name": item["option_name"],
+                "avg_extra_price": int(avg_price),
+                "used_in_menus": [
+                    {"id": mid, "name": name}
+                    for mid, name in item["used_in_menus"].items()
+                ],
+            })
+        result.append({
+            "group_name": group["group_name"],
+            "representative_min_select": int(mode(group["min_votes"]) or 1),
+            "representative_max_select": int(mode(group["max_votes"]) or 1),
+            "representative_is_required": bool(mode(group["is_required_votes"])
+                                               if group["is_required_votes"] else True),
+            "items": items,
+            "used_in_menus": [
+                {"id": mid, "name": name}
+                for mid, name in group["used_in_menus"].items()
+            ],
+        })
+    result.sort(key=lambda g: g["group_name"])
+    return result

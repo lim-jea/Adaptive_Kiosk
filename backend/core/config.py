@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # HTTP Basic Auth (Swagger + 관리자 API 보호용)
     KIOSK_USERNAME: str = ""
     KIOSK_PASSWORD: str = ""
+    ADMIN_API_KEY: str = ""
 
     # Database
     DATABASE_CONN: str = ""

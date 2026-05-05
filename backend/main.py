@@ -154,6 +154,8 @@ async def docs_protect_middleware(request: Request, call_next):
         try:
             credentials = await http_basic(request)
             if not (
+                credentials is not None
+                and
                 secrets.compare_digest(credentials.username, settings.KIOSK_USERNAME)
                 and secrets.compare_digest(credentials.password, settings.KIOSK_PASSWORD)
             ):
