@@ -14,7 +14,8 @@ export function logClientTiming(label, durationMs, details = {}) {
 }
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+  // VITE_API_URL="" 이면 같은 오리진(상대경로), 미설정이면 로컬 백엔드
+  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:5000',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

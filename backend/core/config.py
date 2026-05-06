@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     NAVER_CLIENT_SECRET: str = ""
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
 
+    # CORS — 콤마 구분 목록 (예: https://kiosk.example.com,https://api.example.com)
+    # "*" 입력 시 모든 오리진 허용 (개발 환경용)
+    ALLOWED_ORIGINS: str = "*"
+
     STARTUP_DB_WRITE_ENABLED: bool = True
     RECOMMENDATION_BOOTSTRAP_ON_STARTUP: bool = True
     RECOMMENDATION_BOOTSTRAP_BATCH_SIZE: int = 2000
