@@ -39,6 +39,16 @@ MENUS = [
     {"name": "딸기 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🍓", "calories": 260, "serving_temperature": "cold", "is_caffeinated": False},
     {"name": "망고 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥭", "calories": 250, "serving_temperature": "cold", "is_caffeinated": False},
     {"name": "오렌지 주스", "category": "주스", "price": 5800, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "카페모카", "category": "달콤한커피", "price": 6200, "icon_emoji": "🍫", "calories": 290, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "블루레몬 에이드", "category": "에이드", "price": 6000, "icon_emoji": "💙", "calories": 130, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "초코 라떼", "category": "블렌디드", "price": 6300, "icon_emoji": "🍫", "calories": 320, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "딸기 라떼", "category": "블렌디드", "price": 6300, "icon_emoji": "🍓", "calories": 280, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "유자차", "category": "달콤한티", "price": 5400, "icon_emoji": "🍋", "calories": 120, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "자몽차", "category": "달콤한티", "price": 5500, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "레몬차", "category": "달콤한티", "price": 5400, "icon_emoji": "🍋", "calories": 100, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "얼그레이 티", "category": "달콤한티", "price": 5400, "icon_emoji": "🫖", "calories": 5, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "페퍼민트 티", "category": "달콤한티", "price": 5400, "icon_emoji": "🌿", "calories": 5, "serving_temperature": "hot", "is_caffeinated": False},
+    {"name": "요거트 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥛", "calories": 240, "serving_temperature": "cold", "is_caffeinated": False},
 ]
 
 OPTION_GROUPS = [
@@ -141,6 +151,16 @@ MENU_IMAGES = {
     "딸기 스무디": "https://images.unsplash.com/photo-1570696516188-ade861b84a49?w=400&h=400&fit=crop&auto=format",
     "망고 스무디": "https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?w=400&h=400&fit=crop&auto=format",
     "오렌지 주스": "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=400&fit=crop&auto=format",
+    "카페모카": "https://images.unsplash.com/photo-1579888944880-d98341245702?w=400&h=400&fit=crop&auto=format",
+    "블루레몬 에이드": "https://images.unsplash.com/photo-1556881286-fc6915169721?w=400&h=400&fit=crop&auto=format",
+    "초코 라떼": "https://images.unsplash.com/photo-1517578239113-b03992dcdd25?w=400&h=400&fit=crop&auto=format",
+    "딸기 라떼": "https://images.unsplash.com/photo-1586917049352-1c1f9b1f1d62?w=400&h=400&fit=crop&auto=format",
+    "유자차": "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=400&h=400&fit=crop&auto=format",
+    "자몽차": "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=400&fit=crop&auto=format",
+    "레몬차": "https://images.unsplash.com/photo-1556881286-fc6915169721?w=400&h=400&fit=crop&auto=format",
+    "얼그레이 티": "https://images.unsplash.com/photo-1597318181409-cf64d0b5d8a2?w=400&h=400&fit=crop&auto=format",
+    "페퍼민트 티": "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=400&h=400&fit=crop&auto=format",
+    "요거트 스무디": "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=400&fit=crop&auto=format",
 }
 
 
@@ -328,25 +348,40 @@ async def _migrate_order_item_snapshots(db: AsyncSession, tables: set[str]) -> N
     await db.commit()
 
 
-async def _seed_menus_if_needed(db: AsyncSession) -> None:
-    existing = await db.execute(select(Menu.id).limit(1))
-    if existing.scalar_one_or_none() is not None:
-        return
-
+async def _ensure_menus_present(db: AsyncSession) -> int:
+    """MENUS 카탈로그 중 DB 에 없는 메뉴를 이름 기준으로 추가한다.
+    기존 메뉴(이름 일치)는 건드리지 않으므로 운영 DB 에서 재실행해도 안전.
+    """
+    existing_names = set((await db.execute(select(Menu.name))).scalars().all())
+    inserted = 0
     for item in MENUS:
+        if item["name"] in existing_names:
+            continue
         db.add(Menu(**item))
-    await db.commit()
-    logger.info("Inserted default menus: %d", len(MENUS))
+        inserted += 1
+    if inserted:
+        await db.commit()
+        logger.info("Ensured menu catalog: inserted %d new menus", inserted)
+    return inserted
 
 
-async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
-    existing = await db.execute(select(MenuOption.id).limit(1))
-    if existing.scalar_one_or_none() is not None:
-        return 0
-
+async def _ensure_menu_options_present(db: AsyncSession) -> int:
+    """모든 메뉴에 대해 CATEGORY_OPTION_MAP 기준으로 누락된 옵션 행을 채운다.
+    (menu_id, group_name, option_name) 자연 키로 비교 → 기존 옵션 행은 건드리지 않음.
+    """
     menu_rows = (await db.execute(select(Menu))).scalars().all()
     if not menu_rows:
         return 0
+
+    existing_rows = (
+        await db.execute(
+            select(MenuOption.menu_id, MenuOption.group_name, MenuOption.option_name)
+        )
+    ).all()
+    existing_keys = {
+        (int(menu_id), str(group_name), str(option_name))
+        for menu_id, group_name, option_name in existing_rows
+    }
 
     inserted = 0
     for menu in menu_rows:
@@ -356,6 +391,9 @@ async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
             if not group:
                 continue
             for option_order, item in enumerate(group["items"]):
+                key = (int(menu.id), group["name"], item["name"])
+                if key in existing_keys:
+                    continue
                 db.add(
                     MenuOption(
                         menu_id=menu.id,
@@ -373,7 +411,9 @@ async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
                 )
                 inserted += 1
 
-    await db.commit()
+    if inserted:
+        await db.commit()
+        logger.info("Ensured menu options: inserted %d new option rows", inserted)
     return inserted
 
 
@@ -470,23 +510,22 @@ async def seed_menu_data(db: AsyncSession) -> None:
         logger.warning("Order item snapshot migration skipped: %s", exc)
         await db.rollback()
 
-    await _seed_menus_if_needed(db)
+    await _ensure_menus_present(db)
 
-    migrated = 0
     try:
         migrated = await _migrate_legacy_option_tables(db, tables)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Legacy option migration skipped: %s", exc)
         await db.rollback()
+        migrated = 0
 
     if migrated > 0:
         logger.info("Migrated legacy option tables into menu_options: %d rows", migrated)
-        return
 
-    inserted = await _seed_menu_options_from_category_map(db)
+    # legacy 이관 후에도 신규 메뉴(예: 2026-05-06 추가분)의 옵션은 비어 있을 수 있어
+    # idempotent 보강을 항상 마지막에 수행한다. 기존 옵션 행은 자연 키 비교로 보존.
+    inserted = await _ensure_menu_options_present(db)
     if inserted > 0:
-        logger.info("Inserted default menu options: %d rows", inserted)
-    else:
-        logger.info("Menu seed data already exists. Skipping.")
+        logger.info("Inserted missing menu options: %d rows", inserted)
 
     await _update_menu_images_if_missing(db)
