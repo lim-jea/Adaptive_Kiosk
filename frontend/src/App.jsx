@@ -10,6 +10,9 @@ import ResultPage from './pages/ResultPage'
 import KioskPage from './pages/KioskPage'
 import PaymentPage from './pages/PaymentPage'
 import CompletionPage from './pages/CompletionPage'
+import OrderTypePage from './pages/OrderTypePage'
+import CartReviewPage from './pages/CartReviewPage'
+import DiscountPage from './pages/DiscountPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminLoginPage from './pages/admin/AdminLoginPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
@@ -32,7 +35,10 @@ export default function App() {
           <Route path="/camera" element={<CameraPage />} />
           <Route path="/analyzing" element={<AnalyzingPage />} />
           <Route path="/result" element={<ResultPage />} />
+          <Route path="/order-type" element={<OrderTypePage />} />
           <Route path="/kiosk" element={<KioskPage />} />
+          <Route path="/cart-review" element={<CartReviewPage />} />
+          <Route path="/discount" element={<DiscountPage />} />
           <Route path="/payment" element={<PaymentPage />} />
           <Route path="/complete" element={<CompletionPage />} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
