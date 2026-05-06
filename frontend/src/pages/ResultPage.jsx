@@ -54,7 +54,7 @@ export default function ResultPage() {
 
   const handleOrder = () => {
     logger.log('navigation', 'result', {
-      actionName: 'go_to_kiosk',
+      actionName: 'go_to_order_type',
       targetType: 'button',
       targetLabel: 'order_start',
       payload: { should_use_simple_mode },
@@ -68,7 +68,7 @@ export default function ResultPage() {
         isSimpleMode: should_use_simple_mode,
       },
     })
-    navigate('/kiosk')
+    navigate('/order-type')
   }
 
   const handleRetry = () => {

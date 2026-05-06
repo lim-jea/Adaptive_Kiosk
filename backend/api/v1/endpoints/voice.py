@@ -36,22 +36,22 @@ logger = logging.getLogger(__name__)
 
 
 async def _audio_b64_for(response) -> tuple[str | None, str]:
-    """응답에 대한 WAV를 base64로 변환.
+    """응답에 대한 mp3 (Edge-TTS) 를 base64로 인코딩.
 
-    response_text 전체 WAV를 시도하고, 실패/캐시 미스 시 None을 반환한다.
-    프런트는 None일 때 브라우저 TTS로 폴백한다.
+    response_text 전체에 대한 합성(또는 메모리 캐시 hit)을 시도하고,
+    실패/캐시 미스+Edge 비활성 시 None 을 반환해 프런트가 브라우저 TTS 로 폴백한다.
 
     Returns:
       (audio_b64_or_none, source)
-      - source: tts|none|error
+      - source: edge | none | error
     """
     t0 = time.perf_counter()
     try:
-        wav = await synthesize_speech(response.response_text)
-        if wav:
-            b64 = base64.b64encode(wav).decode("ascii")
-            logger.info("[voice-metrics] audio_source=tts ms=%.1f", (time.perf_counter() - t0) * 1000)
-            return b64, "tts"
+        audio = await synthesize_speech(response.response_text)
+        if audio:
+            b64 = base64.b64encode(audio).decode("ascii")
+            logger.info("[voice-metrics] audio_source=edge ms=%.1f", (time.perf_counter() - t0) * 1000)
+            return b64, "edge"
         logger.info("[voice-metrics] audio_source=none ms=%.1f", (time.perf_counter() - t0) * 1000)
         return None, "none"
     except Exception:  # noqa: BLE001
@@ -61,87 +61,67 @@ async def _audio_b64_for(response) -> tuple[str | None, str]:
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
 
-async def _get_session_or_404(db: AsyncSession, session_uuid: str):
-    session = await get_session_by_uuid(db, session_uuid)
+@router.post("/start", response_model=VoiceStartResponse)
+async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)):
+    """음성 주문 시작.
+
+    프런트가 화면 진입/재진입 시 반복 호출할 수 있어, 이미 진행 중인 attempt 가 있으면
+    새 attempt 를 만들지 않고 그대로 재사용한다 (대화 이력 보존).
+    """
+    t0 = time.perf_counter()
+    session = await get_session_by_uuid(db, req.session_uuid)
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=session_uuid),
+            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=req.session_uuid),
         )
-    return session
 
-
-@router.post("/start", response_model=VoiceStartResponse)
-async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)):
-    t0 = time.perf_counter()
-    session = await _get_session_or_404(db, req.session_uuid)
-
-    # /voice/start는 프런트에서 화면 진입/재진입 시 반복 호출될 수 있다.
-    # 이미 진행 중인 attempt가 있으면 새 attempt를 만들지 않고 그대로 재사용해
-    # 같은 음성 주문 세션의 대화 이력이 끊기지 않게 한다.
-    if session.voice_attempt_started_at is not None:
+    reused = session.voice_attempt_started_at is not None
+    if reused:
         persona = session.voice_persona or decide_persona(age_group=session.estimated_age_group)
         attempt = session.voice_attempt_started_at
         current_stage = session.voice_current_stage or "greeting"
-        greeting_text = GREETING_BY_PERSONA[persona]
-        greeting = AIChatResponse(
-            intent="greet",
-            response_text=greeting_text,
-            next_stage=current_stage,  # type: ignore[arg-type]
-            actions=[SpeakAction(text=greeting_text)],
-            requires_user_input=True,
-            end_conversation=False,
-        )
-
-        audio_b64, audio_src = await _audio_b64_for(greeting)
-        logger.info(
-            "[voice-metrics] endpoint=start reused_attempt=1 stage=%s matched_by=cached audio=%s ms=%.1f",
-            current_stage,
-            audio_src,
-            (time.perf_counter() - t0) * 1000,
-        )
-
-        return VoiceStartResponse(
-            session_uuid=session.session_uuid,
-            persona=persona,  # type: ignore[arg-type]
-            current_stage=current_stage,  # type: ignore[arg-type]
-            attempt_started_at=attempt,
-            greeting=greeting,
-            audio_b64=audio_b64,
-        )
-
-    persona = decide_persona(age_group=session.estimated_age_group)
-    attempt = await chat_crud.start_new_attempt(db, session, persona=persona, stage="greeting")
+    else:
+        persona = decide_persona(age_group=session.estimated_age_group)
+        attempt = await chat_crud.start_new_attempt(db, session, persona=persona, stage="greeting")
+        current_stage = "greeting"
 
     greeting_text = GREETING_BY_PERSONA[persona]
     greeting = AIChatResponse(
         intent="greet",
         response_text=greeting_text,
-        next_stage="greeting",
+        next_stage=current_stage,  # type: ignore[arg-type]
         actions=[SpeakAction(text=greeting_text)],
         requires_user_input=True,
         end_conversation=False,
     )
 
-    # 인사말은 어시스턴트 메시지로 이력에 남겨둔다 (다음 turn 컨텍스트용)
-    await chat_crud.insert_message(
-        db,
-        session_id=session.id,
-        attempt_started_at=attempt,
-        role="assistant",
-        content=greeting_text,
-        purpose="voice_order",
-        intent="greet",
-        matched_by="cached",
-    )
+    # 새 attempt 일 때만 인사말을 어시스턴트 메시지로 이력에 남긴다 (재사용 시 이미 존재)
+    if not reused:
+        await chat_crud.insert_message(
+            db,
+            session_id=session.id,
+            attempt_started_at=attempt,
+            role="assistant",
+            content=greeting_text,
+            purpose="voice_order",
+            intent="greet",
+            matched_by="cached",
+        )
 
     audio_b64, audio_src = await _audio_b64_for(greeting)
-    logger.info("[voice-metrics] endpoint=start stage=greeting matched_by=cached audio=%s ms=%.1f", audio_src, (time.perf_counter() - t0) * 1000)
+    logger.info(
+        "[voice-metrics] endpoint=start reused_attempt=%d stage=%s matched_by=cached audio=%s ms=%.1f",
+        int(reused),
+        current_stage,
+        audio_src,
+        (time.perf_counter() - t0) * 1000,
+    )
 
     return VoiceStartResponse(
         session_uuid=session.session_uuid,
         persona=persona,  # type: ignore[arg-type]
-        current_stage="greeting",
+        current_stage=current_stage,  # type: ignore[arg-type]
         attempt_started_at=attempt,
         greeting=greeting,
         audio_b64=audio_b64,
@@ -150,7 +130,12 @@ async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)
 
 @router.post("/messages", response_model=VoiceMessageResponse)
 async def voice_message(req: VoiceMessageRequest, db: AsyncSession = Depends(get_db)):
-    session = await _get_session_or_404(db, req.session_uuid)
+    session = await get_session_by_uuid(db, req.session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=req.session_uuid),
+        )
 
     t0 = time.perf_counter()
 
@@ -196,7 +181,12 @@ async def voice_messages_history(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
-    session = await _get_session_or_404(db, session_uuid)
+    session = await get_session_by_uuid(db, session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=session_uuid),
+        )
     items, total = await chat_crud.list_messages_paginated(
         db,
         session_id=session.id,
@@ -214,20 +204,25 @@ class VoiceTTSRequest(BaseModel):
 
 @router.post("/tts")
 async def voice_tts(req: VoiceTTSRequest):
-    """텍스트 → (디스크 캐시 또는 설정에 따라 라이브 TTS) → audio/wav 바이트 반환.
-    실패/캐시 미스 시 404 → 프런트는 브라우저 speechSynthesis로 폴백."""
-    wav = await synthesize_speech(req.text)
-    if wav is None:
+    """텍스트 → Edge-TTS mp3 바이트 반환 (메모리 LRU 캐시).
+    실패/캐시 미스 + Edge 비활성 시 404 → 프런트는 브라우저 speechSynthesis 로 폴백."""
+    audio = await synthesize_speech(req.text)
+    if audio is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=make_error("TTS_UNAVAILABLE", "Gemini TTS not available"),
+            detail=make_error("TTS_UNAVAILABLE", "Edge TTS not available"),
         )
-    return Response(content=wav, media_type="audio/wav")
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @router.post("/end", response_model=VoiceEndResponse)
 async def voice_end(req: VoiceEndRequest, db: AsyncSession = Depends(get_db)):
-    session = await _get_session_or_404(db, req.session_uuid)
+    session = await get_session_by_uuid(db, req.session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=req.session_uuid),
+        )
     session.voice_attempt_started_at = None
     session.voice_current_stage = None
     await db.commit()

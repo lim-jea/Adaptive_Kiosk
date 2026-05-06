@@ -282,7 +282,7 @@ export default function KioskPage() {
       targetLabel: 'payment',
       payload: { total_price: totalPrice, total_count: totalCount },
     })
-    navigate('/payment')
+    navigate('/cart-review')
   }, [logger, navigate, state.cart.length, state.sessionUuid, totalCount, totalPrice])
 
   const handleBack = useCallback(() => {
@@ -336,7 +336,7 @@ export default function KioskPage() {
           setCartOpen(true)
         } else if (action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
-          if (cartRef.current.length > 0) navigate('/payment')
+          if (cartRef.current.length > 0) navigate('/cart-review')
           else console.warn('[voice] cart empty, payment navigation skipped')
         }
         break
@@ -456,7 +456,7 @@ export default function KioskPage() {
       case 'place_order': {
         setOptionMenu(null)
         setOptionPreview([])
-        if (cartRef.current.length > 0) navigate('/payment')
+        if (cartRef.current.length > 0) navigate('/cart-review')
         break
       }
       case 'scroll': {

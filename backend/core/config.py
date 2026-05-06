@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # HTTP Basic Auth (Swagger + 관리자 API 보호용)
     KIOSK_USERNAME: str = ""
     KIOSK_PASSWORD: str = ""
+    ADMIN_API_KEY: str = ""
 
     # Database
     DATABASE_CONN: str = ""
@@ -14,19 +15,20 @@ class Settings(BaseSettings):
     # Google Gemini (음성 주문용)
     GENAI_API_KEY: str = ""
 
-    # Google Gemini TTS (선택 기능)
-    # - 기본은 False: 디스크 캐시에 없으면 None 반환 → 프런트가 브라우저 TTS로 폴백
-    # - True면 캐시 미스 시 Gemini TTS를 호출해 WAV를 저장/반환한다.
-    GENAI_TTS_ENABLED: bool = False
-    GENAI_TTS_MODEL: str = "gemini-2.5-flash-preview-tts"
-    GENAI_TTS_LANGUAGE_CODE: str = "ko-KR"
-    GENAI_TTS_VOICE_NAME: str = "kore"
+    # Edge-TTS (Microsoft Azure Neural 음성, 비공식). 무료 + 빠름 + 자연스러움.
+    # 합성 실패/패키지 미설치 시 synthesize_speech 가 None 반환 → 프런트가 브라우저 TTS 로 폴백.
+    EDGE_TTS_ENABLED: bool = True
+    EDGE_TTS_VOICE: str = "ko-KR-SunHiNeural"   # 여성, 캡스톤 검증 결과 채택
 
     # Naver DataLab API - 실시간 트렌드 조회
     NAVER_TREND_ENABLED: bool = True
     NAVER_CLIENT_ID: str = ""
     NAVER_CLIENT_SECRET: str = ""
     TREND_CACHE_TTL: int = 3600  # 초 단위 (기본 1시간)
+
+    # CORS — 콤마 구분 목록 (예: https://kiosk.example.com,https://api.example.com)
+    # "*" 입력 시 모든 오리진 허용 (개발 환경용)
+    ALLOWED_ORIGINS: str = "*"
 
     STARTUP_DB_WRITE_ENABLED: bool = True
     RECOMMENDATION_BOOTSTRAP_ON_STARTUP: bool = True

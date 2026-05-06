@@ -9,6 +9,7 @@ const initialState = {
   gender: null,           // male/female/unknown
   ageEst: null,
   isSimpleMode: false,
+  orderType: null,        // 'dine-in' | 'pickup'
   cart: [],
   // cart item 구조:
   // {
@@ -26,6 +27,7 @@ const initialState = {
 const ACTIONS = {
   SET_SESSION: 'SET_SESSION',
   SET_VISION: 'SET_VISION',
+  SET_ORDER_TYPE: 'SET_ORDER_TYPE',
   REPLACE_CART: 'REPLACE_CART',
   ADD_TO_CART: 'ADD_TO_CART',
   REMOVE_FROM_CART: 'REMOVE_FROM_CART',
@@ -50,6 +52,9 @@ function sessionReducer(state, action) {
         ageEst: action.payload.ageEst ?? state.ageEst,
         isSimpleMode: action.payload.isSimpleMode ?? state.isSimpleMode,
       }
+
+    case ACTIONS.SET_ORDER_TYPE:
+      return { ...state, orderType: action.payload.orderType }
 
     case ACTIONS.REPLACE_CART:
       return {

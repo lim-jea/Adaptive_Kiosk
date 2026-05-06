@@ -136,9 +136,15 @@ app = FastAPI(
 )
 
 
+_origins = (
+    ["*"]
+    if settings.ALLOWED_ORIGINS.strip() == "*"
+    else [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -154,6 +160,8 @@ async def docs_protect_middleware(request: Request, call_next):
         try:
             credentials = await http_basic(request)
             if not (
+                credentials is not None
+                and
                 secrets.compare_digest(credentials.username, settings.KIOSK_USERNAME)
                 and secrets.compare_digest(credentials.password, settings.KIOSK_PASSWORD)
             ):
