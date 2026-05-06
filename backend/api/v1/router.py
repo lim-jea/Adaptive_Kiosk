@@ -11,6 +11,7 @@ from api.v1.endpoints.logs import router as logs_router
 from api.v1.endpoints.face import router as face_router
 from api.v1.endpoints.voice import router as voice_router
 from api.v1.endpoints.recommendation import router as recommendation_router
+from api.v1.endpoints.survey import router as survey_router, admin_router as survey_admin_router
 
 v1_router = APIRouter(prefix="/api/v1")
 
@@ -28,3 +29,7 @@ v1_router.include_router(voice_router)
 
 # ─── 추천 API ───
 v1_router.include_router(recommendation_router)
+
+# ─── 설문 API ───
+v1_router.include_router(survey_router)
+v1_router.include_router(survey_admin_router)

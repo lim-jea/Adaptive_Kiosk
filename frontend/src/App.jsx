@@ -10,6 +10,7 @@ import ResultPage from './pages/ResultPage'
 import KioskPage from './pages/KioskPage'
 import PaymentPage from './pages/PaymentPage'
 import CompletionPage from './pages/CompletionPage'
+import SurveyPage from './pages/SurveyPage'
 import OrderTypePage from './pages/OrderTypePage'
 import CartReviewPage from './pages/CartReviewPage'
 import DiscountPage from './pages/DiscountPage'
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/discount" element={<DiscountPage />} />
           <Route path="/payment" element={<PaymentPage />} />
           <Route path="/complete" element={<CompletionPage />} />
+          <Route path="/survey" element={<SurveyPage />} />
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboardPage />} />

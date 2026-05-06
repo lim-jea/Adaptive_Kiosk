@@ -348,40 +348,25 @@ async def _migrate_order_item_snapshots(db: AsyncSession, tables: set[str]) -> N
     await db.commit()
 
 
-async def _ensure_menus_present(db: AsyncSession) -> int:
-    """MENUS 카탈로그 중 DB 에 없는 메뉴를 이름 기준으로 추가한다.
-    기존 메뉴(이름 일치)는 건드리지 않으므로 운영 DB 에서 재실행해도 안전.
-    """
-    existing_names = set((await db.execute(select(Menu.name))).scalars().all())
-    inserted = 0
+async def _seed_menus_if_needed(db: AsyncSession) -> None:
+    existing = await db.execute(select(Menu.id).limit(1))
+    if existing.scalar_one_or_none() is not None:
+        return
+
     for item in MENUS:
-        if item["name"] in existing_names:
-            continue
         db.add(Menu(**item))
-        inserted += 1
-    if inserted:
-        await db.commit()
-        logger.info("Ensured menu catalog: inserted %d new menus", inserted)
-    return inserted
+    await db.commit()
+    logger.info("Inserted default menus: %d", len(MENUS))
 
 
-async def _ensure_menu_options_present(db: AsyncSession) -> int:
-    """모든 메뉴에 대해 CATEGORY_OPTION_MAP 기준으로 누락된 옵션 행을 채운다.
-    (menu_id, group_name, option_name) 자연 키로 비교 → 기존 옵션 행은 건드리지 않음.
-    """
+async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
+    existing = await db.execute(select(MenuOption.id).limit(1))
+    if existing.scalar_one_or_none() is not None:
+        return 0
+
     menu_rows = (await db.execute(select(Menu))).scalars().all()
     if not menu_rows:
         return 0
-
-    existing_rows = (
-        await db.execute(
-            select(MenuOption.menu_id, MenuOption.group_name, MenuOption.option_name)
-        )
-    ).all()
-    existing_keys = {
-        (int(menu_id), str(group_name), str(option_name))
-        for menu_id, group_name, option_name in existing_rows
-    }
 
     inserted = 0
     for menu in menu_rows:
@@ -391,9 +376,6 @@ async def _ensure_menu_options_present(db: AsyncSession) -> int:
             if not group:
                 continue
             for option_order, item in enumerate(group["items"]):
-                key = (int(menu.id), group["name"], item["name"])
-                if key in existing_keys:
-                    continue
                 db.add(
                     MenuOption(
                         menu_id=menu.id,
@@ -411,9 +393,7 @@ async def _ensure_menu_options_present(db: AsyncSession) -> int:
                 )
                 inserted += 1
 
-    if inserted:
-        await db.commit()
-        logger.info("Ensured menu options: inserted %d new option rows", inserted)
+    await db.commit()
     return inserted
 
 
@@ -510,22 +490,23 @@ async def seed_menu_data(db: AsyncSession) -> None:
         logger.warning("Order item snapshot migration skipped: %s", exc)
         await db.rollback()
 
-    await _ensure_menus_present(db)
+    await _seed_menus_if_needed(db)
 
+    migrated = 0
     try:
         migrated = await _migrate_legacy_option_tables(db, tables)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Legacy option migration skipped: %s", exc)
         await db.rollback()
-        migrated = 0
 
     if migrated > 0:
         logger.info("Migrated legacy option tables into menu_options: %d rows", migrated)
+        return
 
-    # legacy 이관 후에도 신규 메뉴(예: 2026-05-06 추가분)의 옵션은 비어 있을 수 있어
-    # idempotent 보강을 항상 마지막에 수행한다. 기존 옵션 행은 자연 키 비교로 보존.
-    inserted = await _ensure_menu_options_present(db)
+    inserted = await _seed_menu_options_from_category_map(db)
     if inserted > 0:
-        logger.info("Inserted missing menu options: %d rows", inserted)
+        logger.info("Inserted default menu options: %d rows", inserted)
+    else:
+        logger.info("Menu seed data already exists. Skipping.")
 
     await _update_menu_images_if_missing(db)
