@@ -3,10 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # 백엔드는 외부 직접 노출 없이 nginx를 통해서만 접근
-    # (로컬 디버깅 필요 시 아래 주석 해제)
-    # ports:
-    #   - "5000:5000"
+    ports:
+      - "5000:5000"
     env_file:
       - ./backend/.env
     restart: unless-stopped
@@ -16,13 +14,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # VITE_API_URL="/" → nginx가 /api/ 요청을 backend로 프록시
-        # Cloudflare Tunnel 도메인을 몰라도 빌드 가능, 도메인이 바뀌어도 재빌드 불필요
-        VITE_API_URL: /
+        VITE_API_URL: http://localhost:5000
         VITE_KIOSK_API_KEY: ${VITE_KIOSK_API_KEY}
         VITE_ENCRYPTION_ENABLED: "false"
     ports:
-      - "4000:80"  # Cloudflare Tunnel은 이 포트(4000)를 가리키도록 설정
+      - "4000:80"
     depends_on:
       - backend
     restart: unless-stopped
