@@ -12,3 +12,10 @@ cryptography>=44.0.0
 google-genai>=1.0.0
 greenlet>=3.3.2
 pandas>=3.0.2
+
+# 👇 새롭게 추가된 AI(얼굴 분석) 관련 패키지들 👇
+torch>=2.0.0
+insightface>=0.7.3
+onnxruntime>=1.15.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
