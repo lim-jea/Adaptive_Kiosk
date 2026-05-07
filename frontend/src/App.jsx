@@ -25,6 +25,14 @@ import AdminAnalyticsLayout, {
   AnalyticsUsersTab,
   AnalyticsRecommendationsTab,
 } from './pages/admin/AdminAnalyticsPage'
+import MiddleCompletePage from './pages/MiddleCompletePage'
+import MiddleKioskPage from './pages/MiddleKioskPage'
+import MiddlePaymentPage from './pages/MiddlePaymentPage'
+import SeniorKioskPage from './pages/SeniorKioskPage'
+import SeniorCompletePage from './pages/SeniorCompletePage'
+import SeniorPaymentPage from './pages/SeniorPaymentPage'
+import SurveyPage from './pages/SurveyPage'
+
 
 export default function App() {
   return (
@@ -41,6 +49,15 @@ export default function App() {
           <Route path="/discount" element={<DiscountPage />} />
           <Route path="/payment" element={<PaymentPage />} />
           <Route path="/complete" element={<CompletionPage />} />
+
+          <Route path="/seniorkiosk" element={<SeniorKioskPage />} />
+          <Route path="/seniorpayment" element={<SeniorPaymentPage />} />
+          <Route path="/seniorcomplete" element={<SeniorCompletePage />} />
+          <Route path="/middlecomplete" element={<MiddleCompletePage />} />
+          <Route path="/middlepayment" element={<MiddlePaymentPage />} />
+          <Route path="/middlekiosk" element={<MiddleKioskPage />} />    
+          <Route path="/survey" element={<SurveyPage />} />      
+
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboardPage />} />
