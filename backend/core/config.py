@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     RECOMMENDATION_BOOTSTRAP_BATCH_SIZE: int = 2000
     REQUEST_TIMING_LOG_ENABLED: bool = True
     REQUEST_TIMING_SLOW_MS: int = 800
+    RECOMMENDATION_PRECOMPUTE_LOG_INTERVAL: int = 500
+    RECOMMENDATION_COPURCHASE_BATCH_SIZE: int = 1000
+
+    # Face analysis
+    FACE_MODEL_PATH: str = str(
+        Path(__file__).resolve().parents[1] / "models" / "0424model.pth"
+    )
+    FACE_INSIGHTFACE_MODEL_NAME: str = "buffalo_l"
+    FACE_USE_CUDA: bool = True
+    FACE_DETECTION_WIDTH: int = 320
+    FACE_DETECTION_HEIGHT: int = 320
+    FACE_DETECTION_SCORE_THRESHOLD: float = 0.5
+    FACE_MIN_FACE_SIZE: int = 120
+    FACE_MIN_VALID_FRAMES: int = 5
 
     model_config = {
         "env_file": (

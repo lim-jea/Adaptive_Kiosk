@@ -9,7 +9,7 @@
 import json
 import logging
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import inspect, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from model import Menu, MenuOption
@@ -164,6 +164,30 @@ MENU_IMAGES = {
 }
 
 
+def _sample_markers(items: list):
+    if not items:
+        return []
+    indexes = sorted({0, len(items) // 2, len(items) - 1})
+    return [items[index] for index in indexes]
+
+
+def _build_menu_option_markers():
+    markers = []
+    for menu in MENUS:
+        group_names = CATEGORY_OPTION_MAP.get(menu["category"], [])
+        for group_name in group_names:
+            group = _OPTION_GROUPS_BY_NAME.get(group_name)
+            if not group:
+                continue
+            for item in group["items"]:
+                markers.append((menu["name"], group["name"], item["name"]))
+    return _sample_markers(markers)
+
+
+MENU_MARKERS = [item["name"] for item in _sample_markers(MENUS)]
+MENU_OPTION_MARKERS = _build_menu_option_markers()
+
+
 async def _get_table_names(db: AsyncSession) -> list[str]:
     conn = await db.connection()
     return await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names())
@@ -202,6 +226,74 @@ async def _add_column_if_missing(
     if column_name in existing_columns:
         return False
     await db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"))
+    return True
+
+
+async def _seed_menus_already_present(db: AsyncSession) -> bool:
+    if not MENU_MARKERS:
+        return False
+    rows = (
+        await db.execute(select(Menu.name).where(Menu.name.in_(MENU_MARKERS)))
+    ).scalars().all()
+    return len(set(rows)) == len(set(MENU_MARKERS))
+
+
+async def _seed_menu_options_already_present(db: AsyncSession) -> bool:
+    if not MENU_OPTION_MARKERS:
+        return False
+    conditions = [
+        (
+            (Menu.name == menu_name)
+            & (MenuOption.group_name == group_name)
+            & (MenuOption.option_name == option_name)
+        )
+        for menu_name, group_name, option_name in MENU_OPTION_MARKERS
+    ]
+    rows = (
+        await db.execute(
+            select(Menu.name, MenuOption.group_name, MenuOption.option_name)
+            .join(MenuOption, MenuOption.menu_id == Menu.id)
+            .where(or_(*conditions))
+        )
+    ).all()
+    found = {(menu_name, group_name, option_name) for menu_name, group_name, option_name in rows}
+    return all(marker in found for marker in MENU_OPTION_MARKERS)
+
+
+async def _order_item_snapshots_already_present(db: AsyncSession, tables: set[str]) -> bool:
+    if "order_items" not in tables:
+        return True
+
+    sample_rows = (
+        await db.execute(
+            text(
+                """
+                SELECT id, menu_name_snapshot, line_total, selected_options_json
+                FROM order_items
+                WHERE id IN (
+                    (SELECT MIN(id) FROM order_items),
+                    (
+                        SELECT id FROM order_items
+                        ORDER BY id
+                        LIMIT 1 OFFSET GREATEST((SELECT COUNT(*) FROM order_items) / 2 - 1, 0)
+                    ),
+                    (SELECT MAX(id) FROM order_items)
+                )
+                """
+            )
+        )
+    ).mappings().all()
+
+    if not sample_rows:
+        return True
+
+    for row in sample_rows:
+        if row["menu_name_snapshot"] is None:
+            return False
+        if row["line_total"] is None:
+            return False
+        if "order_item_options" not in tables and row["selected_options_json"] is None:
+            return False
     return True
 
 
@@ -261,6 +353,10 @@ async def _migrate_order_item_snapshots(db: AsyncSession, tables: set[str]) -> N
     )
     if changed:
         await db.commit()
+
+    if await _order_item_snapshots_already_present(db, tables):
+        logger.info("Order item snapshot migration skipped: sample rows already populated")
+        return
 
     item_rows = (
         await db.execute(
@@ -349,6 +445,10 @@ async def _migrate_order_item_snapshots(db: AsyncSession, tables: set[str]) -> N
 
 
 async def _seed_menus_if_needed(db: AsyncSession) -> None:
+    if await _seed_menus_already_present(db):
+        logger.info("Menu seed skipped: sample menus already exist")
+        return
+
     existing = await db.execute(select(Menu.id).limit(1))
     if existing.scalar_one_or_none() is not None:
         return
@@ -360,6 +460,10 @@ async def _seed_menus_if_needed(db: AsyncSession) -> None:
 
 
 async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
+    if await _seed_menu_options_already_present(db):
+        logger.info("Menu option seed skipped: sample menu options already exist")
+        return 0
+
     existing = await db.execute(select(MenuOption.id).limit(1))
     if existing.scalar_one_or_none() is not None:
         return 0
@@ -400,6 +504,10 @@ async def _seed_menu_options_from_category_map(db: AsyncSession) -> int:
 async def _migrate_legacy_option_tables(db: AsyncSession, tables: set[str]) -> int:
     required = {"option_groups", "option_items", "menu_option_groups", "menus", "menu_options"}
     if not required.issubset(tables):
+        return 0
+
+    if await _seed_menu_options_already_present(db):
+        logger.info("Legacy option migration skipped: sample menu options already exist")
         return 0
 
     existing = await db.execute(select(MenuOption.id).limit(1))
