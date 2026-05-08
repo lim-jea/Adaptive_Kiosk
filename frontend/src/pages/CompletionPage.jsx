@@ -105,6 +105,17 @@ export default function CompletionPage() {
     navigate('/', { replace: true })
   }
 
+  const handleGoSurvey = async () => {
+    logger.log('navigation', 'completion', {
+      actionName: 'go_survey',
+      targetType: 'button',
+      targetLabel: 'survey',
+    })
+    await logger.flush()
+    // 세션은 그대로 유지 (SurveyPage 가 session_uuid 참조), 카운트다운은 자연 종료
+    navigate('/survey')
+  }
+
   const handleParking = () => {
     if (parkingDone) return
     logger.log('click', 'completion', {
@@ -248,13 +259,21 @@ export default function CompletionPage() {
         </div>
       </div>
 
-      {/* 하단 홈으로 버튼 + 카운트다운 */}
-      <div className="px-4 pb-8 pt-2">
+      {/* 하단 — 설문 (눈에 띄는 보라색) + 홈으로 + 카운트다운 */}
+      <div className="px-4 pb-8 pt-2 space-y-2">
+        <button
+          onClick={handleGoSurvey}
+          className="w-full py-6 bg-indigo-500 hover:bg-indigo-600 text-white font-black text-2xl rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-indigo-200 ring-2 ring-indigo-300/50"
+        >
+          <span className="text-3xl">📝</span>
+          <span>의견 들려주기</span>
+          <span className="text-base font-semibold opacity-90">(4~5분)</span>
+        </button>
         <button
           onClick={handleGoHome}
-          className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-lg rounded-2xl transition-colors"
+          className="w-full py-3 bg-white border-2 border-gray-200 hover:bg-gray-50 text-gray-600 font-semibold rounded-2xl transition-colors"
         >
-          처음으로 돌아가기
+          건너뛰고 처음으로
         </button>
         <p className="text-center text-xs text-gray-400 mt-2">
           {countdown}초 후 자동으로 처음 화면으로 이동합니다

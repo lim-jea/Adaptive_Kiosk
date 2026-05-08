@@ -770,6 +770,72 @@ class ChatMessageItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ============================================================================
+# Survey
+# ============================================================================
+
+
+SurveyStatus = Literal["partial", "skipped", "completed"]
+
+
+class SurveyAnswerEntry(BaseModel):
+    """객관식 한 문항의 응답 — 숫자 코드와 라벨 텍스트를 모두 보존."""
+    value: Optional[Union[int, float]] = None
+    label: Optional[str] = None
+
+
+class SurveyResponseUpsertRequest(BaseModel):
+    """세션당 1개 응답을 idempotent 하게 누적 저장.
+    프론트는 (1) answers dict 형태로 q1~q23 응답을 키 단위로 보내고, (2) multi/free_texts 도 dict 로 보낸다.
+    백엔드 CRUD 가 컬럼별로 분배 저장.
+    """
+    session_uuid: str = Field(..., min_length=1, max_length=64)
+    status: SurveyStatus = Field("partial")
+
+    resp_age: Optional[int] = Field(None, ge=0, le=120)
+    resp_gender: Optional[Literal["M", "F", "no_answer"]] = None
+    resp_kiosk_freq: Optional[Literal["rare", "sometimes", "often"]] = None
+
+    answers: Dict[str, SurveyAnswerEntry] = Field(default_factory=dict)
+    multi_choices: Dict[str, List[str]] = Field(default_factory=dict)
+    free_texts: Dict[str, str] = Field(default_factory=dict)
+
+    q7_no_experience: Optional[bool] = False
+    survey_snapshot: Optional[str] = None
+    duration_ms: Optional[int] = Field(None, ge=0)
+
+
+class SurveyResponseRead(BaseModel):
+    """관리자/분석용 응답 형태. 컬럼 그대로 노출하되, JSON-friendly 형태로 묶어 호환."""
+    id: int
+    session_id: int
+    status: SurveyStatus
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    resp_age: Optional[int] = None
+    resp_gender: Optional[str] = None
+    resp_kiosk_freq: Optional[str] = None
+
+    # answers 는 응답 시 dict 형태로 재구성해 노출 — DB 는 컬럼이지만 API 는 사용 편의
+    answers: Dict[str, Any] = Field(default_factory=dict)
+    multi_choices: Dict[str, List[str]] = Field(default_factory=dict)
+    free_texts: Dict[str, str] = Field(default_factory=dict)
+    q7_no_experience: bool = False
+    survey_snapshot: Optional[str] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SurveyListRequest(BaseModel):
+    status: Optional[SurveyStatus] = None
+    skip: int = Field(0, ge=0)
+    limit: int = Field(100, ge=1, le=1000)
+
+
 # Forward reference 해소
 MenuUpdateRequest.model_rebuild()
 MenuCreateInlineRequest.model_rebuild()
