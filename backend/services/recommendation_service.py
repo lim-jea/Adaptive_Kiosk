@@ -18,6 +18,7 @@ runtime CSV append path so recommendation data stays in one place.
 from __future__ import annotations
 
 import csv
+import json
 import logging
 import threading
 from pathlib import Path
