@@ -53,18 +53,19 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   const flushAccumulatedFinal = useCallback(() => {
     const merged = accumulatedFinal.current.trim()
     accumulatedFinal.current = ''
+    setInterim('')
+    latestInterim.current = ''
     if (merged) onFinalRef.current?.(merged)
     try { recognitionRef.current?.stop() } catch {}
   }, [])
 
-  // 침묵 타이머에 의한 수동 커밋 (interim 만 있는 상태에서 발화 종료된 경우)
+  // 침묵 타이머에 의한 수동 커밋 — 누적 final + interim 모두 합쳐 emit
   const commitInterim = useCallback(() => {
-    const text = latestInterim.current.trim()
-    if (text) {
-      setInterim('')
-      latestInterim.current = ''
-      onFinalRef.current?.(text)
-    }
+    const text = (accumulatedFinal.current + ' ' + (latestInterim.current || '')).trim()
+    accumulatedFinal.current = ''
+    setInterim('')
+    latestInterim.current = ''
+    if (text) onFinalRef.current?.(text)
     try { recognitionRef.current?.stop() } catch {}
   }, [])
 
@@ -94,19 +95,23 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
 
       if (finalText) {
         clearSilenceTimer()
-        setInterim('')
-        latestInterim.current = ''
         // 즉시 emit 안 하고 누적 — 한국어 STT 가 첫 final 을 일찍 떨어뜨려 뒷부분이 잘리는 것 보정.
-        // 추가 final 이 들어오면 합쳐서 한 번에 emit.
         accumulatedFinal.current = (accumulatedFinal.current + ' ' + finalText).trim()
+        // 화면에 누적된 final 을 그대로 표시 — interim 을 비우면 깜빡임 발생하므로 누적분으로 채움
+        setInterim(accumulatedFinal.current)
+        latestInterim.current = accumulatedFinal.current
         clearFinalTailTimer()
         finalTailTimer.current = setTimeout(flushAccumulatedFinal, FINAL_TAIL_WINDOW_MS)
         return
       }
 
       if (interimText) {
-        setInterim(interimText)
-        latestInterim.current = interimText
+        // 누적된 final 이 있으면 그 뒤에 현재 interim 을 이어붙여 표시 (깜빡임 방지)
+        const display = accumulatedFinal.current
+          ? `${accumulatedFinal.current} ${interimText}`
+          : interimText
+        setInterim(display)
+        latestInterim.current = display
         // 침묵 타이머 리셋 — 새 interim이 올 때마다 연장
         clearSilenceTimer()
         silenceTimer.current = setTimeout(commitInterim, SILENCE_COMMIT_MS)
