@@ -13,6 +13,9 @@ const SpeechRecognition =
 
 // 마지막 interim 이후 이 시간(ms) 동안 새 결과가 없으면 현재까지의 interim을 final로 커밋
 const SILENCE_COMMIT_MS = 1800
+// 첫 final 이 와도 즉시 stop 하지 않고 이 시간 동안 더 듣고 추가 final 을 누적해서 한 번에 emit.
+// 한국어 인식이 단어 사이 짧은 침묵에서 final 을 일찍 emit 하는 경향을 보정.
+const FINAL_TAIL_WINDOW_MS = 900
 
 export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   const recognitionRef = useRef(null)
@@ -26,6 +29,9 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   // 침묵 감지 타이머
   const silenceTimer = useRef(null)
   const latestInterim = useRef('')
+  // 첫 final 이후 추가 final 을 합쳐 한 번에 emit 하기 위한 버퍼
+  const accumulatedFinal = useRef('')
+  const finalTailTimer = useRef(null)
 
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
 
@@ -36,7 +42,22 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
     }
   }, [])
 
-  // 침묵 타이머에 의한 수동 커밋
+  const clearFinalTailTimer = useCallback(() => {
+    if (finalTailTimer.current) {
+      clearTimeout(finalTailTimer.current)
+      finalTailTimer.current = null
+    }
+  }, [])
+
+  // 누적된 final 을 한 번에 emit 하고 recognition stop
+  const flushAccumulatedFinal = useCallback(() => {
+    const merged = accumulatedFinal.current.trim()
+    accumulatedFinal.current = ''
+    if (merged) onFinalRef.current?.(merged)
+    try { recognitionRef.current?.stop() } catch {}
+  }, [])
+
+  // 침묵 타이머에 의한 수동 커밋 (interim 만 있는 상태에서 발화 종료된 경우)
   const commitInterim = useCallback(() => {
     const text = latestInterim.current.trim()
     if (text) {
@@ -44,7 +65,6 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
       latestInterim.current = ''
       onFinalRef.current?.(text)
     }
-    // recognition을 stop하면 onend에서 listening=false가 됨
     try { recognitionRef.current?.stop() } catch {}
   }, [])
 
@@ -76,9 +96,11 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
         clearSilenceTimer()
         setInterim('')
         latestInterim.current = ''
-        onFinalRef.current?.(finalText.trim())
-        // continuous 모드에서 final이 오면 stop해서 다음 turn으로 넘긴다
-        try { rec.stop() } catch {}
+        // 즉시 emit 안 하고 누적 — 한국어 STT 가 첫 final 을 일찍 떨어뜨려 뒷부분이 잘리는 것 보정.
+        // 추가 final 이 들어오면 합쳐서 한 번에 emit.
+        accumulatedFinal.current = (accumulatedFinal.current + ' ' + finalText).trim()
+        clearFinalTailTimer()
+        finalTailTimer.current = setTimeout(flushAccumulatedFinal, FINAL_TAIL_WINDOW_MS)
         return
       }
 
@@ -88,11 +110,18 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
         // 침묵 타이머 리셋 — 새 interim이 올 때마다 연장
         clearSilenceTimer()
         silenceTimer.current = setTimeout(commitInterim, SILENCE_COMMIT_MS)
+        // 새 interim 이 들어왔다는 건 발화가 이어진다는 뜻 — final tail 타이머 연장
+        if (accumulatedFinal.current) {
+          clearFinalTailTimer()
+          finalTailTimer.current = setTimeout(flushAccumulatedFinal, FINAL_TAIL_WINDOW_MS)
+        }
       }
     }
 
     rec.onerror = (e) => {
       clearSilenceTimer()
+      clearFinalTailTimer()
+      accumulatedFinal.current = ''
       const transient = ['no-speech', 'aborted', 'audio-capture']
       if (!transient.includes(e.error)) {
         setError(e.error || 'unknown')
@@ -103,6 +132,13 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
 
     rec.onend = () => {
       clearSilenceTimer()
+      // onend 직전에 누적된 final 이 남아 있으면 마저 emit (안전망)
+      if (accumulatedFinal.current.trim()) {
+        const merged = accumulatedFinal.current.trim()
+        accumulatedFinal.current = ''
+        onFinalRef.current?.(merged)
+      }
+      clearFinalTailTimer()
       setListening(false)
       listeningRef.current = false
       setInterim('')
@@ -112,16 +148,20 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
     recognitionRef.current = rec
     return () => {
       clearSilenceTimer()
+      clearFinalTailTimer()
+      accumulatedFinal.current = ''
       try { rec.abort() } catch {}
       recognitionRef.current = null
     }
-  }, [supported, lang, clearSilenceTimer, commitInterim])
+  }, [supported, lang, clearSilenceTimer, clearFinalTailTimer, commitInterim, flushAccumulatedFinal])
 
   const start = useCallback(() => {
     if (!recognitionRef.current || listeningRef.current) return
     setError(null)
     setInterim('')
     latestInterim.current = ''
+    accumulatedFinal.current = ''
+    clearFinalTailTimer()
 
     // InvalidStateError: 이전 recognition 세션이 아직 정리 중일 때 발생.
     // TTS 종료 직후 start() 시 Chrome에서 종종 터지므로 짧은 간격으로 재시도한다.
@@ -140,13 +180,15 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
       }
     }
     tryStart(3)
-  }, [])
+  }, [clearFinalTailTimer])
 
   const stop = useCallback(() => {
     clearSilenceTimer()
+    clearFinalTailTimer()
+    accumulatedFinal.current = ''
     if (!recognitionRef.current) return
     try { recognitionRef.current.stop() } catch {}
-  }, [clearSilenceTimer])
+  }, [clearSilenceTimer, clearFinalTailTimer])
 
   return { supported, listening, interim, error, start, stop }
 }

@@ -59,6 +59,10 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
     return null
   }
 
+  // 현재 재생 중인 Promise 를 외부에서 강제 resolve 하기 위한 ref.
+  // 새 speak() 호출 또는 cancel() 시 이전 Promise 가 영원히 await 되는 사고 방지.
+  const audioResolveRef = useRef(null)
+
   // Uint8Array (WAV/MP3) → Audio 재생 (성공 여부 boolean 반환)
   const playBytes = useCallback((bytes) => {
     try {
@@ -70,9 +74,22 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
       audioRef.current = audio
       setSpeaking(true)
       return new Promise((resolve) => {
-        audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve(true) }
-        audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url); resolve(false) }
-        audio.play().catch(() => { setSpeaking(false); URL.revokeObjectURL(url); resolve(false) })
+        // 한 번만 호출되도록 finalize. 이후 외부 호출이나 audio 이벤트 모두 무해해짐.
+        let done = false
+        const finalize = (ok) => {
+          if (done) return
+          done = true
+          audio.onended = null
+          audio.onerror = null
+          try { URL.revokeObjectURL(url) } catch {}
+          setSpeaking(false)
+          if (audioResolveRef.current === finalize) audioResolveRef.current = null
+          resolve(ok)
+        }
+        audio.onended = () => finalize(true)
+        audio.onerror = () => finalize(false)
+        audioResolveRef.current = finalize  // 외부에서 즉시 종료 가능
+        audio.play().catch(() => finalize(false))
       })
     } catch {
       return Promise.resolve(false)
@@ -140,8 +157,12 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
     if (!text && !audioB64) return
     // 이전 재생 즉시 중단 (audio + speechSynthesis 모두) — race 방지를 위해 동기적으로 처리
     const myToken = ++speakTokenRef.current
+    // 이전 playBytes Promise 를 강제 resolve(false) — await 가 영원히 멈추는 것 방지
+    if (audioResolveRef.current) {
+      try { audioResolveRef.current(false) } catch {}
+      audioResolveRef.current = null
+    }
     if (audioRef.current) {
-      try { audioRef.current.onended = null; audioRef.current.onerror = null } catch {}
       try { audioRef.current.pause() } catch {}
       try { audioRef.current.src = '' } catch {}
       audioRef.current = null
@@ -163,7 +184,18 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
   }, [playBase64, synthesizeViaBackend, speakBrowser, supported])
 
   const cancel = useCallback(() => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
+    // 토큰을 증가시켜 진행 중인 await 단계가 폴백 안 타게 함
+    speakTokenRef.current += 1
+    // playBytes Promise 강제 resolve(false) — 호출자(useVoiceOrder 등) 의 await 가 즉시 풀림
+    if (audioResolveRef.current) {
+      try { audioResolveRef.current(false) } catch {}
+      audioResolveRef.current = null
+    }
+    if (audioRef.current) {
+      try { audioRef.current.pause() } catch {}
+      try { audioRef.current.src = '' } catch {}
+      audioRef.current = null
+    }
     if (supported) window.speechSynthesis.cancel()
     setSpeaking(false)
   }, [supported])

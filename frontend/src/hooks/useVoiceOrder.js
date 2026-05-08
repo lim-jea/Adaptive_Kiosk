@@ -193,7 +193,10 @@ export function useVoiceOrder({
 
   const stop = useCallback(async () => {
     stt.stop()
-    tts.cancel()
+    tts.cancel()             // 재생 중인 음성 즉시 끊기 + await 강제 해제
+    // dedup 가드 리셋 — stop 후 다시 음성 주문 시작 시 첫 sendMessage 가 막히지 않도록
+    inFlightRef.current = false
+    lastSentRef.current = { text: '', at: 0 }
     // 음성 주문 종료 알림음 (하강 톤)
     playCueTone('down')
     if (sessionUuid && startedRef.current) {
