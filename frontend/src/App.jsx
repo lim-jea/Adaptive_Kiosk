@@ -11,6 +11,7 @@ import KioskPage from './pages/KioskPage'
 import PaymentPage from './pages/PaymentPage'
 import CompletionPage from './pages/CompletionPage'
 import SurveyPage from './pages/SurveyPage'
+import SelectAgePage from './pages/SelectagePage.jsx'
 import OrderTypePage from './pages/OrderTypePage'
 import CartReviewPage from './pages/CartReviewPage'
 import DiscountPage from './pages/DiscountPage'
@@ -32,7 +33,6 @@ import MiddlePaymentPage from './pages/MiddlePaymentPage'
 import SeniorKioskPage from './pages/SeniorKioskPage'
 import SeniorCompletePage from './pages/SeniorCompletePage'
 import SeniorPaymentPage from './pages/SeniorPaymentPage'
-import SurveyPage from './pages/SurveyPage'
 
 
 export default function App() {
@@ -50,6 +50,7 @@ export default function App() {
           <Route path="/discount" element={<DiscountPage />} />
           <Route path="/payment" element={<PaymentPage />} />
           <Route path="/complete" element={<CompletionPage />} />
+          <Route path="/select-age" element={<SelectAgePage />} />
 
           <Route path="/seniorkiosk" element={<SeniorKioskPage />} />
           <Route path="/seniorpayment" element={<SeniorPaymentPage />} />
