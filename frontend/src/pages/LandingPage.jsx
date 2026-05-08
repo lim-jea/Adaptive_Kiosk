@@ -1,6 +1,6 @@
 // 랜딩 페이지 — 얼굴 인식(상단 메인 CTA) or 연령대 직접 선택(하단)
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
@@ -63,6 +63,23 @@ export default function LandingPage() {
     }
   }
 
+  // ── 히든 어드민 진입 — 로고를 1.5초 안에 5번 연속 탭 ──
+  const adminTapCountRef = useRef(0)
+  const adminLastTapRef = useRef(0)
+  const handleLogoTap = () => {
+    const now = Date.now()
+    if (now - adminLastTapRef.current > 1500) {
+      adminTapCountRef.current = 1
+    } else {
+      adminTapCountRef.current += 1
+    }
+    adminLastTapRef.current = now
+    if (adminTapCountRef.current >= 5) {
+      adminTapCountRef.current = 0
+      navigate('/admin/login')
+    }
+  }
+
   const handleFaceRecognition = async () => {
     if (loading) return
     setLoading(true)
@@ -88,9 +105,12 @@ export default function LandingPage() {
     >
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
 
-        {/* 로고 */}
+        {/* 로고 — 1.5초 안에 5번 연속 탭하면 관리자 로그인 진입 (손님에게는 보이지 않는 히든 동작) */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center shadow-2xl shadow-amber-900/50 mb-4 mx-auto">
+          <div
+            onClick={handleLogoTap}
+            className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center shadow-2xl shadow-amber-900/50 mb-4 mx-auto select-none"
+          >
             <span className="text-4xl">☕</span>
           </div>
           <h1 className="text-4xl font-black text-white tracking-widest">BREW AI</h1>

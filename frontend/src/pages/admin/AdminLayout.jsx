@@ -45,7 +45,14 @@ export default function AdminLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 p-4">
+        <div className="absolute bottom-0 left-0 right-0 p-4 space-y-2">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="w-full rounded-md bg-amber-500 hover:bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors"
+          >
+            키오스크 화면으로
+          </button>
           <button
             type="button"
             onClick={logout}
