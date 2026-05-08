@@ -58,7 +58,7 @@ def _age_to_group(age: float) -> str:
 
 
 def _normalize_gender(gender_value: int) -> str:
-    return "male" if gender_value == 1 else "female"
+    return "female" if gender_value == 1 else "male"
 
 
 if RUNTIME_AVAILABLE:
