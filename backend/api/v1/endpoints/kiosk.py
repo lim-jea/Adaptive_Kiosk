@@ -7,12 +7,14 @@ from crud.kiosk import (
     create_kiosk,
     get_kiosk_by_api_key,
     list_kiosks,
+    update_kiosk,
 )
 from schemas import (
     KioskCreateRequest,
     KioskCreateResponse,
     KioskListRequest,
     KioskResponse,
+    KioskUpdateRequest,
 )
 from schemas import PaginatedResponse, make_error
 
@@ -72,4 +74,22 @@ async def list_kiosks_endpoint(
 @router.get("/me", response_model=KioskResponse)
 async def get_my_kiosk(kiosk=Depends(get_current_kiosk)):
     """현재 X-API-Key로 인증된 키오스크 정보."""
+    return kiosk
+
+
+@router.patch("/{kiosk_id}", response_model=KioskResponse)
+async def update_kiosk_endpoint(
+    kiosk_id: int,
+    req: KioskUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    """키오스크 부분 수정. 관리자 인증 필요."""
+    updates = req.model_dump(exclude_unset=True)
+    kiosk = await update_kiosk(db, kiosk_id, updates)
+    if not kiosk:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("KIOSK_NOT_FOUND", "Kiosk not found", kiosk_id=kiosk_id),
+        )
     return kiosk

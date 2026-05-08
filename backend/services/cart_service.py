@@ -3,10 +3,10 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from crud.cart import get_or_create_cart
+from crud.cart import _empty_cart_data, get_or_create_cart
 from crud.menu import get_menu_by_name, get_option_item_by_id
 from crud.session import get_session_by_uuid
-from model import Cart, Menu
+from model import Cart, Menu, MenuOption
 from schemas import (
     CartItemRequest,
     CartItemResponse,
@@ -18,15 +18,14 @@ from schemas import (
 )
 
 
-def _empty_cart_data() -> dict:
-    return {"items": []}
-
-
 async def calculate_unit_price(
     db: AsyncSession,
     menu_name: str,
     option_item_ids: list[int],
-) -> tuple[int, Menu]:
+) -> tuple[int, Menu, list[MenuOption]]:
+    """메뉴 단가 + 옵션 합계 계산. 검증 통과한 MenuOption 객체도 함께 반환해
+    호출자가 같은 옵션을 다시 fetch 하지 않도록 한다.
+    """
     menu = await get_menu_by_name(db, menu_name)
     if not menu:
         raise HTTPException(
@@ -40,6 +39,7 @@ async def calculate_unit_price(
         )
 
     total = menu.price
+    options: list[MenuOption] = []
     for option_item_id in option_item_ids:
         option = await get_option_item_by_id(db, option_item_id)
         if not option:
@@ -71,36 +71,14 @@ async def calculate_unit_price(
                 ),
             )
         total += option.extra_price
+        options.append(option)
 
-    return total, menu
-
-
-async def _get_session_or_404(db: AsyncSession, session_uuid: str):
-    session = await get_session_by_uuid(db, session_uuid)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=make_error("SESSION_NOT_FOUND", "Invalid session_uuid", session_uuid=session_uuid),
-        )
-    return session
+    return total, menu, options
 
 
 async def _build_cart_item(db: AsyncSession, item: CartItemRequest) -> dict:
     option_ids = [option.option_item_id for option in item.selected_options]
-    unit_price, menu = await calculate_unit_price(db, item.menu_name, option_ids)
-
-    options = []
-    for option_id in option_ids:
-        option = await get_option_item_by_id(db, option_id)
-        if option is None:
-            continue
-        options.append(
-            {
-                "option_item_id": option.id,
-                "option_name": option.option_name,
-                "extra_price": option.extra_price,
-            }
-        )
+    unit_price, menu, options = await calculate_unit_price(db, item.menu_name, option_ids)
 
     return {
         "line_id": uuid.uuid4().hex,
@@ -110,17 +88,30 @@ async def _build_cart_item(db: AsyncSession, item: CartItemRequest) -> dict:
         "unit_price": unit_price,
         "line_total": unit_price * item.quantity,
         "from_recommendation": item.from_recommendation,
-        "options": options,
+        "options": [
+            {
+                "option_item_id": option.id,
+                "option_name": option.option_name,
+                "extra_price": option.extra_price,
+            }
+            for option in options
+        ],
     }
 
 
-def _summarize_items(items: list[dict]) -> dict:
-    return {
-        "item_count": len(items),
-        "total_quantity": sum(int(item.get("quantity", 0)) for item in items),
-        "total_price": sum(int(item.get("line_total", 0)) for item in items),
-        "contains_recommendation_item": any(bool(item.get("from_recommendation")) for item in items),
-    }
+def _apply_cart_state(cart: Cart, items: list[dict]) -> None:
+    """cart 의 mutable 필드를 items 기준으로 갱신.
+    replace / clear 둘 다 동일 흐름이므로 한 군데로 모았다.
+    items=[] 면 사실상 clear.
+    """
+    cart.status = "active"
+    cart.item_count = len(items)
+    cart.total_quantity = sum(int(item.get("quantity", 0)) for item in items)
+    cart.total_price = sum(int(item.get("line_total", 0)) for item in items)
+    cart.contains_recommendation_item = any(
+        bool(item.get("from_recommendation")) for item in items
+    )
+    cart.cart_data = {"items": items} if items else _empty_cart_data()
 
 
 def _serialize_cart(cart: Cart, session_uuid: str) -> CartResponse:
@@ -167,7 +158,12 @@ async def ensure_cart_for_session(db: AsyncSession, session_id: int) -> Cart:
 
 
 async def get_cart_response(db: AsyncSession, session_uuid: str) -> CartResponse:
-    session = await _get_session_or_404(db, session_uuid)
+    session = await get_session_by_uuid(db, session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=make_error("SESSION_NOT_FOUND", "Invalid session_uuid", session_uuid=session_uuid),
+        )
     cart = await get_or_create_cart(db, session.id)
     await db.commit()
     await db.refresh(cart)
@@ -175,18 +171,16 @@ async def get_cart_response(db: AsyncSession, session_uuid: str) -> CartResponse
 
 
 async def replace_cart(db: AsyncSession, session_uuid: str, payload: CartReplaceRequest) -> CartResponse:
-    session = await _get_session_or_404(db, session_uuid)
+    session = await get_session_by_uuid(db, session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=make_error("SESSION_NOT_FOUND", "Invalid session_uuid", session_uuid=session_uuid),
+        )
     cart = await get_or_create_cart(db, session.id)
 
     items = [await _build_cart_item(db, item) for item in payload.items]
-    summary = _summarize_items(items)
-
-    cart.status = "active"
-    cart.item_count = summary["item_count"]
-    cart.total_quantity = summary["total_quantity"]
-    cart.total_price = summary["total_price"]
-    cart.contains_recommendation_item = summary["contains_recommendation_item"]
-    cart.cart_data = {"items": items}
+    _apply_cart_state(cart, items)
 
     await db.commit()
     await db.refresh(cart)
@@ -194,15 +188,15 @@ async def replace_cart(db: AsyncSession, session_uuid: str, payload: CartReplace
 
 
 async def clear_cart(db: AsyncSession, session_uuid: str) -> CartResponse:
-    session = await _get_session_or_404(db, session_uuid)
+    session = await get_session_by_uuid(db, session_uuid)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=make_error("SESSION_NOT_FOUND", "Invalid session_uuid", session_uuid=session_uuid),
+        )
     cart = await get_or_create_cart(db, session.id)
 
-    cart.status = "active"
-    cart.item_count = 0
-    cart.total_quantity = 0
-    cart.total_price = 0
-    cart.contains_recommendation_item = False
-    cart.cart_data = _empty_cart_data()
+    _apply_cart_state(cart, [])
 
     await db.commit()
     await db.refresh(cart)

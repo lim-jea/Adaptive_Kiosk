@@ -12,6 +12,7 @@ cryptography>=44.0.0
 google-genai>=1.0.0
 greenlet>=3.3.2
 pandas>=3.0.2
+edge-tts>=6.1.0
 
 # 👇 새롭게 추가된 AI(얼굴 분석) 관련 패키지들 👇
 torch>=2.0.0

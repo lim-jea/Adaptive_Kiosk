@@ -1,3 +1,4 @@
+#testing
 import uuid
 
 from sqlalchemy import (
@@ -235,6 +236,85 @@ class ChatMessage(Base):
     )
 
 
+class SurveyResponse(Base):
+    """설문 응답 단일 행. 한 키오스크 세션당 최대 1행 (session_id unique).
+    status: partial(진행 중) / skipped(즉시 스킵) / completed(완료).
+
+    저장 형식:
+    - 객관식 23문항(q1~q23) 은 분석 편의를 위해 (value, label) 두 컬럼씩 명시.
+    - 다중 선택 3종(f1/f2/g1) 과 인적 사항을 제외한 부가 옵션은 JSON 으로 보존.
+    - 자유 텍스트 7개는 각자 컬럼.
+    - survey_snapshot 에는 응답 당시 노출된 코드북 + 라벨 구성을 텍스트로 보존(추후 문항 변경 추적).
+    """
+
+    __tablename__ = "survey_responses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("kiosk_sessions.id"), unique=True, nullable=False)
+    status = Column(String(20), default="partial", nullable=False)
+    started_at = Column(DateTime, server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    # 응답자 인적사항
+    resp_age = Column(Integer, nullable=True)
+    resp_gender = Column(String(20), nullable=True)
+    resp_kiosk_freq = Column(String(20), nullable=True)
+
+    # 객관식 23문항 — (value, label) 쌍으로 컬럼화
+    q1_value = Column(Integer, nullable=True);  q1_label = Column(String(50), nullable=True)
+    q2_value = Column(Integer, nullable=True);  q2_label = Column(String(50), nullable=True)
+    q3_value = Column(Integer, nullable=True);  q3_label = Column(String(50), nullable=True)
+    q4_value = Column(Integer, nullable=True);  q4_label = Column(String(50), nullable=True)
+    q5_value = Column(Integer, nullable=True);  q5_label = Column(String(50), nullable=True)
+    q6_value = Column(Integer, nullable=True);  q6_label = Column(String(50), nullable=True)
+    q7_value = Column(Integer, nullable=True);  q7_label = Column(String(50), nullable=True)
+    q8_value = Column(Integer, nullable=True);  q8_label = Column(String(50), nullable=True)
+    q9_value = Column(Integer, nullable=True);  q9_label = Column(String(50), nullable=True)
+    q10_value = Column(Integer, nullable=True); q10_label = Column(String(50), nullable=True)
+    q11_value = Column(Integer, nullable=True); q11_label = Column(String(50), nullable=True)
+    q12_value = Column(Integer, nullable=True); q12_label = Column(String(50), nullable=True)
+    q13_value = Column(Integer, nullable=True); q13_label = Column(String(50), nullable=True)
+    q14_value = Column(Integer, nullable=True); q14_label = Column(String(50), nullable=True)
+    q15_value = Column(Integer, nullable=True); q15_label = Column(String(50), nullable=True)
+    q16_value = Column(Integer, nullable=True); q16_label = Column(String(50), nullable=True)
+    q17_value = Column(Integer, nullable=True); q17_label = Column(String(50), nullable=True)
+    q18_value = Column(Integer, nullable=True); q18_label = Column(String(50), nullable=True)
+    q19_value = Column(Integer, nullable=True); q19_label = Column(String(50), nullable=True)
+    q20_value = Column(Integer, nullable=True); q20_label = Column(String(50), nullable=True)
+    q21_value = Column(Integer, nullable=True); q21_label = Column(String(50), nullable=True)
+    q22_value = Column(Integer, nullable=True); q22_label = Column(String(50), nullable=True)
+    q23_value = Column(Integer, nullable=True); q23_label = Column(String(50), nullable=True)
+
+    # q7 부가 플래그 (다른 키오스크 사용 경험 없음 체크 시 true)
+    q7_no_experience = Column(Boolean, default=False, nullable=False)
+
+    # 다중 선택 (옵션이 가변적이라 JSON 유지)
+    multi_f1 = Column(JSON, nullable=False, default=list)
+    multi_f2 = Column(JSON, nullable=False, default=list)
+    multi_g1 = Column(JSON, nullable=False, default=list)
+
+    # 자유 텍스트 7개
+    text_b8_reason = Column(Text, nullable=True)
+    text_d1_reason = Column(Text, nullable=True)
+    text_e4 = Column(Text, nullable=True)
+    text_f3 = Column(Text, nullable=True)
+    text_h2 = Column(Text, nullable=True)
+    text_i2 = Column(Text, nullable=True)
+    text_i3 = Column(Text, nullable=True)
+
+    # 응답 당시 노출된 설문 내용(코드북) 스냅샷 — 추후 문항이 바뀌어도 그 시점 답변 의미를 복원 가능
+    survey_snapshot = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_survey_status", "status"),
+        Index("ix_survey_session", "session_id"),
+    )
+
+
 __all__ = [
     "Kiosk",
     "KioskSession",
@@ -247,4 +327,5 @@ __all__ = [
     "RecommendationEvent",
     "SessionActivityLog",
     "ChatMessage",
+    "SurveyResponse",
 ]

@@ -1,0 +1,133 @@
+{
+  "_doc": "설문 문항 코드북. 프론트엔드 SurveyPage.jsx와 백엔드 분석 코드가 동일하게 참조하는 단일 진실원. 객관식(rating5/single/nps) 23개, 다중 선택(multi_choices) 3개, 자유 텍스트(free_texts) 7개, 인적사항(demographics) 3개. v2(2026-05-06): q7·q10·q17을 5단계 만족 척도로 통일.",
+  "version": "2026-05-06-v2",
+  "rating_label_5": {
+    "_doc": "기본 5단계 만족 라벨 (대부분의 rating5 항목이 사용)",
+    "1": "불만족", "2": "비선호", "3": "보통", "4": "선호", "5": "만족"
+  },
+  "rating_label_5_privacy": {
+    "_doc": "q12 카메라 거부감 전용 라벨",
+    "1": "매우 거부감", "2": "약간 거부감", "3": "보통", "4": "거의 없음", "5": "전혀 없음"
+  },
+  "rating_label_5_compare": {
+    "_doc": "q7 다른 키오스크 비교 전용 라벨",
+    "1": "훨씬 어려움", "2": "약간 어려움", "3": "비슷", "4": "약간 편함", "5": "훨씬 편함"
+  },
+  "rating_label_5_accuracy": {
+    "_doc": "q10 나이 인식 정확성 전용 라벨",
+    "1": "전혀 다름", "2": "다름", "3": "비슷", "4": "정확", "5": "매우 정확"
+  },
+  "rating_label_5_influence": {
+    "_doc": "q17 추천 영향 전용 라벨",
+    "1": "매우 방해", "2": "방해", "3": "영향 없음", "4": "도움", "5": "매우 도움"
+  },
+  "questions": {
+    "q1": {"section": "B", "title": "키오스크 이용이 전반적으로 편리했나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q2": {"section": "B", "title": "화면 글씨 크기가 적절했나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q3": {"section": "B", "title": "원하는 메뉴를 쉽게 찾을 수 있었나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q4": {"section": "B", "title": "옵션을 고르는 과정이 편했나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q5": {"section": "B", "title": "결제 과정이 편리했나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q6": {"section": "B", "title": "주문을 완료하기까지의 과정이 전체적으로 쉬웠나요? (CES)", "type": "rating5", "label_set": "rating_label_5"},
+    "q7": {
+      "section": "B",
+      "title": "본 키오스크를 이전에 써본 다른 키오스크와 비교하면 어떠셨나요?",
+      "type": "rating5",
+      "label_set": "rating_label_5_compare",
+      "extra_option": {"key": "q7_no_experience", "label": "다른 키오스크 사용 경험 없음"}
+    },
+    "q8": {"section": "B", "title": "전반적인 만족도", "type": "rating5", "label_set": "rating_label_5"},
+    "q9": {"section": "C", "title": "얼굴 인식 속도가 빠르다고 느끼셨나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q10": {"section": "C", "title": "인식된 나이대가 실제와 비슷했나요?", "type": "rating5", "label_set": "rating_label_5_accuracy"},
+    "q11": {
+      "section": "C",
+      "title": "인식된 성별이 정확했나요?",
+      "type": "single",
+      "options": [
+        {"value": 1, "label": "정확"},
+        {"value": 0, "label": "다름"}
+      ]
+    },
+    "q12": {"section": "C", "title": "카메라로 얼굴을 촬영하는 방식에 거부감은 없으셨나요?", "type": "rating5", "label_set": "rating_label_5_privacy"},
+    "q13": {"section": "D", "title": "추천된 메뉴가 본인 취향에 맞았나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q14": {"section": "D", "title": "추천 메뉴가 다양했나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q15": {"section": "D", "title": "추천된 메뉴가 왜 추천되었는지 이해할 수 있었나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q16": {"section": "D", "title": "추천을 무시하고 다른 메뉴를 고르는 게 쉬웠나요?", "type": "rating5", "label_set": "rating_label_5"},
+    "q17": {"section": "D", "title": "추천이 본인의 선택에 어떻게 작용했나요?", "type": "rating5", "label_set": "rating_label_5_influence"},
+    "q18": {
+      "section": "E",
+      "title": "음성 주문을 사용해 보셨나요?",
+      "type": "single",
+      "options": [
+        {"value": 1, "label": "예"},
+        {"value": 0, "label": "아니오"}
+      ],
+      "branches_to": "q19_q20_q21_only_if_value_1"
+    },
+    "q19": {"section": "E", "title": "음성 인식이 본인의 말을 잘 알아들었나요?", "type": "rating5", "label_set": "rating_label_5", "depends_on": "q18=1"},
+    "q20": {"section": "E", "title": "음성 응답 속도가 적절했나요?", "type": "rating5", "label_set": "rating_label_5", "depends_on": "q18=1"},
+    "q21": {"section": "E", "title": "음성 주문이 전반적으로 편리했나요?", "type": "rating5", "label_set": "rating_label_5", "depends_on": "q18=1"},
+    "q22": {
+      "section": "H",
+      "title": "큰 글씨와 음성 안내가 강화된 \"간편 모드\"를 안내받으면 사용해보고 싶으신가요?",
+      "type": "single",
+      "options": [
+        {"value": 1, "label": "사용"},
+        {"value": 0, "label": "안 함"},
+        {"value": null, "label": "모르겠음"}
+      ]
+    },
+    "q23": {
+      "section": "I",
+      "title": "이 키오스크를 친구나 가족에게 추천할 의향이 얼마나 있으신가요? (NPS)",
+      "type": "nps",
+      "scale": [0, 10]
+    }
+  },
+  "multi_choices": {
+    "f1": {
+      "section": "F",
+      "title": "마음에 들었던 부분을 모두 골라 주세요",
+      "options": ["버튼 크기", "버튼 색상", "글씨 가독성", "아이콘·이모지", "카테고리 분류", "메뉴 설명", "메뉴 사진", "화면 배치", "추천 카드 디자인", "기타"]
+    },
+    "f2": {
+      "section": "F",
+      "title": "개선되었으면 하는 부분을 골라 주세요",
+      "options": ["버튼 크기", "버튼 색상", "글씨 가독성", "아이콘·이모지", "카테고리 분류", "메뉴 설명", "메뉴 사진", "화면 배치", "추천 카드 디자인", "기타"]
+    },
+    "g1": {
+      "section": "G",
+      "title": "주문 중 어려움을 겪었거나 막힌 단계가 있다면 모두 골라 주세요",
+      "options": ["얼굴 인식", "메뉴 찾기", "옵션 선택", "카트 확인", "음성 주문", "결제", "추천 메뉴 이해", "도움말 호출", "없음", "기타"]
+    }
+  },
+  "free_texts": {
+    "b8_reason": {"section": "B", "title": "B-8 만족도 점수의 가장 큰 이유", "linked_question": "q8"},
+    "d1_reason": {"section": "D", "title": "D-1 추천 만족도 점수의 이유", "linked_question": "q13"},
+    "e4": {"section": "E", "title": "음성 주문 의견", "depends_on": "q18=1"},
+    "f3": {"section": "F", "title": "디자인 자유 의견"},
+    "h2": {"section": "H", "title": "간편 모드 자유 의견"},
+    "i2": {"section": "I", "title": "가장 인상 깊었던 점"},
+    "i3": {"section": "I", "title": "꼭 개선되었으면 하는 점"}
+  },
+  "demographics": {
+    "resp_age": {"title": "만 나이", "type": "int"},
+    "resp_gender": {
+      "title": "성별",
+      "type": "single",
+      "options": [
+        {"value": "M", "label": "남"},
+        {"value": "F", "label": "여"},
+        {"value": "no_answer", "label": "응답하지 않음"}
+      ]
+    },
+    "resp_kiosk_freq": {
+      "title": "평소 키오스크 사용 빈도",
+      "type": "single",
+      "options": [
+        {"value": "rare", "label": "거의 없음"},
+        {"value": "sometimes", "label": "가끔"},
+        {"value": "often", "label": "자주"}
+      ]
+    }
+  }
+}

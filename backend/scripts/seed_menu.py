@@ -39,6 +39,16 @@ MENUS = [
     {"name": "딸기 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🍓", "calories": 260, "serving_temperature": "cold", "is_caffeinated": False},
     {"name": "망고 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥭", "calories": 250, "serving_temperature": "cold", "is_caffeinated": False},
     {"name": "오렌지 주스", "category": "주스", "price": 5800, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "카페모카", "category": "달콤한커피", "price": 6200, "icon_emoji": "🍫", "calories": 290, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "블루레몬 에이드", "category": "에이드", "price": 6000, "icon_emoji": "💙", "calories": 130, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "초코 라떼", "category": "블렌디드", "price": 6300, "icon_emoji": "🍫", "calories": 320, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "딸기 라떼", "category": "블렌디드", "price": 6300, "icon_emoji": "🍓", "calories": 280, "serving_temperature": "cold", "is_caffeinated": False},
+    {"name": "유자차", "category": "달콤한티", "price": 5400, "icon_emoji": "🍋", "calories": 120, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "자몽차", "category": "달콤한티", "price": 5500, "icon_emoji": "🍊", "calories": 110, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "레몬차", "category": "달콤한티", "price": 5400, "icon_emoji": "🍋", "calories": 100, "serving_temperature": "both", "is_caffeinated": False},
+    {"name": "얼그레이 티", "category": "달콤한티", "price": 5400, "icon_emoji": "🫖", "calories": 5, "serving_temperature": "both", "is_caffeinated": True},
+    {"name": "페퍼민트 티", "category": "달콤한티", "price": 5400, "icon_emoji": "🌿", "calories": 5, "serving_temperature": "hot", "is_caffeinated": False},
+    {"name": "요거트 스무디", "category": "스무디", "price": 6500, "icon_emoji": "🥛", "calories": 240, "serving_temperature": "cold", "is_caffeinated": False},
 ]
 
 OPTION_GROUPS = [
@@ -117,6 +127,41 @@ CATEGORY_OPTION_MAP = {
 }
 
 _OPTION_GROUPS_BY_NAME = {group["name"]: group for group in OPTION_GROUPS}
+
+MENU_IMAGES = {
+    "에스프레소": "https://images.unsplash.com/photo-1510707577719-ae7c14805e3a?w=400&h=400&fit=crop&auto=format",
+    "따뜻한 아메리카노": "https://images.unsplash.com/photo-1504630083234-14187a9df0f5?w=400&h=400&fit=crop&auto=format",
+    "아이스 아메리카노": "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=400&fit=crop&auto=format",
+    "따뜻한 카페라떼": "https://images.unsplash.com/photo-1561047029-3000c68339ca?w=400&h=400&fit=crop&auto=format",
+    "아이스 카페라떼": "https://images.unsplash.com/photo-1578314675249-a6910f80cc4e?w=400&h=400&fit=crop&auto=format",
+    "카푸치노": "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=400&fit=crop&auto=format",
+    "콜드브루": "https://images.unsplash.com/photo-1548546738-8509cb246ed3?w=400&h=400&fit=crop&auto=format",
+    "콜드브루 라떼": "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&h=400&fit=crop&auto=format",
+    "드립 커피": "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=400&h=400&fit=crop&auto=format",
+    "바닐라 라떼": "https://images.unsplash.com/photo-1485808191679-5f86510bd652?w=400&h=400&fit=crop&auto=format",
+    "카라멜 마끼아또": "https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?w=400&h=400&fit=crop&auto=format",
+    "프라푸치노": "https://images.unsplash.com/photo-1455951673516-95f09e43d8bc?w=400&h=400&fit=crop&auto=format",
+    "말차 프라페": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=400&fit=crop&auto=format",
+    "녹차 라떼": "https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=400&h=400&fit=crop&auto=format",
+    "캐모마일 티": "https://images.unsplash.com/photo-1564890369478-c89ca6d9cde9?w=400&h=400&fit=crop&auto=format",
+    "복숭아 아이스티": "https://images.unsplash.com/photo-1499638673689-79a0b5115d87?w=400&h=400&fit=crop&auto=format",
+    "자몽 허니 블랙 티": "https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&h=400&fit=crop&auto=format",
+    "레몬에이드": "https://images.unsplash.com/photo-1523371054106-bbf80586c38c?w=400&h=400&fit=crop&auto=format",
+    "자몽에이드": "https://images.unsplash.com/photo-1497534446932-c925b458314e?w=400&h=400&fit=crop&auto=format",
+    "딸기 스무디": "https://images.unsplash.com/photo-1570696516188-ade861b84a49?w=400&h=400&fit=crop&auto=format",
+    "망고 스무디": "https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?w=400&h=400&fit=crop&auto=format",
+    "오렌지 주스": "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=400&fit=crop&auto=format",
+    "카페모카": "https://images.unsplash.com/photo-1579888944880-d98341245702?w=400&h=400&fit=crop&auto=format",
+    "블루레몬 에이드": "https://images.unsplash.com/photo-1556881286-fc6915169721?w=400&h=400&fit=crop&auto=format",
+    "초코 라떼": "https://images.unsplash.com/photo-1517578239113-b03992dcdd25?w=400&h=400&fit=crop&auto=format",
+    "딸기 라떼": "https://images.unsplash.com/photo-1586917049352-1c1f9b1f1d62?w=400&h=400&fit=crop&auto=format",
+    "유자차": "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=400&h=400&fit=crop&auto=format",
+    "자몽차": "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=400&fit=crop&auto=format",
+    "레몬차": "https://images.unsplash.com/photo-1556881286-fc6915169721?w=400&h=400&fit=crop&auto=format",
+    "얼그레이 티": "https://images.unsplash.com/photo-1597318181409-cf64d0b5d8a2?w=400&h=400&fit=crop&auto=format",
+    "페퍼민트 티": "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=400&h=400&fit=crop&auto=format",
+    "요거트 스무디": "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=400&fit=crop&auto=format",
+}
 
 
 def _sample_markers(items: list):
@@ -524,6 +569,20 @@ async def _migrate_legacy_option_tables(db: AsyncSession, tables: set[str]) -> i
     return inserted
 
 
+async def _update_menu_images_if_missing(db: AsyncSession) -> int:
+    menu_rows = (await db.execute(select(Menu))).scalars().all()
+    updated = 0
+    for menu in menu_rows:
+        url = MENU_IMAGES.get(menu.name)
+        if url and menu.image_url != url:
+            menu.image_url = url
+            updated += 1
+    if updated:
+        await db.commit()
+        logger.info("Updated menu image URLs: %d menus", updated)
+    return updated
+
+
 async def seed_menu_data(db: AsyncSession) -> None:
     tables = set(await _get_table_names(db))
 
@@ -557,3 +616,5 @@ async def seed_menu_data(db: AsyncSession) -> None:
         logger.info("Inserted default menu options: %d rows", inserted)
     else:
         logger.info("Menu seed data already exists. Skipping.")
+
+    await _update_menu_images_if_missing(db)

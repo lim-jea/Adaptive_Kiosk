@@ -1,6 +1,6 @@
-// 랜딩 페이지 — 연령대 직접 선택 or 사용자 인식(카메라) 중 선택
+// 랜딩 페이지 — 얼굴 인식(상단 메인 CTA) or 연령대 직접 선택(하단)
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
@@ -18,6 +18,7 @@ export default function LandingPage() {
   const { dispatch, ACTIONS } = useSession()
   const logger = useLogger()
   const [loading, setLoading] = useState(false)
+  const [loadingGroup, setLoadingGroup] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -33,12 +34,7 @@ export default function LandingPage() {
     const { session_uuid } = sessionRes.data
     dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
     sessionStorage.setItem('session_uuid', session_uuid)
-    logger.log('session', 'landing', {
-      actionName: 'session_start',
-      source: 'system',
-      payload: { session_uuid },
-    })
-    // 로그 flush는 네비게이션을 막을 필요 없음 — fire-and-forget
+    logger.log('session', 'landing', { actionName: 'session_start', source: 'system', payload: { session_uuid } })
     logger.flush(session_uuid).catch(() => {})
     return session_uuid
   }
@@ -46,33 +42,41 @@ export default function LandingPage() {
   const handleAgeGroupSelect = async (group) => {
     if (loading) return
     setLoading(true)
+    setLoadingGroup(group.ageGroup)
     setError(null)
     try {
-      logger.log('click', 'landing', {
-        actionName: 'age_group_select',
-        targetType: 'button',
-        targetLabel: group.ageGroup,
-      })
+      logger.log('click', 'landing', { actionName: 'age_group_select', targetType: 'button', targetLabel: group.ageGroup })
       await createSession()
       dispatch({
         type: ACTIONS.SET_VISION,
-        payload: {
-          ageGroup: group.ageGroup,
-          gender: 'unknown',
-          ageEst: group.ageEst,
-          isSimpleMode: false,
-        },
+        payload: { ageGroup: group.ageGroup, gender: 'unknown', ageEst: group.ageEst, isSimpleMode: false },
       })
-      navigate('/kiosk')
+      navigate('/order-type')
     } catch (err) {
       const status = err?.response?.status
-      if (status === 401 || status === 403) {
-        setError('키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.')
-      } else {
-        setError('시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
-      }
+      setError(status === 401 || status === 403
+        ? '키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.'
+        : '시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
     } finally {
       setLoading(false)
+      setLoadingGroup(null)
+    }
+  }
+
+  // ── 히든 어드민 진입 — 로고를 1.5초 안에 5번 연속 탭 ──
+  const adminTapCountRef = useRef(0)
+  const adminLastTapRef = useRef(0)
+  const handleLogoTap = () => {
+    const now = Date.now()
+    if (now - adminLastTapRef.current > 1500) {
+      adminTapCountRef.current = 1
+    } else {
+      adminTapCountRef.current += 1
+    }
+    adminLastTapRef.current = now
+    if (adminTapCountRef.current >= 5) {
+      adminTapCountRef.current = 0
+      navigate('/admin/login')
     }
   }
 
@@ -81,108 +85,125 @@ export default function LandingPage() {
     setLoading(true)
     setError(null)
     try {
-      logger.log('click', 'landing', {
-        actionName: 'face_recognition_click',
-        targetType: 'button',
-        targetLabel: 'camera',
-      })
+      logger.log('click', 'landing', { actionName: 'face_recognition_click', targetType: 'button', targetLabel: 'camera' })
       await createSession()
       navigate('/camera')
     } catch (err) {
       const status = err?.response?.status
-      if (status === 401 || status === 403) {
-        setError('키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.')
-      } else {
-        setError('시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
-      }
+      setError(status === 401 || status === 403
+        ? '키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.'
+        : '시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-amber-50 flex flex-col items-center justify-center px-6 py-10">
-      {/* 카페 로고 영역 */}
-      <div className="mb-8 text-center">
-        <div className="text-6xl mb-4">☕</div>
-        <h1 className="text-3xl md:text-4xl font-bold text-amber-900">Cafe AI Kiosk</h1>
-        <div className="mt-1 h-1 w-24 bg-amber-500 mx-auto rounded-full" />
-      </div>
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ background: 'linear-gradient(160deg, #1a0a00 0%, #3b1a08 50%, #1a0a00 100%)' }}
+    >
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
 
-      {/* 에러 메시지 */}
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-100 border border-red-300 text-red-700 rounded-xl text-sm text-center max-w-sm w-full">
-          {error}
+        {/* 로고 — 1.5초 안에 5번 연속 탭하면 관리자 로그인 진입 (손님에게는 보이지 않는 히든 동작) */}
+        <div className="text-center mb-8">
+          <div
+            onClick={handleLogoTap}
+            className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center shadow-2xl shadow-amber-900/50 mb-4 mx-auto select-none"
+          >
+            <span className="text-4xl">☕</span>
+          </div>
+          <h1 className="text-4xl font-black text-white tracking-widest">BREW AI</h1>
+          <p className="text-amber-400 text-sm font-medium tracking-widest mt-1">CAFÉ & ROASTERY</p>
         </div>
-      )}
 
-      {/* 연령대 직접 선택 */}
-      <div className="w-full max-w-sm mb-6">
-        <p className="text-sm font-semibold text-amber-700 mb-3 text-center">
-          연령대를 직접 선택해주세요
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          {AGE_GROUPS.map((group) => (
-            <button
-              key={group.ageGroup}
-              onClick={() => handleAgeGroupSelect(group)}
-              disabled={loading}
-              className="
-                flex flex-col items-center justify-center
-                min-h-[96px] py-4 px-3
-                bg-white border-2 border-amber-200
-                hover:border-amber-400 hover:bg-amber-50
-                active:bg-amber-100
-                disabled:opacity-50 disabled:cursor-not-allowed
-                rounded-2xl shadow-sm
-                transition-colors duration-150
-              "
-            >
-              <span className="text-3xl mb-1">{group.emoji}</span>
-              <span className="text-base font-bold text-amber-900">{group.label}</span>
-              <span className="text-xs text-amber-500 mt-0.5">{group.range}</span>
-            </button>
-          ))}
+        {/* 에러 */}
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-red-900/50 border border-red-700 text-red-300 rounded-xl text-sm text-center w-full max-w-sm">
+            {error}
+          </div>
+        )}
+
+        {/* ── 메인 CTA: 얼굴 인식 버튼 ── */}
+        <div className="w-full max-w-sm mb-8">
+          <button
+            onClick={handleFaceRecognition}
+            disabled={loading}
+            className="
+              relative w-full py-9 px-6
+              rounded-3xl overflow-hidden
+              disabled:opacity-60 disabled:cursor-not-allowed
+              active:scale-95 transition-transform duration-150
+              flex flex-col items-center gap-3
+            "
+            style={{
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 60%, #b45309 100%)',
+              boxShadow: '0 0 40px rgba(245,158,11,0.45), 0 8px 32px rgba(0,0,0,0.4)',
+            }}
+          >
+            {/* 배경 광택 효과 */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.15) 0%, transparent 60%)' }}
+            />
+
+            <span className="text-6xl relative z-10 drop-shadow-md">📷</span>
+            <span className="text-white text-2xl font-black tracking-wide relative z-10">
+              {loading && !loadingGroup ? '시작 중...' : '얼굴 인식으로 시작'}
+            </span>
+            <span className="text-amber-100/75 text-sm relative z-10">
+              카메라로 연령대를 자동 분석합니다
+            </span>
+
+            {/* 하단 안내 배지 */}
+            <div className="relative z-10 mt-1 px-3 py-1 bg-black/20 rounded-full">
+              <span className="text-amber-200/80 text-xs">이미지는 즉시 삭제 · 개인정보 미저장</span>
+            </div>
+          </button>
         </div>
+
+        {/* 구분선 */}
+        <div className="flex items-center gap-3 mb-6 w-full max-w-sm">
+          <div className="flex-1 h-px bg-amber-800/40" />
+          <span className="text-amber-600/70 text-xs tracking-widest">또는 직접 선택</span>
+          <div className="flex-1 h-px bg-amber-800/40" />
+        </div>
+
+        {/* ── 연령대 직접 선택 ── */}
+        <div className="w-full max-w-sm">
+          <p className="text-amber-500/60 text-xs font-medium text-center tracking-widest mb-4 uppercase">
+            연령대를 선택해주세요
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {AGE_GROUPS.map((group) => (
+              <button
+                key={group.ageGroup}
+                onClick={() => handleAgeGroupSelect(group)}
+                disabled={loading}
+                className={`
+                  flex flex-col items-center justify-center
+                  py-4 px-1
+                  rounded-2xl border transition-all duration-200
+                  ${loadingGroup === group.ageGroup
+                    ? 'border-amber-400 bg-amber-500/20 scale-95'
+                    : 'border-amber-800/50 bg-white/5 hover:bg-white/10 hover:border-amber-600/60 active:scale-95'}
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                `}
+              >
+                <span className="text-2xl mb-1">{group.emoji}</span>
+                <span className="text-sm font-bold text-white">{group.label}</span>
+                <span className="text-xs text-amber-500/60 mt-0.5 text-center leading-tight">{group.range}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
 
-      {/* 구분선 */}
-      <div className="flex items-center w-full max-w-sm mb-6">
-        <div className="flex-1 h-px bg-amber-200" />
-        <span className="mx-3 text-xs text-amber-400 font-medium">또는</span>
-        <div className="flex-1 h-px bg-amber-200" />
+      {/* 하단 */}
+      <div className="px-6 pb-6 text-center">
+        <p className="text-xs text-amber-900/50">© BREW AI CAFÉ · 개인정보를 저장하지 않습니다</p>
       </div>
-
-      {/* 사용자 인식 버튼 */}
-      <div className="w-full max-w-sm">
-        <p className="text-sm font-semibold text-amber-700 mb-3 text-center">
-          카메라로 자동 인식
-        </p>
-        <button
-          onClick={handleFaceRecognition}
-          disabled={loading}
-          className="
-            w-full min-h-[56px] py-4
-            bg-amber-500 hover:bg-amber-600 active:bg-amber-700
-            disabled:bg-amber-300
-            text-white text-lg font-bold
-            rounded-2xl shadow-lg
-            transition-colors duration-150
-            flex items-center justify-center gap-2
-          "
-        >
-          <span>📷</span>
-          <span>{loading ? '시작 중...' : '사용자 인식'}</span>
-        </button>
-        <p className="text-xs text-amber-500 text-center mt-2">
-          얼굴을 촬영해 연령대를 자동으로 분석합니다 · 이미지는 즉시 삭제됩니다
-        </p>
-      </div>
-
-      {/* 하단 안내 */}
-      <p className="mt-8 text-xs text-amber-400 text-center">
-        이 서비스는 개인정보를 저장하지 않습니다
-      </p>
     </div>
   )
 }

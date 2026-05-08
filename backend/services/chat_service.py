@@ -19,10 +19,6 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
-import base64
-import io
-import wave
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -75,10 +71,10 @@ _GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 _client = None
 
 
-# ─── TTS — 인메모리 캐시 + 라이브 합성 ─────────────────────────────────────
-# 복잡한 디스크 캐시/프리워밍/조각 합성은 제거했다.
-# 현재는 짧은 메모리 캐시만 유지하고, 미스 시 라이브 TTS를 시도한 뒤
-# 실패하면 프런트가 브라우저 TTS로 폴백한다.
+# ─── TTS — 인메모리 LRU 캐시 + Edge-TTS 직접 합성 ─────────────────────────
+# 1) 캐시 hit → 0ms 즉시 반환
+# 2) 캐시 miss → Edge-TTS 호출 (~400ms), 결과 캐싱
+# 3) 어떤 오류든 None → 프런트가 브라우저 TTS (speechSynthesis) 로 폴백
 
 from collections import OrderedDict
 _TTS_MEM_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
@@ -86,148 +82,62 @@ _TTS_MEM_MAX = 64
 
 
 async def synthesize_speech(text: str) -> Optional[bytes]:
-    """텍스트 → WAV.
+    """텍스트 → 오디오 bytes (mp3, Edge-TTS).
 
     우선순위:
-    1) 메모리 LRU 캐시
-    2) (선택) Gemini TTS 라이브 합성
+      1) 메모리 LRU 캐시 (반복 phrase 시 0ms)
+      2) Edge-TTS 직접 합성
 
-    캐시 미스 & 라이브 합성 비활성 시 None (프런트가 브라우저 TTS로 폴백).
+    실패/패키지 미설치/EDGE_TTS_ENABLED=False → None
+      → /voice/tts 가 404 반환 → 프런트가 브라우저 TTS (speechSynthesis) 로 폴백.
     """
     if not text:
         return None
-    wav = _TTS_MEM_CACHE.get(text)
-    if wav is not None:
-        _TTS_MEM_CACHE.move_to_end(text)
-        return wav
 
-    if not getattr(settings, "GENAI_TTS_ENABLED", False):
+    cached = _TTS_MEM_CACHE.get(text)
+    if cached is not None:
+        _TTS_MEM_CACHE.move_to_end(text)
+        return cached
+
+    if not getattr(settings, "EDGE_TTS_ENABLED", True):
         return None
 
-    wav = await _synthesize_speech_live(text)
-    if wav:
-        _TTS_MEM_CACHE[text] = wav
+    audio = await _synthesize_speech_edge(text)
+    if audio:
+        _TTS_MEM_CACHE[text] = audio
         _TTS_MEM_CACHE.move_to_end(text)
         while len(_TTS_MEM_CACHE) > _TTS_MEM_MAX:
             _TTS_MEM_CACHE.popitem(last=False)
-        return wav
+        return audio
 
     return None
 
 
-async def _synthesize_speech_live(text: str) -> Optional[bytes]:
-    """Gemini TTS를 호출해 WAV 바이트를 받는다. 실패 시 None."""
-    client = _get_client()
-    if client is None:
+async def _synthesize_speech_edge(text: str) -> Optional[bytes]:
+    """edge-tts 로 mp3 합성. 어떤 오류든 None 반환 — 호출자가 폴백 처리."""
+    try:
+        import edge_tts  # type: ignore
+    except ImportError:
+        logger.warning("edge-tts 패키지 미설치 — `pip install edge-tts`. 브라우저 TTS 로 폴백.")
         return None
 
-    from google.genai import types  # type: ignore
-
-    voice_name = (getattr(settings, "GENAI_TTS_VOICE_NAME", "kore") or "kore").lower()
-    language_code = getattr(settings, "GENAI_TTS_LANGUAGE_CODE", None)
-    if isinstance(language_code, str) and language_code:
-        # SpeechConfig는 ISO 639-1(예: 'ko')를 기대하는 경우가 있어 축약한다.
-        language_code = language_code.split("-")[0].strip() or None
-
-    # SDK 테스트 예제와 동일한 형태(소문자 'audio', prebuilt voice_name)
-    speech_cfg = types.SpeechConfig(
-        voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
-        )
-    )
-    if language_code:
-        speech_cfg.language_code = language_code
-
-    config = types.GenerateContentConfig(
-        response_modalities=["audio"],
-        speech_config=speech_cfg,
-        temperature=0,
-    )
-
-    def _looks_like_wav(b: bytes) -> bool:
-        return isinstance(b, (bytes, bytearray)) and len(b) >= 12 and b[0:4] == b"RIFF" and b[8:12] == b"WAVE"
-
-    def _parse_audio_params(mime: str) -> dict:
-        # 예: "audio/pcm;rate=24000;channels=1"
-        out: dict[str, str] = {}
-        if not mime:
-            return out
-        parts = [p.strip() for p in str(mime).split(";")]
-        for p in parts[1:]:
-            if "=" in p:
-                k, v = p.split("=", 1)
-                out[k.strip().lower()] = v.strip()
-        return out
-
-    def _pcm16le_to_wav(pcm: bytes, *, rate: int = 24000, channels: int = 1) -> bytes:
-        # Gemini TTS preview 예제 기준으로 16-bit little-endian PCM을 WAV로 감싼다.
-        out = io.BytesIO()
-        with wave.open(out, "wb") as wf:
-            wf.setnchannels(int(channels) if channels else 1)
-            wf.setsampwidth(2)
-            wf.setframerate(int(rate) if rate else 24000)
-            wf.writeframes(pcm or b"")
-        return out.getvalue()
-
-    last_error: Exception | None = None
-    for attempt in range(3):
-        try:
-            model_name = getattr(settings, "GENAI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
-
-            resp = await client.aio.models.generate_content(
-                model=model_name,
-                contents=f'Produce a speech response saying "{text}"',
-                config=config,
-            )
-
-            candidates = getattr(resp, "candidates", None) or []
-            for cand in candidates:
-                content = getattr(cand, "content", None)
-                parts = getattr(content, "parts", None) or []
-                for part in parts:
-                    inline = getattr(part, "inline_data", None)
-                    if not inline:
-                        continue
-                    mime = getattr(inline, "mime_type", None) or ""
-                    data = getattr(inline, "data", None)
-                    if not data or not str(mime).startswith("audio/"):
-                        continue
-
-                    # SDK/버전에 따라 data가 bytes 또는 base64 str로 올 수 있다.
-                    if isinstance(data, str):
-                        try:
-                            audio_bytes = base64.b64decode(data)
-                        except Exception:
-                            audio_bytes = data.encode("utf-8", errors="ignore")
-                    else:
-                        audio_bytes = bytes(data)
-
-                    m = str(mime).lower()
-                    if "wav" in m and _looks_like_wav(audio_bytes):
-                        return audio_bytes
-
-                    # PCM이면 WAV로 래핑해서 반환 (현재 파이프라인은 WAV 바이트를 기대)
-                    if "pcm" in m or "l16" in m:
-                        params = _parse_audio_params(m)
-                        rate = int(params.get("rate", "24000")) if params.get("rate") else 24000
-                        channels = int(params.get("channels", "1")) if params.get("channels") else 1
-                        return _pcm16le_to_wav(audio_bytes, rate=rate, channels=channels)
-
-                    # 기타 포맷은 현재 파이프라인이 WAV만 처리하므로 무시
+    voice = getattr(settings, "EDGE_TTS_VOICE", "ko-KR-SunHiNeural")
+    try:
+        comm = edge_tts.Communicate(text, voice)
+        chunks: list[bytes] = []
+        async for chunk in comm.stream():
+            if chunk.get("type") == "audio":
+                data = chunk.get("data")
+                if data:
+                    chunks.append(data)
+        if not chunks:
+            logger.warning("Edge-TTS 합성 결과 비어있음 (text=%r). 브라우저 TTS 로 폴백.", text[:40])
             return None
-        except Exception as e:
-            last_error = e
-            msg = str(e)
-            is_internal = (" 500 " in msg) or ("INTERNAL" in msg)
-            if attempt < 2 and is_internal:
-                import asyncio
-                await asyncio.sleep(0.6 * (attempt + 1))
-                continue
-            break
+        return b"".join(chunks)
+    except Exception as exc:
+        logger.warning("Edge-TTS 합성 실패 (%s) — 브라우저 TTS 로 폴백. text=%r", exc, text[:40])
+        return None
 
-    if last_error is not None:
-        logger.warning("[chat_service] TTS 라이브 합성 실패: %s", last_error)
-    return None
 
 _JSON_FORMAT_INSTRUCTION = """[JSON 스키마]
 {
@@ -671,6 +581,20 @@ async def _apply_stage_update(
 
 _ADD_TO_CART_KEYWORDS_RE = re.compile(r"(담아|담아줘|담아\s*줘|넣어|추가|장바구니|카트|주문\s*할래|주문\s*해|결제)")
 
+# 한국어 수량 표현 → 정수 (모듈 레벨 상수, 함수 호출당 재생성 제거)
+_QUANTITY_KO: dict[str, int] = {
+    "한": 1, "하나": 1, "1": 1,
+    "두": 2, "둘": 2, "2": 2,
+    "세": 3, "셋": 3, "3": 3,
+    "네": 4, "넷": 4, "4": 4,
+    "다섯": 5, "5": 5,
+    "여섯": 6, "6": 6,
+    "일곱": 7, "7": 7,
+    "여덟": 8, "8": 8,
+    "아홉": 9, "9": 9,
+    "열": 10, "10": 10,
+}
+
 
 def _extract_quantity_from_text(text: str) -> int:
     """간단 수량 추출 (1~10). 실패 시 1."""
@@ -685,24 +609,19 @@ def _extract_quantity_from_text(text: str) -> int:
         except Exception:
             pass
 
-    # 한국어 수량
-    mapping = {
-        "한": 1, "하나": 1, "1": 1,
-        "두": 2, "둘": 2, "2": 2,
-        "세": 3, "셋": 3, "3": 3,
-        "네": 4, "넷": 4, "4": 4,
-        "다섯": 5, "5": 5,
-        "여섯": 6, "6": 6,
-        "일곱": 7, "7": 7,
-        "여덟": 8, "8": 8,
-        "아홉": 9, "9": 9,
-        "열": 10, "10": 10,
-    }
-    for k, v in mapping.items():
+    for k, v in _QUANTITY_KO.items():
         if re.search(rf"{re.escape(k)}\s*(잔|개|컵)", text):
             return v
 
     return 1
+
+
+def _attr_or_key(obj, key: str, default=None):
+    """ORM 객체와 dict 양쪽에서 동일하게 필드 추출. menu_detail 의 option items 가
+    Pydantic / dict 혼재라 두 형태를 한 줄로 다루기 위함."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 
 def _finalize_option_item_ids(menu_detail: dict, requested_ids: list[int]) -> list[int]:
@@ -714,14 +633,9 @@ def _finalize_option_item_ids(menu_detail: dict, requested_ids: list[int]) -> li
     selected_by_group: dict[int, list[int]] = {}
     for g in option_groups:
         gid = int(g.get("id"))
-        group_items = g.get("items") or []
-        group_item_ids = [
-            int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
-            for it in group_items
-        ]
+        group_item_ids = [int(_attr_or_key(it, "id", 0) or 0) for it in (g.get("items") or [])]
         group_item_ids = [i for i in group_item_ids if i]
-        sel = [i for i in group_item_ids if i in requested_set]
-        selected_by_group[gid] = sel
+        selected_by_group[gid] = [i for i in group_item_ids if i in requested_set]
 
     # fill defaults for required groups if needed
     for g in option_groups:
@@ -736,9 +650,9 @@ def _finalize_option_item_ids(menu_detail: dict, requested_ids: list[int]) -> li
 
         if is_required and len(current) < min_select:
             defaults = [
-                int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
+                int(_attr_or_key(it, "id", 0) or 0)
                 for it in (g.get("items") or [])
-                if bool(getattr(it, "is_default", None) if not isinstance(it, dict) else it.get("is_default"))
+                if bool(_attr_or_key(it, "is_default", False))
             ]
             defaults = [i for i in defaults if i]
             for did in defaults:
@@ -770,10 +684,8 @@ def _required_options_satisfied(menu_detail: dict, option_item_ids: list[int]) -
             continue
         min_select = int(g.get("min_select") or 0)
         max_select = int(g.get("max_select") or 0)
-        group_items = g.get("items") or []
         group_item_ids = {
-            int(getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else 0))
-            for it in group_items
+            int(_attr_or_key(it, "id", 0) or 0) for it in (g.get("items") or [])
         }
         group_item_ids.discard(0)
         selected_in_group = [i for i in selected_set if i in group_item_ids]

@@ -5,11 +5,14 @@ from core.database import get_db
 from core.security import verify_credentials
 from crud.menu import (
     get_menu_by_name,
+    get_option_catalog,
     get_option_group_with_items,
     get_option_groups,
     upsert_option_group,
 )
+from services.voice_prompting import invalidate_menu_catalog_cache
 from schemas import (
+    OptionCatalogGroup,
     OptionGroupListRequest,
     OptionGroupResponse,
     OptionGroupUpsertRequest,
@@ -18,6 +21,19 @@ from schemas import (
 )
 
 router = APIRouter(tags=["Option"])
+
+
+@router.get("/option-catalog", response_model=list[OptionCatalogGroup])
+async def list_option_catalog(
+    include_unavailable: bool = Query(
+        True, description="숨김 처리된 옵션도 포함해 카탈로그를 보여줄지 여부.",
+    ),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    """전역 옵션 카탈로그. (group_name, option_name) 단위로 집계해 어떤 메뉴에서
+    사용되는지와 대표 메타(필수/min/max)·평균 추가가격을 반환. 관리자 인증 필요."""
+    return await get_option_catalog(db, include_unavailable=include_unavailable)
 
 
 @router.get("/option-groups", response_model=PaginatedResponse[OptionGroupResponse])
@@ -88,6 +104,7 @@ async def upsert_option_group_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=make_error("MENU_NOT_FOUND", "Menu not found", menu_name=req.menu_name),
         )
+    invalidate_menu_catalog_cache()
     return detail
 
 
@@ -129,4 +146,5 @@ async def upsert_menu_option_group(
                 group_name=req.name,
             ),
         )
+    invalidate_menu_catalog_cache()
     return detail

@@ -32,6 +32,11 @@ from services.trend_service import get_trend_service
 
 logger = logging.getLogger(__name__)
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+# 실주문 누적 폴더. v2 합성 baseline (DATA_DIR) 과 분리해 baseline 무결성 보호.
+# DB 의 KioskSession/Order/OrderItem 의 CSV mirror — 분석/감사 + 추천 엔진 호환용.
+# 추천 통계 빌드는 baseline 만 사용 (session_id 의미 충돌 방지). 운영 진입 시 baseline + runtime
+# concat 매칭은 CHANGE-021 에서 robust 화 예정.
+RUNTIME_DIR = DATA_DIR / "runtime"
 _CSV_LOCK = threading.Lock()
 _KNOWN_SESSION_UUIDS: set[str] | None = None
 _KNOWN_ORDER_UUIDS: set[str] | None = None
@@ -52,6 +57,9 @@ class RecommendationEngine:
         self.hourly_weights: Dict[int, float] = {}
         self._profile_stats: Dict[str, Dict] = {}
         self._co_purchase_stats: Dict[str, Dict] = {}
+        # _profile_stats 의 모든 컨텍스트에 등장한 menu_id 별 popularity 평균.
+        # _get_global_popularity 가 매 호출마다 N×M 스캔하지 않도록 미리 계산해 둔다.
+        self._global_popularity_cache: Dict[int, float] = {}
         self._use_cache = False
         self._runtime_updates = 0
 
@@ -187,6 +195,7 @@ class RecommendationEngine:
         try:
             self._profile_stats = stats.get("profile", {}) or {}
             self._co_purchase_stats = stats.get("co_purchase", {}) or {}
+            self._global_popularity_cache = self._precompute_global_popularity()
             self._use_cache = bool(self._profile_stats or self._co_purchase_stats)
             self._runtime_updates = 0
             logger.info(
@@ -199,6 +208,20 @@ class RecommendationEngine:
             logger.error("Failed to load recommendation cache: %s", exc, exc_info=True)
             self._use_cache = False
             return False
+
+    def _precompute_global_popularity(self) -> Dict[int, float]:
+        """모든 (gender, age, period) 컨텍스트에 등장한 menu_id 별 popularity 평균.
+        기존 `_get_global_popularity` 가 호출마다 전체 profile_stats 를 스캔했으나,
+        cache 적재 시점에 한 번만 계산해 dict 로 보유한다.
+        """
+        bucket: Dict[int, list[float]] = {}
+        for payload in self._profile_stats.values():
+            for rec in payload.get("recommendations", []):
+                bucket.setdefault(int(rec["menu_id"]), []).append(float(rec["popularity"]))
+        return {
+            menu_id: round(sum(values) / len(values), 4) if values else 0.0
+            for menu_id, values in bucket.items()
+        }
 
     def refresh_runtime_cache(self) -> bool:
         if not self.load_data():
@@ -264,6 +287,15 @@ class RecommendationEngine:
             .reset_index(name="count")
         )
 
+        # (gender, age, period) 별 unique order count — 한 번의 groupby 로 dict 화.
+        # 기존엔 각 그룹 iteration 마다 merged 전체를 재필터링해 nunique() 했음 (O(N²)).
+        order_counts = (
+            merged.groupby(
+                ["estimated_gender", "estimated_age_group", "period"],
+                dropna=False,
+            )["order_id"].nunique().to_dict()
+        )
+
         stats: Dict[str, Dict] = {}
         for (gender, age_group, period), group in grouped.groupby(
             ["estimated_gender", "estimated_age_group", "period"]
@@ -280,13 +312,7 @@ class RecommendationEngine:
                 )
             stats[self._profile_cache_key(str(gender), str(age_group), str(period))] = {
                 "recommendations": recommendations[:10],
-                "total_orders": int(
-                    merged[
-                        (merged["estimated_gender"] == gender)
-                        & (merged["estimated_age_group"] == age_group)
-                        & (merged["period"] == period)
-                    ]["order_id"].nunique()
-                ),
+                "total_orders": int(order_counts.get((gender, age_group, period), 0)),
                 "total_items": total_count,
             }
         return stats
@@ -312,23 +338,31 @@ class RecommendationEngine:
             .reset_index(name="count")
         )
 
-        stats: Dict[str, Dict] = {}
-        for menu_id in sorted(set(counts["menu_id_x"]).union(set(counts["menu_id_y"]))):
-            menu_pairs = counts[
-                (counts["menu_id_x"] == menu_id) | (counts["menu_id_y"] == menu_id)
-            ]
-            if menu_pairs.empty:
-                continue
+        # counts 는 menu_id_x < menu_id_y 비대칭 row.
+        # 각 menu_id 의 페어 view 를 만들기 위해 양방향으로 펼치고 한 번의 groupby 로 묶는다.
+        # 기존엔 메뉴 수 N 마다 counts 전체를 OR 필터링했음 (O(N²)).
+        expanded = pd.concat(
+            [
+                counts.rename(columns={"menu_id_x": "menu_id", "menu_id_y": "other_menu_id"}),
+                counts.rename(columns={"menu_id_y": "menu_id", "menu_id_x": "other_menu_id"}),
+            ],
+            ignore_index=True,
+        )
 
-            total_count = int(menu_pairs["count"].sum())
+        stats: Dict[str, Dict] = {}
+        for menu_id, group_pairs in expanded.groupby("menu_id"):
+            if group_pairs.empty:
+                continue
+            total_count = int(group_pairs["count"].sum())
             related: Dict[str, Dict] = {}
-            for row in menu_pairs.itertuples(index=False):
-                other_menu = int(row.menu_id_y if row.menu_id_x == menu_id else row.menu_id_x)
-                pair_key = f"{min(int(row.menu_id_x), int(row.menu_id_y))}:{max(int(row.menu_id_x), int(row.menu_id_y))}"
+            for row in group_pairs.itertuples(index=False):
+                a = int(menu_id)
+                b = int(row.other_menu_id)
+                pair_key = f"{min(a, b)}:{max(a, b)}"
                 related[pair_key] = {
                     "count": int(row.count),
                     "strength": round(float(row.count) / total_count, 4) if total_count else 0.0,
-                    "other_menu_id": other_menu,
+                    "other_menu_id": b,
                 }
             stats[self._co_purchase_cache_key(int(menu_id))] = related
         return stats
@@ -343,14 +377,9 @@ class RecommendationEngine:
         return self._profile_stats.get(cache_key, {})
 
     def _get_global_popularity(self, menu_id: int) -> float:
-        if not self._profile_stats:
-            return 0.0
-        values = []
-        for payload in self._profile_stats.values():
-            for rec in payload.get("recommendations", []):
-                if int(rec["menu_id"]) == int(menu_id):
-                    values.append(float(rec["popularity"]))
-        return round(sum(values) / len(values), 4) if values else 0.0
+        # 캐시는 load_cached_stats / refresh_runtime_cache 시점에 빌드됨.
+        # 캐시 미스(엔진은 로드됐으나 stats 없음)는 0.0 으로 폴백 — 기존 동작과 동일.
+        return self._global_popularity_cache.get(int(menu_id), 0.0)
 
     @staticmethod
     def _clamp_score(value: float) -> float:
@@ -675,10 +704,17 @@ def _read_existing_values(path: Path, key_field: str) -> set[str]:
 
 def _ensure_csv_state() -> None:
     global _KNOWN_SESSION_UUIDS, _KNOWN_ORDER_UUIDS
+    # baseline + runtime 양쪽의 uuid 모두 알아야 중복 append 방지 가능.
     if _KNOWN_SESSION_UUIDS is None:
-        _KNOWN_SESSION_UUIDS = _read_existing_values(DATA_DIR / "kiosk_sessions.csv", "session_uuid")
+        _KNOWN_SESSION_UUIDS = (
+            _read_existing_values(DATA_DIR / "kiosk_sessions.csv", "session_uuid")
+            | _read_existing_values(RUNTIME_DIR / "kiosk_sessions.csv", "session_uuid")
+        )
     if _KNOWN_ORDER_UUIDS is None:
-        _KNOWN_ORDER_UUIDS = _read_existing_values(DATA_DIR / "orders.csv", "order_uuid")
+        _KNOWN_ORDER_UUIDS = (
+            _read_existing_values(DATA_DIR / "orders.csv", "order_uuid")
+            | _read_existing_values(RUNTIME_DIR / "orders.csv", "order_uuid")
+        )
 
 
 def _append_row(path: Path, fieldnames: list[str], row: dict) -> None:
@@ -700,11 +736,18 @@ def append_runtime_order_records(
     Append the completed runtime order and its session snapshot into CSV files.
 
     Returns True when at least one new row was appended.
+
+    `backend/data/runtime/` 에만 append 한다 — baseline (`backend/data/*.csv`, v2 합성)
+    은 read-only 로 보존해 추천 통계 안정성 보장. DB INSERT 후 호출되어 DB 의 mirror 역할.
     """
     _ensure_csv_state()
     appended = False
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
+    # runtime CSV = DB 의 정확한 mirror. 누락 컬럼 없이 1:1 형식으로 기록해
+    # 추후 CSV → DB 일괄 INSERT 시점(CHANGE-021)의 변환 비용을 0 으로 만든다.
     session_row = {
+        "session_id": session.id,
         "session_uuid": session.session_uuid,
         "kiosk_id": session.kiosk_id,
         "started_at": session.started_at.isoformat() if session.started_at else "",
@@ -728,8 +771,9 @@ def append_runtime_order_records(
     with _CSV_LOCK:
         if session.session_uuid not in _KNOWN_SESSION_UUIDS:
             _append_row(
-                DATA_DIR / "kiosk_sessions.csv",
+                RUNTIME_DIR / "kiosk_sessions.csv",
                 [
+                    "session_id",
                     "session_uuid",
                     "kiosk_id",
                     "started_at",
@@ -750,20 +794,38 @@ def append_runtime_order_records(
             return appended
 
         _append_row(
-            DATA_DIR / "orders.csv",
+            RUNTIME_DIR / "orders.csv",
             ["order_uuid", "session_id", "created_at", "total_price", "status", "used_recommendation"],
             order_row,
         )
         for item in items:
             _append_row(
-                DATA_DIR / "order_items.csv",
-                ["order_id", "menu_id", "quantity", "unit_price", "from_recommendation"],
+                RUNTIME_DIR / "order_items.csv",
+                [
+                    "order_id",
+                    "menu_id",
+                    "menu_name_snapshot",
+                    "quantity",
+                    "unit_price",
+                    "line_total",
+                    "from_recommendation",
+                    "selected_options_json",
+                ],
                 {
                     "order_id": order.id,
                     "menu_id": item["menu_id"],
+                    "menu_name_snapshot": item.get("menu_name_snapshot", ""),
                     "quantity": item["quantity"],
                     "unit_price": item["unit_price"],
+                    "line_total": item.get(
+                        "line_total",
+                        int(item["unit_price"]) * int(item["quantity"]),
+                    ),
                     "from_recommendation": bool(item["from_recommendation"]),
+                    "selected_options_json": json.dumps(
+                        item.get("selected_options_json", []),
+                        ensure_ascii=False,
+                    ),
                 },
             )
         _KNOWN_ORDER_UUIDS.add(order.order_uuid)

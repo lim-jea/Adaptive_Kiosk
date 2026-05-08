@@ -40,22 +40,31 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
   }, [supported])
 
-  const looksLikeWav = (u8) => {
-    if (!u8 || u8.length < 12) return false
-    // 'RIFF'....'WAVE'
-    return (
+  // 매직 넘버로 오디오 포맷 자동 감지 (WAV / MP3 모두 지원).
+  // backend 가 Edge-TTS 사용 시 mp3, Gemini TTS / 옛 캐시는 wav 가 올 수 있다.
+  const detectAudioMime = (u8) => {
+    if (!u8 || u8.length < 4) return null
+    // WAV: 'RIFF'....'WAVE'
+    if (
+      u8.length >= 12 &&
       u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46 &&
       u8[8] === 0x57 && u8[9] === 0x41 && u8[10] === 0x56 && u8[11] === 0x45
-    )
+    ) return 'audio/wav'
+    // MP3 (ID3 v2): 'ID3'
+    if (u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33) return 'audio/mpeg'
+    // MP3 (frame sync): 0xFF 0xEx / 0xFx — 상위 11비트 1
+    if (u8[0] === 0xFF && (u8[1] & 0xE0) === 0xE0) return 'audio/mpeg'
+    return null
   }
 
-  // base64 WAV → Audio 재생 (성공 여부 boolean 반환)
+  // base64 WAV/MP3 → Audio 재생 (성공 여부 boolean 반환)
   const playBase64 = useCallback((b64) => {
     try {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
-      if (!looksLikeWav(bytes)) return Promise.resolve(false)
+      const mime = detectAudioMime(bytes)
+      if (!mime) return Promise.resolve(false)
 
-      const blob = new Blob([bytes], { type: 'audio/wav' })
+      const blob = new Blob([bytes], { type: mime })
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
       audioRef.current = audio

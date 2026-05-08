@@ -47,6 +47,12 @@ class KioskCreateRequest(BaseModel):
     location: Optional[str] = Field(None, max_length=200, examples=["서울 강남점 1층 입구"])
 
 
+class KioskUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    location: Optional[str] = Field(None, max_length=200)
+    is_active: Optional[bool] = None
+
+
 class KioskListRequest(BaseModel):
     is_active: Optional[bool] = None
     skip: int = Field(0, ge=0)
@@ -110,6 +116,7 @@ class MenuListRequest(BaseModel):
     limit: int = Field(100, ge=1, le=1000)
     sort_by: str = Field("name")
     sort_order: str = Field("asc", pattern="^(asc|desc)$")
+    include_unavailable: bool = False
 
 
 class CategoryListRequest(BaseModel):
@@ -127,6 +134,25 @@ class MenuCreateRequest(BaseModel):
     is_caffeinated: bool = False
     description: Optional[str] = Field(None, max_length=255)
     image_url: Optional[str] = Field(None, max_length=500)
+
+
+class MenuUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    category: Optional[str] = Field(None, min_length=1)
+    price: Optional[int] = Field(None, ge=0)
+    icon_emoji: Optional[str] = Field(None, max_length=10)
+    calories: Optional[int] = Field(None, ge=0)
+    serving_temperature: Optional[ServingTemperature] = None
+    is_caffeinated: Optional[bool] = None
+    description: Optional[str] = Field(None, max_length=255)
+    image_url: Optional[str] = Field(None, max_length=500)
+    is_available: Optional[bool] = None
+    # 인라인 옵션 편집: 명시되면 해당 그룹들을 통째로 교체. 미지정이면 기존 옵션 보존.
+    option_groups: Optional[List["OptionGroupUpsertRequest"]] = None
+
+
+class MenuCreateInlineRequest(MenuCreateRequest):
+    option_groups: Optional[List["OptionGroupUpsertRequest"]] = None
 
 
 class OptionItemResponse(BaseModel):
@@ -337,6 +363,115 @@ class OrderAnalytics(BaseModel):
     avg_order_price: float
     recommendation_used_count: int
     recommendation_used_rate: float
+
+
+# --- Analytics: timeseries / breakdowns ---
+
+class TimeseriesBucket(BaseModel):
+    bucket: datetime
+    orders: int = 0
+    revenue: int = 0
+    sessions: int = 0
+    simple_mode_sessions: int = 0
+    help_triggered: int = 0
+
+
+class HourOfDayPoint(BaseModel):
+    hour: int  # 0..23
+    orders: int
+    revenue: int
+    sessions: int
+
+
+class MenuRankingItem(BaseModel):
+    menu_id: Optional[int] = None
+    name: str
+    quantity: int
+    revenue: int
+
+
+class CategoryBreakdownItem(BaseModel):
+    category: str
+    quantity: int
+    revenue: int
+    share: float  # 0..1
+
+
+class OptionUsageItem(BaseModel):
+    group_name: str
+    option_name: str
+    count: int
+    share: float  # 같은 그룹 내 비중
+
+
+class DemographicsCell(BaseModel):
+    age_group: Optional[str] = None
+    gender: Optional[str] = None
+    sessions: int
+    orders: int
+    revenue: int
+
+
+class FunnelResponse(BaseModel):
+    sessions: int
+    sessions_with_cart: int
+    sessions_with_order: int
+    cart_conversion: float
+    order_conversion: float
+
+
+class SessionDurationByAge(BaseModel):
+    age_group: Optional[str] = None
+    avg_seconds: float
+    sample: int
+
+
+class SessionDurationStats(BaseModel):
+    sample: int
+    avg_seconds: float
+    by_age_group: List[SessionDurationByAge] = Field(default_factory=list)
+
+
+# --- Option catalog (전역 옵션 뷰) ---
+
+class OptionCatalogMenuRef(BaseModel):
+    id: int
+    name: str
+
+
+class OptionCatalogItem(BaseModel):
+    """카탈로그 단위의 옵션. (group_name, option_name) 조합 = 카탈로그 키."""
+    group_name: str
+    option_name: str
+    avg_extra_price: int
+    used_in_menus: List[OptionCatalogMenuRef] = Field(default_factory=list)
+
+
+class OptionCatalogGroup(BaseModel):
+    """카탈로그 단위의 옵션 그룹. group_name = 카탈로그 키."""
+    group_name: str
+    representative_min_select: int
+    representative_max_select: int
+    representative_is_required: bool
+    items: List[OptionCatalogItem] = Field(default_factory=list)
+    used_in_menus: List[OptionCatalogMenuRef] = Field(default_factory=list)
+
+
+class RecommendationFunnel(BaseModel):
+    shown: int
+    clicked: int
+    led_to_order: int
+    ctr: float
+    cvr: float
+
+
+class RecommendationBreakdownItem(BaseModel):
+    key: str
+    shown: int
+    clicked: int
+    led_to_order: int
+    ctr: float
+    cvr: float
 
 
 class FaceAnalyzeRequest(BaseModel):
@@ -633,3 +768,74 @@ class ChatMessageItem(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ============================================================================
+# Survey
+# ============================================================================
+
+
+SurveyStatus = Literal["partial", "skipped", "completed"]
+
+
+class SurveyAnswerEntry(BaseModel):
+    """객관식 한 문항의 응답 — 숫자 코드와 라벨 텍스트를 모두 보존."""
+    value: Optional[Union[int, float]] = None
+    label: Optional[str] = None
+
+
+class SurveyResponseUpsertRequest(BaseModel):
+    """세션당 1개 응답을 idempotent 하게 누적 저장.
+    프론트는 (1) answers dict 형태로 q1~q23 응답을 키 단위로 보내고, (2) multi/free_texts 도 dict 로 보낸다.
+    백엔드 CRUD 가 컬럼별로 분배 저장.
+    """
+    session_uuid: str = Field(..., min_length=1, max_length=64)
+    status: SurveyStatus = Field("partial")
+
+    resp_age: Optional[int] = Field(None, ge=0, le=120)
+    resp_gender: Optional[Literal["M", "F", "no_answer"]] = None
+    resp_kiosk_freq: Optional[Literal["rare", "sometimes", "often"]] = None
+
+    answers: Dict[str, SurveyAnswerEntry] = Field(default_factory=dict)
+    multi_choices: Dict[str, List[str]] = Field(default_factory=dict)
+    free_texts: Dict[str, str] = Field(default_factory=dict)
+
+    q7_no_experience: Optional[bool] = False
+    survey_snapshot: Optional[str] = None
+    duration_ms: Optional[int] = Field(None, ge=0)
+
+
+class SurveyResponseRead(BaseModel):
+    """관리자/분석용 응답 형태. 컬럼 그대로 노출하되, JSON-friendly 형태로 묶어 호환."""
+    id: int
+    session_id: int
+    status: SurveyStatus
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    resp_age: Optional[int] = None
+    resp_gender: Optional[str] = None
+    resp_kiosk_freq: Optional[str] = None
+
+    # answers 는 응답 시 dict 형태로 재구성해 노출 — DB 는 컬럼이지만 API 는 사용 편의
+    answers: Dict[str, Any] = Field(default_factory=dict)
+    multi_choices: Dict[str, List[str]] = Field(default_factory=dict)
+    free_texts: Dict[str, str] = Field(default_factory=dict)
+    q7_no_experience: bool = False
+    survey_snapshot: Optional[str] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SurveyListRequest(BaseModel):
+    status: Optional[SurveyStatus] = None
+    skip: int = Field(0, ge=0)
+    limit: int = Field(100, ge=1, le=1000)
+
+
+# Forward reference 해소
+MenuUpdateRequest.model_rebuild()
+MenuCreateInlineRequest.model_rebuild()

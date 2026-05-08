@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import { useLogger } from '../hooks/useLogger'
@@ -81,6 +81,7 @@ export default function KioskPage() {
   // 마운트 시 카테고리 + 메뉴 동시 로드
   useEffect(() => {
     const loadAll = async () => {
+      const startedAt = performance.now()
       try {
         const [catRes, menuRes] = await Promise.all([
           api.get('/api/v1/categories', { params: { limit: 1000 } }),
@@ -88,7 +89,12 @@ export default function KioskPage() {
         ])
         setCategories(catRes.data.items || [])
         setMenus(menuRes.data.items || [])
+        logClientTiming('kiosk.loadMenusAndCategories', performance.now() - startedAt, {
+          category_count: (catRes.data.items || []).length,
+          menu_count: (menuRes.data.items || []).length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.loadMenusAndCategories.error', performance.now() - startedAt)
         console.error('메뉴 로드 실패:', err)
       } finally {
         setLoading(false)
@@ -117,6 +123,7 @@ export default function KioskPage() {
         return
       }
 
+      const startedAt = performance.now()
       try {
         const { data } = await api.get(`/api/v1/carts/${state.sessionUuid}`)
         const localCart = mapServerCartToLocal(data.items || [])
@@ -125,7 +132,11 @@ export default function KioskPage() {
           type: ACTIONS.REPLACE_CART,
           payload: { cart: localCart },
         })
+        logClientTiming('kiosk.loadServerCart', performance.now() - startedAt, {
+          item_count: localCart.length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.loadServerCart.error', performance.now() - startedAt)
         console.error('서버 장바구니 로드 실패:', err)
       } finally {
         cartLoadedRef.current = true
@@ -142,6 +153,7 @@ export default function KioskPage() {
       const signature = serializeCartForSync(state.cart)
       if (signature === lastSyncedCartRef.current) return
 
+      const startedAt = performance.now()
       try {
         await api.put(`/api/v1/carts/${state.sessionUuid}`, {
           items: state.cart.map((item) => ({
@@ -152,7 +164,13 @@ export default function KioskPage() {
           })),
         })
         lastSyncedCartRef.current = signature
+        logClientTiming('kiosk.syncCartToServer', performance.now() - startedAt, {
+          item_count: state.cart.length,
+        })
       } catch (err) {
+        logClientTiming('kiosk.syncCartToServer.error', performance.now() - startedAt, {
+          item_count: state.cart.length,
+        })
         console.error('서버 장바구니 동기화 실패:', err)
       }
     }
@@ -186,13 +204,20 @@ export default function KioskPage() {
       targetLabel: menu.name,
       source: meta.fromRecommendation ? 'recommendation' : 'ui',
     })
+    const startedAt = performance.now()
     try {
       const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(menu.name)}`)
       setOptionMenu({
         ...detailRes.data,
         fromRecommendation: Boolean(meta.fromRecommendation),
       })
+      logClientTiming('kiosk.loadMenuDetail', performance.now() - startedAt, {
+        menu_name: menu.name,
+      })
     } catch (err) {
+      logClientTiming('kiosk.loadMenuDetail.error', performance.now() - startedAt, {
+        menu_name: menu.name,
+      })
       console.error('메뉴 상세 로드 실패:', err)
     }
   }, [logger])
@@ -257,7 +282,7 @@ export default function KioskPage() {
       targetLabel: 'payment',
       payload: { total_price: totalPrice, total_count: totalCount },
     })
-    navigate('/payment')
+    navigate('/cart-review')
   }, [logger, navigate, state.cart.length, state.sessionUuid, totalCount, totalPrice])
 
   const handleBack = useCallback(() => {
@@ -311,7 +336,7 @@ export default function KioskPage() {
           setCartOpen(true)
         } else if (action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
-          if (cartRef.current.length > 0) navigate('/payment')
+          if (cartRef.current.length > 0) navigate('/cart-review')
           else console.warn('[voice] cart empty, payment navigation skipped')
         }
         break
@@ -431,7 +456,7 @@ export default function KioskPage() {
       case 'place_order': {
         setOptionMenu(null)
         setOptionPreview([])
-        if (cartRef.current.length > 0) navigate('/payment')
+        if (cartRef.current.length > 0) navigate('/cart-review')
         break
       }
       case 'scroll': {
@@ -461,11 +486,14 @@ export default function KioskPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 헤더 */}
-      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <button onClick={handleBack} className="text-gray-500 hover:text-gray-700 p-2 -ml-2">
+      <header className="bg-gradient-to-r from-amber-950 to-amber-900 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-lg">
+        <button onClick={handleBack} className="text-amber-400 hover:text-amber-200 p-2 -ml-2 text-sm font-medium">
           ← 뒤로
         </button>
-        <h1 className="text-lg font-bold text-amber-900">메뉴 주문</h1>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">☕</span>
+          <h1 className="text-base font-black text-white tracking-widest">BREW AI</h1>
+        </div>
         <div className="w-10" />
       </header>
 
@@ -636,23 +664,36 @@ function MenuCard({ menu, cartCount, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden text-left active:scale-95 transition-transform w-full"
+      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden text-left active:scale-95 transition-all duration-150 w-full hover:shadow-md hover:border-amber-200"
     >
-      <div className="relative h-28 bg-amber-50 flex items-center justify-center text-5xl">
-        {menu.image_url
-          ? <img src={menu.image_url} alt={menu.name} className="h-full w-full object-cover" />
-          : (menu.icon_emoji || '🍽️')}
+      <div className="relative overflow-hidden" style={{ paddingBottom: '75%' }}>
+        <div className="absolute inset-0">
+          {menu.image_url
+            ? <img
+                src={menu.image_url}
+                alt={menu.name}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                  e.target.nextSibling.style.display = 'flex'
+                }}
+              />
+            : null}
+          <div
+            className="h-full w-full bg-amber-50 items-center justify-center text-5xl"
+            style={{ display: menu.image_url ? 'none' : 'flex' }}
+          >
+            {menu.icon_emoji || '🍽️'}
+          </div>
+        </div>
         {cartCount > 0 && (
-          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shadow">
+          <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center shadow-lg z-10">
             {cartCount}
           </span>
         )}
       </div>
       <div className="p-3">
-        <p className="font-semibold text-gray-800 text-sm leading-tight mb-1 line-clamp-1">{menu.name}</p>
-        {menu.description && (
-          <p className="text-xs text-gray-400 mb-1 line-clamp-1">{menu.description}</p>
-        )}
+        <p className="font-semibold text-gray-800 text-sm leading-tight mb-1 line-clamp-2">{menu.name}</p>
         <p className="text-amber-600 font-bold text-sm">{menu.price.toLocaleString()}원~</p>
       </div>
     </button>
