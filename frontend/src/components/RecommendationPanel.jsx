@@ -59,8 +59,6 @@ export default function RecommendationPanel({
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('CF')
 
-  // 미성년(20세 미만) 여부 — 백엔드 normalize_age_group 이 "10~19" / "어린이" 거부.
-  // 프론트에서 미리 차단해 호출 자체를 안 하고, 컴포넌트도 화면에서 숨긴다.
   const parsedAgeForGuard = Number(age)
   const isUnderage =
     (Number.isFinite(parsedAgeForGuard) && parsedAgeForGuard < 20) ||
@@ -131,30 +129,17 @@ export default function RecommendationPanel({
           }
         } else if (ageGroup) {
           const ageGroupMap = {
-            어린이: '10~19',
-            child: '10~19',
-            청년: '20~29',
-            young: '20~29',
-            중장년: '30~39',
-            adult: '30~39',
-            중년: '40~49',
-            middle: '40~49',
-            노년: '50+',
-            senior: '50+',
-            '10~19': '10~19',
-            '20~29': '20~29',
-            '30~39': '30~39',
-            '40~49': '40~49',
-            '50+': '50+',
+            어린이: '10~19', child: '10~19',
+            청년: '20~29',   young: '20~29',
+            중장년: '30~39', adult: '30~39',
+            중년: '40~49',   middle: '40~49',
+            노년: '50+',     senior: '50+',
+            '10~19': '10~19', '20~29': '20~29',
+            '30~39': '30~39', '40~49': '40~49', '50+': '50+',
           }
           const ageGroupCode = ageGroupMap[ageGroup] || '20~29'
-
           response = await api.get('/api/v1/recommendations/situation', {
-            params: {
-              gender: genderCode,
-              age_group: ageGroupCode,
-              top_n: 3,
-            },
+            params: { gender: genderCode, age_group: ageGroupCode, top_n: 3 },
           })
           recommendationMode = 'Mode A'
         } else {
@@ -167,8 +152,6 @@ export default function RecommendationPanel({
         setRecommendations(response.data.recommendations || [])
       } catch (err) {
         console.error('추천 로드 실패:', err)
-        console.error('에러 상세:', err.response?.data)
-
         let errorMsg = '추천을 불러올 수 없습니다'
         if (err.response?.status === 404) {
           errorMsg = `API 주소를 찾을 수 없습니다.\n상태: ${err.response.status}`
@@ -181,7 +164,6 @@ export default function RecommendationPanel({
         } else if (err.response?.data?.detail) {
           errorMsg = err.response.data.detail
         }
-
         setError(errorMsg)
       } finally {
         setLoading(false)
@@ -191,18 +173,12 @@ export default function RecommendationPanel({
     fetchRecommendations()
   }, [gender, age, ageGroup, menus, cartItems])
 
-  if (!gender || (!age && !ageGroup)) {
-    return null
-  }
-
-  // 미성년 — 추천 영역 자체를 화면에서 제거
-  if (isUnderage) {
-    return null
-  }
+  if (!gender || (!age && !ageGroup)) return null
+  if (isUnderage) return null
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border-2 border-amber-200">
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-4 sm:p-6 border-2 border-amber-200">
         <div className="text-center py-8">
           <div className="inline-block animate-spin">⏳</div>
           <p className="text-amber-700 mt-2 font-semibold">추천 음료 준비 중...</p>
@@ -213,7 +189,7 @@ export default function RecommendationPanel({
 
   if (error) {
     return (
-      <div className="bg-red-50 rounded-2xl p-6 border-2 border-red-200">
+      <div className="bg-red-50 rounded-2xl p-4 sm:p-6 border-2 border-red-200">
         <div className="text-center">
           <p className="text-red-700 font-bold mb-2">⚠️ 추천을 불러올 수 없습니다</p>
           <p className="text-red-600 text-sm whitespace-pre-wrap mb-3">{error}</p>
@@ -230,23 +206,31 @@ export default function RecommendationPanel({
 
   if (!recommendations || recommendations.length === 0) {
     return (
-      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border-2 border-amber-200">
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-4 sm:p-6 border-2 border-amber-200">
         <p className="text-amber-700 text-center font-semibold">제안할 추천이 없습니다</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border-2 border-amber-200 shadow-md">
+    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-4 sm:p-6 border-2 border-amber-200 shadow-md">
+      {/* 헤더 */}
       <div className="mb-4 flex items-center gap-2">
-        <span className="text-2xl">✨</span>
-        <h2 className="text-xl font-bold text-amber-900">AI 추천 음료</h2>
+        <span className="text-xl sm:text-2xl">✨</span>
+        <h2 className="text-base sm:text-xl font-bold text-amber-900">AI 추천 음료</h2>
         <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded font-semibold ml-auto">
           {mode}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      {/*
+        모바일: flex + overflow-x-auto + snap-x → 가로 스크롤, 카드 단위로 snap
+        sm 이상: grid grid-cols-3 → 기존 3열 레이아웃
+      */}
+      <div className="
+        flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory
+        sm:grid sm:grid-cols-3 sm:overflow-x-visible sm:pb-0
+      ">
         {recommendations.map((rec, idx) => {
           const menuId = rec.menu_id || rec.id
           const menuName = rec.menu_name || rec.name
@@ -260,66 +244,68 @@ export default function RecommendationPanel({
             <button
               key={menuId}
               onClick={() =>
-                onSelectMenu && onSelectMenu(menuName, {
-                  menuId,
-                  fromRecommendation: true,
-                })
+                onSelectMenu && onSelectMenu(menuName, { menuId, fromRecommendation: true })
               }
               className="
                 group relative
+                flex-shrink-0 w-[75vw] snap-start
+                sm:w-auto sm:flex-shrink
                 bg-white rounded-xl p-3
                 border-2 border-amber-200
                 hover:border-amber-500
                 active:scale-95
                 transition-all duration-200
-                cursor-pointer
-                text-left
+                cursor-pointer text-left
               "
             >
               <div className="absolute top-2 right-2 bg-amber-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">
                 {idx + 1}
               </div>
 
-              <h3 className="text-base font-bold text-amber-900 pr-8 line-clamp-2 mb-3">
+              <h3 className="text-sm sm:text-base font-bold text-amber-900 pr-8 line-clamp-2 mb-2 sm:mb-3">
                 {menuName}
               </h3>
 
-              <p className="text-sm font-medium leading-5 text-amber-800 min-h-[40px]">
+              <p className="text-xs sm:text-sm font-medium leading-5 text-amber-800 min-h-[32px] sm:min-h-[40px]">
                 {compactReason}
               </p>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-2 sm:mt-3 grid grid-cols-3 gap-1 sm:gap-2">
                 {scoreSummary.map((item) => (
                   <div
                     key={item.label}
-                    className="rounded-lg bg-amber-50 border border-amber-100 px-2 py-2 text-center"
+                    className="rounded-lg bg-amber-50 border border-amber-100 px-1 sm:px-2 py-1.5 sm:py-2 text-center"
                   >
-                    <div className="text-[11px] text-amber-700 font-medium">{item.label}</div>
-                    <div className="text-xs font-bold text-amber-900 mt-1">{item.value}</div>
+                    <div className="text-[10px] sm:text-[11px] text-amber-700 font-medium truncate">{item.label}</div>
+                    <div className="text-[10px] sm:text-xs font-bold text-amber-900 mt-0.5 sm:mt-1">{item.value}</div>
                   </div>
                 ))}
               </div>
 
               {mode === 'CF' && Number(breakdown.cart_support_count) > 0 && (
-                <p className="mt-2 text-[11px] text-amber-700">
+                <p className="mt-1.5 sm:mt-2 text-[10px] sm:text-[11px] text-amber-700">
                   장바구니 {breakdown.cart_support_count}개 메뉴 근거 반영
                 </p>
               )}
 
-              <div className="mt-3 flex items-center justify-between text-xs text-amber-700">
-                <span className="px-2 py-1 rounded-full bg-amber-100 font-semibold">
+              <div className="mt-2 sm:mt-3 flex items-center justify-between text-xs text-amber-700 flex-wrap gap-1">
+                <span className="px-2 py-0.5 sm:py-1 rounded-full bg-amber-100 font-semibold text-[10px] sm:text-xs">
                   {mode === 'CF' ? '장바구니 반영' : '상황 기반'}
                 </span>
                 {Number(trendWeight) > 1.0 && (
-                  <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold">
+                  <span className="px-2 py-0.5 sm:py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold text-[10px] sm:text-xs">
                     트렌드 {Number(trendWeight).toFixed(2)}x
                   </span>
                 )}
               </div>
 
-              <div className="mt-3 pt-2 border-t border-amber-100 flex items-center justify-between text-sm text-amber-700">
-                <span className="font-medium">{mode === 'CF' ? '종합 점수' : '추천 점수'}</span>
-                <span className="font-bold text-amber-600">{Number(finalScore).toFixed(3)}</span>
+              <div className="mt-2 sm:mt-3 pt-2 border-t border-amber-100 flex items-center justify-between text-xs text-amber-700">
+                <span className="font-medium text-[10px] sm:text-sm">
+                  {mode === 'CF' ? '종합 점수' : '추천 점수'}
+                </span>
+                <span className="font-bold text-amber-600 text-[10px] sm:text-sm">
+                  {Number(finalScore).toFixed(3)}
+                </span>
               </div>
 
               <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none" />
@@ -328,7 +314,17 @@ export default function RecommendationPanel({
         })}
       </div>
 
-      <p className="text-sm text-amber-700 mt-3 text-center font-medium">
+      {/* 모바일에서 스크롤 힌트 도트 */}
+      <div className="flex justify-center gap-1.5 mt-3 sm:hidden">
+        {recommendations.map((_, idx) => (
+          <div
+            key={idx}
+            className="w-1.5 h-1.5 rounded-full bg-amber-300"
+          />
+        ))}
+      </div>
+
+      <p className="text-xs sm:text-sm text-amber-700 mt-3 text-center font-medium">
         {mode === 'CF' ? '장바구니와 잘 어울리는 메뉴를 함께 추천합니다.' : '현재 조건에서 많이 고른 메뉴를 추천합니다.'}
       </p>
     </div>
