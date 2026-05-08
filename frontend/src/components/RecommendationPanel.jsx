@@ -59,7 +59,22 @@ export default function RecommendationPanel({
   const [error, setError] = useState(null)
   const [mode, setMode] = useState('CF')
 
+  // 미성년(20세 미만) 여부 — 백엔드 normalize_age_group 이 "10~19" / "어린이" 거부.
+  // 프론트에서 미리 차단해 호출 자체를 안 하고, 컴포넌트도 화면에서 숨긴다.
+  const parsedAgeForGuard = Number(age)
+  const isUnderage =
+    (Number.isFinite(parsedAgeForGuard) && parsedAgeForGuard < 20) ||
+    ageGroup === '어린이' ||
+    ageGroup === '10~19' ||
+    ageGroup === 'child'
+
   useEffect(() => {
+    if (isUnderage) {
+      setRecommendations([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     if (!gender || (!age && !ageGroup)) {
       setLoading(false)
       return
@@ -177,6 +192,11 @@ export default function RecommendationPanel({
   }, [gender, age, ageGroup, menus, cartItems])
 
   if (!gender || (!age && !ageGroup)) {
+    return null
+  }
+
+  // 미성년 — 추천 영역 자체를 화면에서 제거
+  if (isUnderage) {
     return null
   }
 
