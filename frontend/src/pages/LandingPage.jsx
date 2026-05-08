@@ -1,209 +1,176 @@
-// 랜딩 페이지 — 얼굴 인식(상단 메인 CTA) or 연령대 직접 선택(하단)
-
-import { useEffect, useRef, useState } from 'react'
+// 자동으로 화면 전환
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 
-const AGE_GROUPS = [
-  { label: '어린이', emoji: '🧒', range: '0 ~ 12세',  ageGroup: '어린이', ageEst: 6  },
-  { label: '청년',   emoji: '😊', range: '13 ~ 30세', ageGroup: '청년',   ageEst: 20 },
-  { label: '중년',   emoji: '🙂', range: '31 ~ 60세', ageGroup: '중년',   ageEst: 45 },
-  { label: '노년',   emoji: '👴', range: '61세 이후',  ageGroup: '노년',   ageEst: 65 },
-]
-
 export default function LandingPage() {
   const navigate = useNavigate()
   const { dispatch, ACTIONS } = useSession()
   const logger = useLogger()
-  const [loading, setLoading] = useState(false)
-  const [loadingGroup, setLoadingGroup] = useState(null)
-  const [error, setError] = useState(null)
+  const didRun = useRef(false)
 
   useEffect(() => {
+    // StrictMode 이중 실행 방지
+    if (didRun.current) return
+    didRun.current = true
+
     const enteredAt = Date.now()
     logger.logScreenEnter('landing')
-    return () => {
-      logger.logScreenExit('landing', Date.now() - enteredAt)
-    }
-  }, [logger])
 
-  const createSession = async () => {
-    const sessionRes = await api.post('/api/v1/sessions')
-    const { session_uuid } = sessionRes.data
-    dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
-    sessionStorage.setItem('session_uuid', session_uuid)
-    logger.log('session', 'landing', { actionName: 'session_start', source: 'system', payload: { session_uuid } })
-    logger.flush(session_uuid).catch(() => {})
-    return session_uuid
-  }
+    const start = async () => {
+      try {
+        logger.log('click', 'landing', {
+          actionName: 'auto_start',
+          targetType: 'system',
+          targetLabel: 'auto',
+        })
 
-  const handleAgeGroupSelect = async (group) => {
-    if (loading) return
-    setLoading(true)
-    setLoadingGroup(group.ageGroup)
-    setError(null)
-    try {
-      logger.log('click', 'landing', { actionName: 'age_group_select', targetType: 'button', targetLabel: group.ageGroup })
-      await createSession()
-      dispatch({
-        type: ACTIONS.SET_VISION,
-        payload: { ageGroup: group.ageGroup, gender: 'unknown', ageEst: group.ageEst, isSimpleMode: false },
-      })
-      navigate('/order-type')
-    } catch (err) {
-      const status = err?.response?.status
-      setError(status === 401 || status === 403
-        ? '키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.'
-        : '시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
-    } finally {
-      setLoading(false)
-      setLoadingGroup(null)
-    }
-  }
+        const sessionRes = await api.post('/api/v1/sessions')
+        const { session_uuid } = sessionRes.data
 
-  // ── 히든 어드민 진입 — 로고를 1.5초 안에 5번 연속 탭 ──
-  const adminTapCountRef = useRef(0)
-  const adminLastTapRef = useRef(0)
-  const handleLogoTap = () => {
-    const now = Date.now()
-    if (now - adminLastTapRef.current > 1500) {
-      adminTapCountRef.current = 1
-    } else {
-      adminTapCountRef.current += 1
-    }
-    adminLastTapRef.current = now
-    if (adminTapCountRef.current >= 5) {
-      adminTapCountRef.current = 0
-      navigate('/admin/login')
-    }
-  }
+        dispatch({
+          type: ACTIONS.SET_SESSION,
+          payload: { sessionUuid: session_uuid },
+        })
+        sessionStorage.setItem('session_uuid', session_uuid)
 
-  const handleFaceRecognition = async () => {
-    if (loading) return
-    setLoading(true)
-    setError(null)
-    try {
-      logger.log('click', 'landing', { actionName: 'face_recognition_click', targetType: 'button', targetLabel: 'camera' })
-      await createSession()
-      navigate('/camera')
-    } catch (err) {
-      const status = err?.response?.status
-      setError(status === 401 || status === 403
-        ? '키오스크 인증 정보가 올바르지 않습니다. 환경변수(VITE_KIOSK_API_KEY)를 확인해주세요.'
-        : '시작할 수 없습니다. 잠시 후 다시 시도해주세요.')
-    } finally {
-      setLoading(false)
+        logger.log('session', 'landing', {
+          actionName: 'session_start',
+          source: 'system',
+          payload: { session_uuid },
+        })
+        logger.flush(session_uuid).catch(() => {})
+
+        logger.logScreenExit('landing', Date.now() - enteredAt)
+        navigate('/camera')
+      } catch (err) {
+        // 세션 생성 실패 시 수동 선택 페이지로 fallback
+        logger.logScreenExit('landing', Date.now() - enteredAt)
+        navigate('/select-age', { state: { error: err } })
+      }
     }
-  }
+
+    start()
+  }, []) 
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: 'linear-gradient(160deg, #1a0a00 0%, #3b1a08 50%, #1a0a00 100%)' }}
+      className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(160deg, #1a0a00 0%, #3b1a08 50%, #1a0a00 100%)',
+      }}
     >
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
+      {/* 배경 글로우 */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          width: 400,
+          height: 400,
+          borderRadius: '50%',
+          background:
+            'radial-gradient(circle, rgba(245,158,11,0.10) 0%, transparent 70%)',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+        }}
+      />
 
-        {/* 로고 — 1.5초 안에 5번 연속 탭하면 관리자 로그인 진입 (손님에게는 보이지 않는 히든 동작) */}
-        <div className="text-center mb-8">
-          <div
-            onClick={handleLogoTap}
-            className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center shadow-2xl shadow-amber-900/50 mb-4 mx-auto select-none"
-          >
-            <span className="text-4xl">☕</span>
-          </div>
-          <h1 className="text-4xl font-black text-white tracking-widest">BREW AI</h1>
-          <p className="text-amber-400 text-sm font-medium tracking-widest mt-1">CAFÉ & ROASTERY</p>
-        </div>
+      {/* 로고 */}
+      <div
+        className="w-24 h-24 rounded-full flex items-center justify-center mb-5"
+        style={{
+          background: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+          boxShadow: '0 0 48px rgba(245,158,11,0.30)',
+          animation: 'fadeUp 0.5s ease both',
+        }}
+      >
+        <span className="text-5xl">☕</span>
+      </div>
 
-        {/* 에러 */}
-        {error && (
-          <div className="mb-4 px-4 py-3 bg-red-900/50 border border-red-700 text-red-300 rounded-xl text-sm text-center w-full max-w-sm">
-            {error}
-          </div>
-        )}
+      {/* 브랜드 */}
+      <div
+        className="text-center mb-14"
+        style={{ animation: 'fadeUp 0.5s 0.1s ease both', opacity: 0 }}
+      >
+        <h1
+          className="text-white font-black tracking-widest"
+          style={{ fontSize: 28, letterSpacing: '0.25em' }}
+        >
+          BREW AI
+        </h1>
+        <p
+          className="text-amber-400 font-medium mt-1"
+          style={{ fontSize: 11, letterSpacing: '0.3em' }}
+        >
+          CAFÉ &amp; ROASTERY
+        </p>
+      </div>
 
-        {/* ── 메인 CTA: 얼굴 인식 버튼 ── */}
-        <div className="w-full max-w-sm mb-8">
-          <button
-            onClick={handleFaceRecognition}
-            disabled={loading}
-            className="
-              relative w-full py-9 px-6
-              rounded-3xl overflow-hidden
-              disabled:opacity-60 disabled:cursor-not-allowed
-              active:scale-95 transition-transform duration-150
-              flex flex-col items-center gap-3
-            "
-            style={{
-              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 60%, #b45309 100%)',
-              boxShadow: '0 0 40px rgba(245,158,11,0.45), 0 8px 32px rgba(0,0,0,0.4)',
-            }}
-          >
-            {/* 배경 광택 효과 */}
+      {/* 로딩 인디케이터 */}
+      <div
+        className="flex flex-col items-center gap-4"
+        style={{ animation: 'fadeUp 0.5s 0.22s ease both', opacity: 0 }}
+      >
+        {/* 스피너 */}
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            border: '2px solid rgba(245,158,11,0.20)',
+            borderTopColor: '#f59e0b',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+
+        {/* 도트 */}
+        <div className="flex gap-1.5">
+          {[0, 0.2, 0.4].map((delay, i) => (
             <div
-              className="absolute inset-0 pointer-events-none"
-              style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.15) 0%, transparent 60%)' }}
+              key={i}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'rgba(245,158,11,0.50)',
+                animation: `pulse 1.2s ${delay}s ease-in-out infinite`,
+              }}
             />
-
-            <span className="text-6xl relative z-10 drop-shadow-md">📷</span>
-            <span className="text-white text-2xl font-black tracking-wide relative z-10">
-              {loading && !loadingGroup ? '시작 중...' : '얼굴 인식으로 시작'}
-            </span>
-            <span className="text-amber-100/75 text-sm relative z-10">
-              카메라로 연령대를 자동 분석합니다
-            </span>
-
-            {/* 하단 안내 배지 */}
-            <div className="relative z-10 mt-1 px-3 py-1 bg-black/20 rounded-full">
-              <span className="text-amber-200/80 text-xs">이미지는 즉시 삭제 · 개인정보 미저장</span>
-            </div>
-          </button>
+          ))}
         </div>
 
-        {/* 구분선 */}
-        <div className="flex items-center gap-3 mb-6 w-full max-w-sm">
-          <div className="flex-1 h-px bg-amber-800/40" />
-          <span className="text-amber-600/70 text-xs tracking-widest">또는 직접 선택</span>
-          <div className="flex-1 h-px bg-amber-800/40" />
-        </div>
-
-        {/* ── 연령대 직접 선택 ── */}
-        <div className="w-full max-w-sm">
-          <p className="text-amber-500/60 text-xs font-medium text-center tracking-widest mb-4 uppercase">
-            연령대를 선택해주세요
-          </p>
-          <div className="grid grid-cols-4 gap-2">
-            {AGE_GROUPS.map((group) => (
-              <button
-                key={group.ageGroup}
-                onClick={() => handleAgeGroupSelect(group)}
-                disabled={loading}
-                className={`
-                  flex flex-col items-center justify-center
-                  py-4 px-1
-                  rounded-2xl border transition-all duration-200
-                  ${loadingGroup === group.ageGroup
-                    ? 'border-amber-400 bg-amber-500/20 scale-95'
-                    : 'border-amber-800/50 bg-white/5 hover:bg-white/10 hover:border-amber-600/60 active:scale-95'}
-                  disabled:opacity-60 disabled:cursor-not-allowed
-                `}
-              >
-                <span className="text-2xl mb-1">{group.emoji}</span>
-                <span className="text-sm font-bold text-white">{group.label}</span>
-                <span className="text-xs text-amber-500/60 mt-0.5 text-center leading-tight">{group.range}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
+        <p
+          className="text-amber-600"
+          style={{ fontSize: 13, letterSpacing: '0.05em' }}
+        >
+          잠시만 기다려 주세요...
+        </p>
       </div>
 
-      {/* 하단 */}
-      <div className="px-6 pb-6 text-center">
-        <p className="text-xs text-amber-900/50">© BREW AI CAFÉ · 개인정보를 저장하지 않습니다</p>
-      </div>
+      {/* 하단 개인정보 */}
+      <p
+        className="absolute bottom-5 text-center"
+        style={{ fontSize: 11, color: 'rgba(120,60,20,0.55)', letterSpacing: '0.03em' }}
+      >
+        이미지는 즉시 삭제 · 개인정보 미저장
+      </p>
+
+      {/* 키프레임 */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.3; }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   )
 }
