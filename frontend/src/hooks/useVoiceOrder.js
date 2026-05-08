@@ -9,6 +9,36 @@ import api from '../utils/api'
 import { useSTT } from './useSTT'
 import { useTTS } from './useTTS'
 
+// 음성 주문 시작/종료 알림음 — Web Audio API 로 짧은 두 음 연속 재생 (외부 파일 불필요).
+// 시작: 660Hz → 880Hz (상승, "딩-딩"), 종료: 880Hz → 660Hz (하강, "딩-딩")
+function playCueTone(direction = 'up') {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const tones = direction === 'up' ? [660, 880] : [880, 660]
+    const now = ctx.currentTime
+    tones.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const start = now + i * 0.13
+      const stop = start + 0.12
+      // 부드러운 envelope: 0 → 0.18 → 0
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, stop)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(start)
+      osc.stop(stop + 0.02)
+    })
+    setTimeout(() => { try { ctx.close() } catch {} }, 400)
+  } catch (e) {
+    // 자동 재생 정책 등으로 실패해도 음성 주문 자체에 영향 없게 무시
+  }
+}
+
 export function useVoiceOrder({
   sessionUuid,
   selectedCategory,
@@ -48,8 +78,26 @@ export function useVoiceOrder({
 
   // sendMessage는 useSTT에 onFinal로 들어가야 해서 stt보다 먼저 정의되어야 한다.
   // handleAIResponse는 stt.start()를 써야 하므로, 순환을 끊기 위해 ref로 우회.
+  //
+  // 중복 호출 가드:
+  //  - inFlightRef: 동일한 sendMessage 가 끝나기 전에 또 호출되는 것을 차단
+  //  - lastSentRef: STT 가 같은 final 결과를 짧은 간격으로 두 번 emit 하는 케이스 차단
+  const inFlightRef = useRef(false)
+  const lastSentRef = useRef({ text: '', at: 0 })
   const sendMessage = useCallback(async (text) => {
     if (!sessionUuid || !text) return
+    if (inFlightRef.current) {
+      console.warn('[voice] sendMessage skipped — previous call in flight:', text)
+      return
+    }
+    const now = Date.now()
+    if (text === lastSentRef.current.text && now - lastSentRef.current.at < 1500) {
+      console.warn('[voice] sendMessage skipped — duplicate STT final within 1.5s:', text)
+      return
+    }
+    lastSentRef.current = { text, at: now }
+    inFlightRef.current = true
+
     setLastUserText(text)
     try { onVoiceEventRef.current?.('transcript_submitted', { content: text }) } catch {}
     setStatus('thinking')
@@ -74,6 +122,8 @@ export function useVoiceOrder({
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
       setStatus('error')
+    } finally {
+      inFlightRef.current = false
     }
   }, [sessionUuid])
 
@@ -121,6 +171,8 @@ export function useVoiceOrder({
     startedRef.current = true
     setStatus('starting')
     setError(null)
+    // 음성 주문 시작 알림음 (상승 톤)
+    playCueTone('up')
     try {
       const { data } = await api.post('/api/v1/voice/start', { session_uuid: sessionUuid })
       setPersona(data.persona)
@@ -142,6 +194,8 @@ export function useVoiceOrder({
   const stop = useCallback(async () => {
     stt.stop()
     tts.cancel()
+    // 음성 주문 종료 알림음 (하강 톤)
+    playCueTone('down')
     if (sessionUuid && startedRef.current) {
       try { await api.post('/api/v1/voice/end', { session_uuid: sessionUuid }) } catch {}
     }

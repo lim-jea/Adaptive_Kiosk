@@ -126,24 +126,41 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
     })
   }, [supported, lang, rate, pitch, browserVoice])
 
+  // 동시 재생 방지용 토큰 — speak() 호출마다 +1, 비동기 도중 새 호출이 들어오면 이전 결과 무시
+  const speakTokenRef = useRef(0)
+
   /**
    * @param {string} text - TTS 텍스트
    * @param {string=} audioB64 - 서버가 인라인으로 보낸 base64 (있으면 즉시 재생)
    *
    * 우선순위: ① audioB64(인자) → ② 백엔드 /voice/tts(Edge-TTS) → ③ 브라우저 speechSynthesis
+   * 호출 시 이전 재생을 즉시 강제 종료해 동시 재생을 방지한다.
    */
   const speak = useCallback(async (text, audioB64) => {
     if (!text && !audioB64) return
+    // 이전 재생 즉시 중단 (audio + speechSynthesis 모두) — race 방지를 위해 동기적으로 처리
+    const myToken = ++speakTokenRef.current
+    if (audioRef.current) {
+      try { audioRef.current.onended = null; audioRef.current.onerror = null } catch {}
+      try { audioRef.current.pause() } catch {}
+      try { audioRef.current.src = '' } catch {}
+      audioRef.current = null
+    }
+    if (supported) window.speechSynthesis.cancel()
+
     if (audioB64) {
       const ok = await playBase64(audioB64)
+      if (myToken !== speakTokenRef.current) return  // 재생 중 새 호출이 들어왔으면 폴백 안 탐
       if (ok) return
     }
     if (text) {
       const ok = await synthesizeViaBackend(text)
+      if (myToken !== speakTokenRef.current) return
       if (ok) return
     }
+    if (myToken !== speakTokenRef.current) return
     await speakBrowser(text)
-  }, [playBase64, synthesizeViaBackend, speakBrowser])
+  }, [playBase64, synthesizeViaBackend, speakBrowser, supported])
 
   const cancel = useCallback(() => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
