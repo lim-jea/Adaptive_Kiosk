@@ -47,6 +47,7 @@ export default function PaymentPage() {
   // 'idle' | 'processing' | 'calling_staff' | 'done'
   const [status, setStatus] = useState('idle')
   const [selectedMethod, setSelectedMethod] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
@@ -75,6 +76,7 @@ export default function PaymentPage() {
     })
     setSelectedMethod(method)
     setStatus('processing')
+    setErrorMessage('')
 
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
@@ -103,6 +105,10 @@ export default function PaymentPage() {
         payload: { message: err?.message || 'order_submit_failed' },
         source: 'system',
       })
+
+      setStatus('idle')
+      setErrorMessage('주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.')
+      return
     }
 
     setStatus('done')
@@ -197,6 +203,12 @@ export default function PaymentPage() {
             <span className="text-2xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
           </div>
         </div>
+
+        {errorMessage && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-2x1 px-5 py-4 font-bold text-sm">
+            {errorMessage}
+          </div>
+        )}
 
         {/* 주문 내역 (접이식) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
