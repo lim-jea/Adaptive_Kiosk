@@ -107,6 +107,7 @@ export default function MiddlePaymentPage() {
 
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [status, setStatus] = useState('idle') // idle | processing | done
+  const [errorMessage, setErrorMessage] = useState('')
 
   // 통신사 할인 팝업 상태
   const [showTelecomPopup, setShowTelecomPopup] = useState(false)
@@ -139,6 +140,7 @@ export default function MiddlePaymentPage() {
     })
     setSelectedMethod(method.id)
     setStatus('processing')
+    setErrorMessage('')
 
     const discount = discountRate || method.discount
     const discountedPrice = discount ? Math.floor(totalPrice * (1 - discount)) : totalPrice
@@ -156,6 +158,10 @@ export default function MiddlePaymentPage() {
         session_uuid: state.sessionUuid,
       })
       console.error('주문 저장 실패:', err)
+
+      setStatus('idle')
+      setErrorMessage('주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.')
+      return
     }
 
     setStatus('done')
@@ -276,6 +282,13 @@ export default function MiddlePaymentPage() {
             <span className="text-xl font-black" style={{ color: '#f4a261' }}>{totalPrice.toLocaleString()}원</span>
           </div>
         </div>
+
+        {errorMessage && (
+          <div className="rounded-2x1 px-4 py-3 font-bold text-sm"
+            style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' }}>
+            {errorMessage}
+          </div>
+        )}
 
         {/* 통신사 할인 안내 */}
         <div className="rounded-2xl px-4 py-3 flex items-center gap-3"
