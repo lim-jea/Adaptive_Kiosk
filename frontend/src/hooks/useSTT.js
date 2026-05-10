@@ -32,6 +32,9 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   // 첫 final 이후 추가 final 을 합쳐 한 번에 emit 하기 위한 버퍼
   const accumulatedFinal = useRef('')
   const finalTailTimer = useRef(null)
+  // 의도적 stop 여부 플래그 — onend 안전망이 중복 emit 하는 것을 방지
+  // flushAccumulatedFinal/commitInterim/stop() 이 rec.stop() 을 호출하기 직전에 true 로 설정
+  const stoppedIntentionallyRef = useRef(false)
 
   useEffect(() => { onFinalRef.current = onFinal }, [onFinal])
 
@@ -56,6 +59,8 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
     setInterim('')
     latestInterim.current = ''
     if (merged) onFinalRef.current?.(merged)
+    // stop() 전에 플래그 설정 — Chrome 이 onend 직전에 onresult 를 재방출해도 중복 emit 방지
+    stoppedIntentionallyRef.current = true
     try { recognitionRef.current?.stop() } catch {}
   }, [])
 
@@ -66,6 +71,7 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
     setInterim('')
     latestInterim.current = ''
     if (text) onFinalRef.current?.(text)
+    stoppedIntentionallyRef.current = true
     try { recognitionRef.current?.stop() } catch {}
   }, [])
 
@@ -137,8 +143,12 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
 
     rec.onend = () => {
       clearSilenceTimer()
-      // onend 직전에 누적된 final 이 남아 있으면 마저 emit (안전망)
-      if (accumulatedFinal.current.trim()) {
+      const wasIntentional = stoppedIntentionallyRef.current
+      stoppedIntentionallyRef.current = false
+      // 의도적 stop(flush/commit/external stop) 이 아닌 경우에만 안전망 emit.
+      // 의도적 stop 후 Chrome 이 onresult 를 늦게 재방출해 accumulatedFinal 이 채워져도
+      // wasIntentional 플래그로 중복 emit 을 차단한다.
+      if (!wasIntentional && accumulatedFinal.current.trim()) {
         const merged = accumulatedFinal.current.trim()
         accumulatedFinal.current = ''
         onFinalRef.current?.(merged)
@@ -152,6 +162,7 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
 
     recognitionRef.current = rec
     return () => {
+      stoppedIntentionallyRef.current = true
       clearSilenceTimer()
       clearFinalTailTimer()
       accumulatedFinal.current = ''
@@ -162,6 +173,7 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
 
   const start = useCallback(() => {
     if (!recognitionRef.current || listeningRef.current) return
+    stoppedIntentionallyRef.current = false
     setError(null)
     setInterim('')
     latestInterim.current = ''
@@ -188,6 +200,7 @@ export function useSTT({ lang = 'ko-KR', onFinal } = {}) {
   }, [clearFinalTailTimer])
 
   const stop = useCallback(() => {
+    stoppedIntentionallyRef.current = true
     clearSilenceTimer()
     clearFinalTailTimer()
     accumulatedFinal.current = ''

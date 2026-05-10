@@ -252,7 +252,6 @@ export default function KioskPage() {
       },
     })
     setOptionMenu(null)
-    setCartOpen(true)
   }, [optionMenu, logger, dispatch, ACTIONS])
 
   const handleQtyChange = useCallback((cartItemId, delta) => {
@@ -393,7 +392,6 @@ export default function KioskPage() {
           })
           setOptionMenu(null)   // 음성으로 옵션 확정 시 모달 닫기
           setOptionPreview([])
-          setCartOpen(true)
         } catch (e) { console.error(e) }
         break
       }
@@ -483,6 +481,16 @@ export default function KioskPage() {
     ttsRate: state.isSimpleMode ? 0.65 : 0.85,
   })
 
+  const isChild = state.ageGroup === '어린이'
+  const hasUserProfile = state.gender && (state.ageGroup || state.ageEst)
+  const showSidebar = !isChild && hasUserProfile
+
+  const handleRecommendSelect = (menuName, meta = {}) => {
+    if (activeCategory !== 'all') setActiveCategory('all')
+    const menu = menus.find((m) => m.name === menuName)
+    if (menu) handleMenuClick(menu, { fromRecommendation: true, ...meta })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 헤더 */}
@@ -516,61 +524,71 @@ export default function KioskPage() {
         ))}
       </div>
 
-      {/* 메뉴 그리드 */}
-      <div className="flex-1 p-4 pb-40">
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <>
-            {/* 추천 음료 패널 — 항상 표시 */}
-            {state.gender && (state.ageGroup || state.ageEst) && (
-              <div className="mb-6">
+      {/* 메뉴 그리드 + 추천 패널 */}
+      <div className={`flex-1 flex ${showSidebar ? 'flex-row' : 'flex-col'}`}>
+        {/* 왼쪽 — 메뉴 영역 */}
+        <div className="flex-1 p-4 pb-40">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* 메뉴 목록 */}
+              {filteredMenus.length === 0 ? (
+                <p className="text-center text-gray-400 mt-12">해당 카테고리 메뉴가 없습니다</p>
+              ) : (
+                <div className={`grid ${showSidebar ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'} gap-3`}>
+                  {filteredMenus.map((menu) => (
+                    <MenuCard
+                      key={menu.id}
+                      menu={menu}
+                      cartCount={state.cart
+                        .filter((i) => i.menuName === menu.name)
+                        .reduce((s, i) => s + i.quantity, 0)}
+                      onClick={() => handleMenuClick(menu)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* 청년: 우측 세로 추천 패널 */}
+        {showSidebar && (
+          <div className="w-72 flex-shrink-0 border-l border-amber-100 bg-amber-50/30">
+            <div className="sticky top-[104px] p-3 max-h-[calc(100vh-104px-80px)] overflow-y-auto">
+              {!loading && (
                 <RecommendationPanel
                   gender={state.gender}
                   age={state.ageEst}
                   ageGroup={state.ageGroup}
                   menus={menus}
                   cartItems={state.cart}
-                  onSelectMenu={(menuName, meta = {}) => {
-                    // 추천 메뉴 클릭 시 카테고리를 전체로 변경하고 메뉴 선택
-                    if (activeCategory !== 'all') {
-                      setActiveCategory('all')
-                    }
-                    // 메뉴 찾아서 선택
-                    const menu = menus.find((m) => m.name === menuName)
-                    if (menu) {
-                      handleMenuClick(menu, { fromRecommendation: true, ...meta })
-                    }
-                  }}
+                  onSelectMenu={handleRecommendSelect}
+                  vertical={true}
                 />
-              </div>
-            )}
-
-            {/* 메뉴 목록 */}
-            {filteredMenus.length === 0 ? (
-              <p className="text-center text-gray-400 mt-12">해당 카테고리 메뉴가 없습니다</p>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {filteredMenus.map((menu) => (
-                  <MenuCard
-                    key={menu.id}
-                    menu={menu}
-                    cartCount={state.cart
-                      .filter((i) => i.menuName === menu.name)
-                      .reduce((s, i) => s + i.quantity, 0)}
-                    onClick={() => handleMenuClick(menu)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
       {/* 하단 장바구니 바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-20">
+        {/* 어린이 — 음성 활성 시 상태 배너 */}
+        {isChild && voice.status !== 'idle' && voice.status !== 'ended' && (
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <span className="text-base">
+              {voice.status === 'listening' ? '🎤' : voice.status === 'speaking' ? '🔊' : '⏳'}
+            </span>
+            <p className="text-sm text-amber-700 font-medium flex-1 truncate">
+              {voice.interim || voice.lastUserText || voice.lastResponseText || '듣는 중...'}
+            </p>
+          </div>
+        )}
+
         {cartOpen && state.cart.length > 0 && (
           <div className="max-h-56 overflow-y-auto border-b divide-y bg-gray-50">
             {state.cart.map((item) => (
@@ -588,6 +606,29 @@ export default function KioskPage() {
         )}
 
         <div className="px-4 py-3 flex items-center gap-3">
+          {/* 어린이 — 하단 마이크 버튼 */}
+          {isChild && (
+            <button
+              onClick={() => {
+                const isActive = voice.status !== 'idle' && voice.status !== 'ended'
+                if (isActive) voice.stop()
+                else voice.start()
+              }}
+              disabled={!voice.sttSupported}
+              className={`relative w-12 h-12 rounded-2xl flex items-center justify-center text-xl flex-shrink-0 transition-colors
+                ${voice.status === 'listening'
+                  ? 'bg-green-500 animate-pulse text-white'
+                  : voice.status !== 'idle' && voice.status !== 'ended'
+                    ? 'bg-amber-400 text-white'
+                    : voice.sttSupported
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                      : 'bg-gray-200 text-gray-400'}`}
+              title={voice.sttSupported ? '음성 주문' : '음성 인식 미지원'}
+            >
+              {voice.status !== 'idle' && voice.status !== 'ended' ? '⏹' : '🎤'}
+            </button>
+          )}
+
           <button
             onClick={() => setCartOpen((v) => !v)}
             disabled={state.cart.length === 0}
@@ -619,8 +660,8 @@ export default function KioskPage() {
         </div>
       </div>
 
-      {/* 음성 주문 오버레이 */}
-      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />
+      {/* 음성 주문 오버레이 — 어린이는 하단 바에 마이크 통합되므로 제외 */}
+      {!isChild && <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />}
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (

@@ -108,7 +108,9 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
 
   // 백엔드 /voice/tts 호출 — Edge-TTS 합성 결과(mp3)를 받아 재생.
   // 404(Edge 비활성) 또는 네트워크 오류 시 false 반환 → 호출처가 브라우저 TTS 로 폴백.
-  const synthesizeViaBackend = useCallback(async (text) => {
+  // callerToken: speak() 호출 시점의 토큰. HTTP 응답 수신 후 재생 전에 재확인해
+  // 동시 요청이 완료됐을 때 이전(구) 응답의 오디오가 재생되는 것을 방지한다.
+  const synthesizeViaBackend = useCallback(async (text, callerToken) => {
     if (!text) return false
     try {
       const res = await api.post(
@@ -116,6 +118,8 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
         { text },
         { responseType: 'arraybuffer' }
       )
+      // HTTP 응답을 기다리는 동안 새 speak() 호출이 왔으면 재생 건너뜀
+      if (callerToken !== undefined && callerToken !== speakTokenRef.current) return false
       if (res.status === 200 && res.data) {
         const bytes = new Uint8Array(res.data)
         return await playBytes(bytes)
@@ -175,7 +179,7 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
       if (ok) return
     }
     if (text) {
-      const ok = await synthesizeViaBackend(text)
+      const ok = await synthesizeViaBackend(text, myToken)
       if (myToken !== speakTokenRef.current) return
       if (ok) return
     }
