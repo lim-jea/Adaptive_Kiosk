@@ -14,6 +14,7 @@ const DISCOUNT_OPTIONS = [
     desc: '임직원 사원증 바코드 인식',
     color: 'bg-blue-50 border-blue-200 hover:border-blue-400',
     badgeColor: 'bg-blue-100 text-blue-600',
+    discountRate: 0.2,
   },
   {
     id: 'skt',
@@ -22,6 +23,7 @@ const DISCOUNT_OPTIONS = [
     desc: 'T멤버십 바코드 인식',
     color: 'bg-red-50 border-red-200 hover:border-red-400',
     badgeColor: 'bg-red-100 text-red-600',
+    discountRate: 0.2,
   },
   {
     id: 'lg',
@@ -30,6 +32,7 @@ const DISCOUNT_OPTIONS = [
     desc: 'LG U+ 멤버십 바코드 인식',
     color: 'bg-pink-50 border-pink-200 hover:border-pink-400',
     badgeColor: 'bg-pink-100 text-pink-600',
+    discountRate: 0.2,
   },
   {
     id: 'gifticon',
@@ -38,6 +41,7 @@ const DISCOUNT_OPTIONS = [
     desc: '기프티콘 바코드 인식',
     color: 'bg-amber-50 border-amber-200 hover:border-amber-400',
     badgeColor: 'bg-amber-100 text-amber-600',
+    discountRate: 0,
   },
 ]
 
@@ -74,7 +78,13 @@ export default function DiscountPage() {
     setScanStatus('scanning')
 
     setTimeout(() => {
-      navigate('/payment', { state: { discountType: discount.id, discountLabel: discount.label } })
+      navigate('/payment', {
+        state: {
+          discountType: discount.id,
+          discountLabel: discount.label,
+          discountRate: discount.discountRate ?? 0,
+        },
+      })
     }, 2000)
   }
 
@@ -112,6 +122,36 @@ export default function DiscountPage() {
     )
   }
 
+  const isChild = state.ageGroup === '어린이'
+
+  const discountOptionGrid = (compact = false) => (
+    <div className={`grid grid-cols-2 gap-3`}>
+      {DISCOUNT_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          onClick={() => handleDiscountSelect(option)}
+          className={`
+            relative flex flex-col items-center justify-center
+            ${compact ? 'min-h-[110px] py-4 px-2' : 'min-h-[140px] py-6 px-3'}
+            rounded-2xl border-2
+            ${option.color}
+            active:scale-95 transition-all duration-150
+            bg-white
+          `}
+        >
+          {option.discountRate > 0 && (
+            <span className="absolute top-2 right-2 bg-green-500 text-white text-[11px] font-black px-2 py-0.5 rounded-full leading-tight">
+              {Math.round(option.discountRate * 100)}% 할인
+            </span>
+          )}
+          <span className={`${compact ? 'text-3xl mb-2' : 'text-4xl mb-3'}`}>{option.emoji}</span>
+          <span className={`font-bold text-gray-800 ${compact ? 'text-sm' : 'text-base'}`}>{option.label}</span>
+          <span className="text-xs text-gray-400 mt-1 text-center leading-relaxed">{option.desc}</span>
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f9f5f0' }}>
 
@@ -129,42 +169,36 @@ export default function DiscountPage() {
         </div>
       </header>
 
-      <div className="flex-1 px-4 py-5 pb-36">
-        {/* 결제 금액 요약 */}
-        <div className="bg-white rounded-2xl px-5 py-4 mb-6 shadow-sm border border-gray-100 flex justify-between items-center">
-          <span className="text-gray-500 text-sm font-medium">현재 결제 금액</span>
-          <span className="text-xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+      {isChild ? (
+        /* 어린이: 콘텐츠를 하단으로 밀어내기 */
+        <div className="flex-1 flex flex-col justify-end px-4 pb-[320px]">
+          <div className="bg-white rounded-2xl px-5 py-3 mb-4 shadow-sm border border-gray-100 flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-medium">결제 금액</span>
+            <span className="text-xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+          </div>
         </div>
-
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-4">
-          할인 수단
-        </p>
-
-        {/* 할인 옵션 2×2 그리드 */}
-        <div className="grid grid-cols-2 gap-3">
-          {DISCOUNT_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              onClick={() => handleDiscountSelect(option)}
-              className={`
-                flex flex-col items-center justify-center
-                min-h-[140px] py-6 px-3
-                rounded-2xl border-2
-                ${option.color}
-                active:scale-95 transition-all duration-150
-                bg-white
-              `}
-            >
-              <span className="text-4xl mb-3">{option.emoji}</span>
-              <span className="font-bold text-gray-800 text-base">{option.label}</span>
-              <span className="text-xs text-gray-400 mt-1 text-center leading-relaxed">{option.desc}</span>
-            </button>
-          ))}
+      ) : (
+        <div className="flex-1 px-4 py-5 pb-36">
+          <div className="bg-white rounded-2xl px-5 py-4 mb-6 shadow-sm border border-gray-100 flex justify-between items-center">
+            <span className="text-gray-500 text-sm font-medium">현재 결제 금액</span>
+            <span className="text-xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+          </div>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-4">
+            할인 수단
+          </p>
+          {discountOptionGrid(false)}
         </div>
-      </div>
+      )}
 
-      {/* 하단 — 할인 없이 결제 */}
+      {/* 하단 고정 영역 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-xl px-4 pt-4 pb-6">
+        {/* 어린이: 할인 옵션을 하단 패널 안에 표시 */}
+        {isChild && (
+          <div className="mb-3">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">할인 수단</p>
+            {discountOptionGrid(true)}
+          </div>
+        )}
         <button
           onClick={handleSkip}
           className="

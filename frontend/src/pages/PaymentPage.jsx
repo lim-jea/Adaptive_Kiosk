@@ -42,7 +42,7 @@ export default function PaymentPage() {
   const { state, dispatch, ACTIONS } = useSession()
   const logger = useLogger(state.sessionUuid)
 
-  const { discountType = null, discountLabel = null } = location.state || {}
+  const { discountType = null, discountLabel = null, discountRate = 0 } = location.state || {}
 
   // 'idle' | 'processing' | 'calling_staff' | 'done'
   const [status, setStatus] = useState('idle')
@@ -51,6 +51,8 @@ export default function PaymentPage() {
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
+  const discountAmount = Math.floor(totalPrice * discountRate)
+  const finalPrice = totalPrice - discountAmount
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -121,11 +123,13 @@ export default function PaymentPage() {
       replace: true,
       state: {
         paymentMethod: method.label,
-        totalPrice,
-        totalCount,
-        discountType,
+        totalPrice: finalPrice,
+        discountAmount,
         discountLabel,
+        discountType,
+        totalCount,
         orderUuid,
+        isMembership: ['employee', 'skt', 'lg'].includes(discountType),
       },
     })
   }, [logger, navigate, state, totalCount, totalPrice, discountType, discountLabel])
@@ -148,7 +152,7 @@ export default function PaymentPage() {
         <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-6" />
         <h2 className="text-2xl font-bold text-gray-800 mb-2">결제 중...</h2>
         <p className="text-gray-400">{selectedMethod?.label}으로 처리하고 있어요</p>
-        <p className="text-amber-600 font-bold mt-4 text-xl">{totalPrice.toLocaleString()}원</p>
+        <p className="text-amber-600 font-bold mt-4 text-xl">{finalPrice.toLocaleString()}원</p>
       </div>
     )
   }
@@ -173,6 +177,8 @@ export default function PaymentPage() {
     )
   }
 
+  const isChild = state.ageGroup === '어린이'
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f9f5f0' }}>
 
@@ -190,27 +196,38 @@ export default function PaymentPage() {
         </div>
       </header>
 
-      <div className="flex-1 px-4 py-5 pb-6 space-y-5">
+      <div className={`flex-1 px-4 py-5 space-y-5 ${isChild ? 'pb-[380px]' : 'pb-6'}`}>
         {/* 금액 요약 */}
-        <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm text-gray-400">총 결제 금액 ({totalCount}개)</p>
-              {discountLabel && (
-                <p className="text-xs text-green-600 font-semibold mt-0.5">✓ {discountLabel} 적용</p>
-              )}
+        <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100 space-y-2">
+          <div className="flex justify-between items-center text-sm text-gray-400">
+            <span>상품 금액 ({totalCount}개)</span>
+            <span className={discountAmount > 0 ? 'line-through' : ''}>
+              {totalPrice.toLocaleString()}원
+            </span>
+          </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-green-600 font-semibold">
+                {discountLabel} ({Math.round(discountRate * 100)}% 할인)
+              </span>
+              <span className="text-green-600 font-semibold">
+                -&nbsp;{discountAmount.toLocaleString()}원
+              </span>
             </div>
-            <span className="text-2xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+          )}
+          <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+            <span className="text-base font-bold text-gray-800">최종 결제 금액</span>
+            <span className="text-2xl font-black text-amber-600">{finalPrice.toLocaleString()}원</span>
           </div>
         </div>
 
         {errorMessage && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-2x1 px-5 py-4 font-bold text-sm">
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4 font-bold text-sm">
             {errorMessage}
           </div>
         )}
 
-        {/* 주문 내역 (접이식) */}
+        {/* 주문 내역 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">주문 내역</p>
@@ -238,56 +255,96 @@ export default function PaymentPage() {
           </div>
         </div>
 
-        {/* 결제 수단 */}
-        <div>
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-3">
-            결제 수단
-          </p>
-          <div className="space-y-2">
+        {/* 결제 수단 — 일반(비어린이)만 스크롤 영역에 표시 */}
+        {!isChild && (
+          <>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-3">
+                결제 수단
+              </p>
+              <div className="space-y-2">
+                {PAYMENT_METHODS.map((method) => (
+                  <button
+                    key={method.id}
+                    onClick={() => handlePay(method)}
+                    className={`
+                      w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2
+                      ${method.style}
+                      active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md
+                    `}
+                  >
+                    <span className="text-3xl flex-shrink-0">{method.icon}</span>
+                    <div className="text-left flex-1">
+                      <p className="font-bold text-base">{method.label}</p>
+                      <p className={`text-xs mt-0.5 ${method.id === 'card' ? 'text-gray-400' : 'opacity-70'}`}>
+                        {method.desc}
+                      </p>
+                    </div>
+                    <span className={`text-xl flex-shrink-0 ${method.id === 'card' ? 'text-gray-400' : 'opacity-50'}`}>
+                      ›
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={handleCallStaff}
+              className="
+                w-full min-h-[52px] rounded-2xl border-2 border-amber-300
+                bg-amber-50 hover:bg-amber-100 active:bg-amber-200
+                text-amber-700 font-bold text-base
+                flex items-center justify-center gap-2
+                active:scale-[0.98] transition-all duration-150
+              "
+            >
+              <span className="text-xl">🔔</span>
+              직원 호출
+            </button>
+            <p className="text-center text-xs text-gray-400 pb-4">
+              결제 수단을 탭하면 바로 결제가 시작됩니다
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* 어린이 — 하단 고정 결제 수단 패널 */}
+      {isChild && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-2xl px-4 pt-4 pb-6">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">결제 수단 선택</p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
             {PAYMENT_METHODS.map((method) => (
               <button
                 key={method.id}
                 onClick={() => handlePay(method)}
                 className={`
-                  w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2
+                  flex items-center gap-2 px-3 py-3 rounded-xl border-2
                   ${method.style}
-                  active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md
+                  active:scale-95 transition-all duration-150
                 `}
               >
-                <span className="text-3xl flex-shrink-0">{method.icon}</span>
-                <div className="text-left flex-1">
-                  <p className="font-bold text-base">{method.label}</p>
-                  <p className={`text-xs mt-0.5 ${method.id === 'card' ? 'text-gray-400' : 'opacity-70'}`}>
-                    {method.desc}
-                  </p>
+                <span className="text-2xl flex-shrink-0">{method.icon}</span>
+                <div className="text-left">
+                  <p className="font-bold text-sm">{method.label}</p>
                 </div>
-                <span className={`text-xl flex-shrink-0 ${method.id === 'card' ? 'text-gray-400' : 'opacity-50'}`}>
-                  ›
-                </span>
               </button>
             ))}
           </div>
+          <button
+            onClick={handleCallStaff}
+            className="
+              w-full min-h-[44px] rounded-xl border-2 border-amber-300
+              bg-amber-50 hover:bg-amber-100 active:bg-amber-200
+              text-amber-700 font-bold text-sm
+              flex items-center justify-center gap-2
+              active:scale-[0.98] transition-all duration-150
+            "
+          >
+            <span>🔔</span>
+            직원 호출
+          </button>
+          <p className="text-center text-xs text-gray-400 mt-2">결제 수단을 탭하면 바로 결제가 시작됩니다</p>
         </div>
-
-        {/* 직원 호출 */}
-        <button
-          onClick={handleCallStaff}
-          className="
-            w-full min-h-[52px] rounded-2xl border-2 border-amber-300
-            bg-amber-50 hover:bg-amber-100 active:bg-amber-200
-            text-amber-700 font-bold text-base
-            flex items-center justify-center gap-2
-            active:scale-[0.98] transition-all duration-150
-          "
-        >
-          <span className="text-xl">🔔</span>
-          직원 호출
-        </button>
-
-        <p className="text-center text-xs text-gray-400 pb-4">
-          결제 수단을 탭하면 바로 결제가 시작됩니다
-        </p>
-      </div>
+      )}
     </div>
   )
 }

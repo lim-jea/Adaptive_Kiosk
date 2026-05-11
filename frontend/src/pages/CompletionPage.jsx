@@ -21,7 +21,7 @@ export default function CompletionPage() {
   const { state, dispatch, ACTIONS } = useSession()
   const logger = useLogger(state.sessionUuid)
 
-  const { paymentMethod, totalPrice, isMembership } = location.state || {}
+  const { paymentMethod, totalPrice, discountAmount = 0, discountLabel, isMembership } = location.state || {}
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -137,6 +137,11 @@ export default function CompletionPage() {
         <p className="text-amber-100 text-sm">
           {paymentMethod}으로 {totalPrice?.toLocaleString()}원 결제되었어요
         </p>
+        {discountAmount > 0 && (
+          <p className="text-amber-200 text-xs mt-1">
+            {discountLabel} 적용 · {discountAmount.toLocaleString()}원 할인
+          </p>
+        )}
         <div className="mt-3 inline-block bg-white/20 rounded-full px-4 py-1.5">
           <span className="text-sm font-bold">주문번호 #{orderNum}</span>
         </div>

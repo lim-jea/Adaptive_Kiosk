@@ -155,10 +155,12 @@ export function useVoiceOrder({
       return
     }
     if (resp.requires_user_input) {
-      // TTS 종료 후 잔향(에코)이 마이크에 잡히지 않도록 충분한 지연 후 STT 시작
+      // TTS 종료 후 잔향(에코)이 마이크에 잡히지 않도록 충분한 지연 후 STT 시작.
+      // 느린 TTS(노년층, rate ≤ 0.7)는 발음이 길어져 에코가 더 오래 남으므로 딜레이 증가.
+      const restartDelay = ttsRate <= 0.7 ? 1000 : 600
       setTimeout(() => {
         try { stt.start() } catch (e) { console.error(e) }
-      }, 500)
+      }, restartDelay)
     }
   }, [dispatchActions, tts, stt])
 

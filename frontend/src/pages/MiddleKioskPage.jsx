@@ -271,7 +271,6 @@ export default function MiddleKioskPage() {
       },
     })
     setOptionMenu(null)
-    setCartOpen(true)
   }, [optionMenu, logger, dispatch, ACTIONS])
 
   const handleQtyChange = useCallback((cartItemId, delta) => {
@@ -296,12 +295,12 @@ export default function MiddleKioskPage() {
   const handleOrder = useCallback(() => {
     if (state.cart.length === 0 || !state.sessionUuid) return
     logger.log('navigation', 'kiosk', {
-      actionName: 'go_to_middlepayment',
+      actionName: 'go_to_cart_review',
       targetType: 'button',
-      targetLabel: 'middlepayment',
+      targetLabel: 'cart_review',
       payload: { total_price: totalPrice, total_count: totalCount },
     })
-    navigate('/middlepayment')
+    navigate('/cart-review')
   }, [logger, navigate, state.cart.length, state.sessionUuid, totalCount, totalPrice])
 
   const handleBack = useCallback(() => {
@@ -353,10 +352,10 @@ export default function MiddleKioskPage() {
             targetLabel: 'cart',
           })
           setCartOpen(true)
-        } else if (action.target === 'middlepayment') {
+        } else if (action.target === 'middlepayment' || action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
-          if (cartRef.current.length > 0) navigate('/middlepayment')
-          else console.warn('[voice] cart empty, middlepayment navigation skipped')
+          if (cartRef.current.length > 0) navigate('/cart-review')
+          else console.warn('[voice] cart empty, payment navigation skipped')
         }
         break
       }
@@ -412,7 +411,6 @@ export default function MiddleKioskPage() {
           })
           setOptionMenu(null)   // 음성으로 옵션 확정 시 모달 닫기
           setOptionPreview([])
-          setCartOpen(true)
         } catch (e) { console.error(e) }
         break
       }
@@ -475,7 +473,7 @@ export default function MiddleKioskPage() {
       case 'place_order': {
         setOptionMenu(null)
         setOptionPreview([])
-        if (cartRef.current.length > 0) navigate('/middlepayment')
+        if (cartRef.current.length > 0) navigate('/cart-review')
         break
       }
       case 'scroll': {
@@ -501,6 +499,15 @@ export default function MiddleKioskPage() {
     autoStart: state.isSimpleMode,
     ttsRate: state.isSimpleMode ? 0.65 : 0.85,
   })
+
+  const hasUserProfile = state.gender && (state.ageGroup || state.ageEst)
+  const showSidebar = hasUserProfile
+
+  const handleRecommendSelect = (menuName, meta = {}) => {
+    if (activeCategory !== 'all') setActiveCategory('all')
+    const menu = menus.find((m) => m.name === menuName)
+    if (menu) handleMenuClick(menu, { fromRecommendation: true, ...meta })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -537,56 +544,54 @@ export default function MiddleKioskPage() {
         ))}
       </div>
 
-      {/* 메뉴 그리드 */}
-      <div className="flex-1 p-4 pb-40">
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <>
-            {/* 추천 음료 패널 — 항상 표시 */}
-            {state.gender && (state.ageGroup || state.ageEst) && (
-              <div className="mb-6">
+      {/* 메뉴 그리드 + 추천 패널 */}
+      <div className={`flex-1 flex ${showSidebar ? 'flex-row' : 'flex-col'}`}>
+        {/* 왼쪽 — 메뉴 영역 */}
+        <div className="flex-1 p-4 pb-40">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* 메뉴 목록 */}
+              {filteredMenus.length === 0 ? (
+                <p className="text-center mt-12" style={{ color: '#f4a261' }}>해당 카테고리 메뉴가 없습니다</p>
+              ) : (
+                <div className={`grid ${showSidebar ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'} gap-3`}>
+                  {filteredMenus.map((menu) => (
+                    <MiddleMenuCard
+                      key={menu.id}
+                      menu={menu}
+                      cartCount={state.cart
+                        .filter((i) => i.menuName === menu.name)
+                        .reduce((s, i) => s + i.quantity, 0)}
+                      onClick={() => handleMenuClick(menu)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* 우측 세로 추천 패널 */}
+        {showSidebar && (
+          <div className="w-72 flex-shrink-0 border-l" style={{ borderColor: '#fde8d8', background: '#fff8f3' }}>
+            <div className="sticky top-[104px] p-3 max-h-[calc(100vh-104px-80px)] overflow-y-auto">
+              {!loading && (
                 <RecommendationPanel
                   gender={state.gender}
                   age={state.ageEst}
                   ageGroup={state.ageGroup}
                   menus={menus}
                   cartItems={state.cart}
-                  onSelectMenu={(menuName, meta = {}) => {
-                    // 추천 메뉴 클릭 시 카테고리를 전체로 변경하고 메뉴 선택
-                    if (activeCategory !== 'all') {
-                      setActiveCategory('all')
-                    }
-                    // 메뉴 찾아서 선택
-                    const menu = menus.find((m) => m.name === menuName)
-                    if (menu) {
-                      handleMenuClick(menu, { fromRecommendation: true, ...meta })
-                    }
-                  }}
+                  onSelectMenu={handleRecommendSelect}
+                  vertical={true}
                 />
-              </div>
-            )}
-
-            {/* 메뉴 목록 */}
-            {filteredMenus.length === 0 ? (
-              <p className="text-center mt-12" style={{ color: '#f4a261' }}>해당 카테고리 메뉴가 없습니다</p>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {filteredMenus.map((menu) => (
-                  <MiddleMenuCard
-                    key={menu.id}
-                    menu={menu}
-                    cartCount={state.cart
-                      .filter((i) => i.menuName === menu.name)
-                      .reduce((s, i) => s + i.quantity, 0)}
-                    onClick={() => handleMenuClick(menu)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

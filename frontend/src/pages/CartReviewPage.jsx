@@ -31,7 +31,7 @@ export default function CartReviewPage() {
       targetType: 'button',
       targetLabel: 'back_to_kiosk',
     })
-    navigate('/kiosk')
+    navigate(state.ageGroup === '중년' ? '/middlekiosk' : '/kiosk')
   }
 
   const handleProceed = () => {

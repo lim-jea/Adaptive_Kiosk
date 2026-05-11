@@ -269,9 +269,13 @@ export default function SeniorKioskPage() {
     setToast(`✅ ${optionMenu.name} ${quantity}개가 담겼습니다`)
     setTimeout(() => setToast(null), 2500)
 
-    // TTS
-    tts.speak(`${menuName} ${qty}개 담겼습니다`)
-    
+    // 음성 시스템이 활성(listening/speaking/thinking) 중이면 독립 TTS 를 재생하지 않는다.
+    // 활성 중에 재생하면 STT 가 TTS 소리를 다시 인식해 중복 명령이 전송될 수 있다.
+    // (음성 주문 경로에서는 백엔드 응답 TTS 가 직접 피드백을 담당한다.)
+    const vStatus = voiceRef.current?.status
+    if (!vStatus || vStatus === 'idle' || vStatus === 'ended') {
+      tts.speak(`${menuName} ${qty}개 담겼습니다`)
+    }
   }, [optionMenu, logger, dispatch, ACTIONS, tts])
 
   
