@@ -11,8 +11,10 @@ export default function OrderTypePage() {
 
   const getKioskRoute = useCallback(() => {
     const age = state.ageGroup
-    if (age === '노년') return '/seniorkiosk'
-    if (age === '중년') return '/middlekiosk'
+    if (age === '노년')  return '/seniorkiosk'
+    if (age === '중년')  return '/middlekiosk'
+    if (age === '어린이') return '/childkiosk'
+    if (age === '청년')  return '/youngkiosk'
     return '/kiosk'
   }, [state.ageGroup])
 

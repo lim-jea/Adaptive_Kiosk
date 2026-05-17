@@ -32,6 +32,12 @@ import MiddlePaymentPage from './pages/MiddlePaymentPage'
 import SeniorKioskPage from './pages/SeniorKioskPage'
 import SeniorCompletePage from './pages/SeniorCompletePage'
 import SeniorPaymentPage from './pages/SeniorPaymentPage'
+import ChildKioskPage from './pages/ChildKioskPage'
+import ChildPaymentPage from './pages/ChildPaymentPage'
+import ChildCompletePage from './pages/ChildCompletePage'
+import YoungKioskPage from './pages/YoungKioskPage'
+import YoungPaymentPage from './pages/YoungPaymentPage'
+import YoungCompletePage from './pages/YoungCompletePage'
 
 
 export default function App() {
@@ -58,6 +64,13 @@ export default function App() {
           <Route path="/middlepayment" element={<MiddlePaymentPage />} />
           <Route path="/middlekiosk" element={<MiddleKioskPage />} />    
           <Route path="/survey" element={<SurveyPage />} />      
+
+          <Route path="/childkiosk" element={<ChildKioskPage />} />
+          <Route path="/childpayment" element={<ChildPaymentPage />} />
+          <Route path="/childcomplete" element={<ChildCompletePage />} />
+          <Route path="/youngkiosk" element={<YoungKioskPage />} />
+          <Route path="/youngpayment" element={<YoungPaymentPage />} />
+          <Route path="/youngcomplete" element={<YoungCompletePage />} />
 
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route path="/admin" element={<AdminLayout />}>
