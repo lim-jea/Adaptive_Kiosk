@@ -10,37 +10,21 @@ const PAYMENT_METHODS = [
   {
     id: 'card',
     label: '신용 / 체크카드',
-    icon: '💳',
-    bg: 'bg-white',
-    text: 'text-gray-800',
-    border: 'border-gray-300',
     desc: 'IC칩 또는 마그네틱 결제',
   },
   {
     id: 'membership',
     label: '멤버십 카드',
-    icon: '⭐',
-    bg: 'bg-purple-600',
-    text: 'text-white',
-    border: 'border-purple-600',
     desc: '스탬프 2배 적립',
   },
   {
     id: 'samsung_pay',
     label: 'Samsung Pay',
-    icon: '📱',
-    bg: 'bg-blue-600',
-    text: 'text-white',
-    border: 'border-blue-600',
     desc: '삼성 Pay로 간편 결제',
   },
   {
     id: 'apple_pay',
     label: 'Apple Pay',
-    icon: '🍎',
-    bg: 'bg-black',
-    text: 'text-white',
-    border: 'border-black',
     desc: 'Face ID / Touch ID로 결제',
   },
 ]
@@ -155,7 +139,9 @@ export default function SeniorPaymentPage() {
     const method = PAYMENT_METHODS.find((m) => m.id === selectedMethod)
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
-        <div className="text-6xl mb-6 animate-bounce">{method?.icon}</div>
+        <div className="w-16 h-16 mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+          <span className="text-2xl font-bold text-amber-600">결제</span>
+        </div>
         <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-6" />
         <h2 className="text-2xl font-bold text-gray-800 mb-2">결제 중...</h2>
         <p className="text-gray-400">{method?.label}으로 처리하고 있어요</p>
@@ -269,22 +255,15 @@ export default function SeniorPaymentPage() {
             <button
               key={method.id}
               onClick={() => handlePay(method)}
-              className={`
-                w-full flex items-center gap-5 px-6 py-6 rounded-2xl border-2
-                ${method.bg} ${method.text} ${method.border}
-                active:scale-95 transition-all shadow-sm hover:shadow-md
-              `}
+              className="w-full flex items-center gap-5 px-6 py-6 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all shadow-sm hover:shadow-md hover:border-gray-300"
             >
-              <span className="text-5xl flex-shrink-0">{method.icon}</span>
               <div className="text-left flex-1">
                 <p className="font-bold text-2xl">{method.label}</p>
-                <p className={`text-lg mt-1 ${method.id === 'card' ? 'text-gray-400' : 'opacity-75'}`}>
+                <p className="text-lg mt-1 text-gray-400">
                   {method.desc}
                 </p>
               </div>
-              <span className={`text-3xl flex-shrink-0 ${method.id === 'card' ? 'text-gray-400' : 'opacity-60'}`}>
-                ›
-              </span>
+              <span className="text-3xl flex-shrink-0 text-gray-300">›</span>
             </button>
           ))}
         </div>

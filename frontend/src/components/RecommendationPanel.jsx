@@ -35,14 +35,14 @@ function buildScoreSummary(rec, mode) {
     return [
       { label: '기본', value: formatPercent(breakdown.base_score) },
       { label: '장바구니', value: formatPercent(breakdown.cart_cf_score) },
-      { label: '최종', value: Number(rec?.final_score || 0).toFixed(3) },
+      { label: '최종', value: `${(Number(rec?.final_score || 0) * 100).toFixed(1)}점` },
     ]
   }
 
   return [
     { label: '선택 비중', value: formatPercent(rec?.popularity) },
     { label: '트렌드', value: `${Number(rec?.trend_weight || rec?.trend_score || 1).toFixed(2)}x` },
-    { label: '최종', value: Number(rec?.final_score || rec?.score || 0).toFixed(3) },
+    { label: '최종', value: `${(Number(rec?.final_score || rec?.score || 0) * 100).toFixed(1)}점` },
   ]
 }
 
@@ -351,7 +351,7 @@ export default function RecommendationPanel({
                 </div>
                 <div className="mt-3 pt-2 border-t border-amber-100 flex items-center justify-between text-sm text-amber-700">
                   <span className="font-medium">{mode === 'CF' ? '종합 점수' : '추천 점수'}</span>
-                  <span className="font-bold text-amber-600">{Number(finalScore).toFixed(3)}</span>
+                  <span className="font-bold text-amber-600">{(Number(finalScore) * 100).toFixed(1)}점</span>
                 </div>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none" />
               </button>

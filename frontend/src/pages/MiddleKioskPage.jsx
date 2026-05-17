@@ -248,6 +248,7 @@ export default function MiddleKioskPage() {
       targetType: 'menu',
       targetId: optionMenu.id,
       targetLabel: optionMenu.name,
+      source: optionMenu.fromRecommendation ? 'recommendation' : 'ui',
       payload: {
         quantity,
         option_item_ids: selectedOptionIds,
@@ -405,6 +406,7 @@ export default function MiddleKioskPage() {
               basePrice: menu.price,
               unitPrice: menu.price + extra,
               quantity: action.quantity || 1,
+              fromRecommendation: false,
               selectedOptions: optionItems,
               optionLabels,
             },

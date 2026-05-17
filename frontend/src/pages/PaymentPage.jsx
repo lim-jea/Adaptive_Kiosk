@@ -9,30 +9,22 @@ const PAYMENT_METHODS = [
   {
     id: 'apple_pay',
     label: '애플페이',
-    icon: '🍎',
     desc: 'Face ID / Touch ID로 결제',
-    style: 'bg-black text-white border-black',
   },
   {
     id: 'samsung_pay',
     label: '삼성페이',
-    icon: '📱',
     desc: '삼성 Pay로 간편 결제',
-    style: 'bg-blue-600 text-white border-blue-600',
   },
   {
     id: 'naver_pay',
     label: '네이버페이',
-    icon: '🟢',
     desc: '네이버페이 포인트·머니 결제',
-    style: 'bg-green-500 text-white border-green-500',
   },
   {
     id: 'card',
     label: '카드 결제',
-    icon: '💳',
     desc: 'IC카드 또는 마그네틱 결제',
-    style: 'bg-white text-gray-800 border-gray-300',
   },
 ]
 
@@ -148,7 +140,9 @@ export default function PaymentPage() {
   if (status === 'processing') {
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
-        <div className="text-6xl mb-6 animate-bounce">{selectedMethod?.icon}</div>
+        <div className="w-16 h-16 mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+          <span className="text-2xl font-bold text-amber-600">결제</span>
+        </div>
         <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mb-6" />
         <h2 className="text-2xl font-bold text-gray-800 mb-2">결제 중...</h2>
         <p className="text-gray-400">{selectedMethod?.label}으로 처리하고 있어요</p>
@@ -267,22 +261,15 @@ export default function PaymentPage() {
                   <button
                     key={method.id}
                     onClick={() => handlePay(method)}
-                    className={`
-                      w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2
-                      ${method.style}
-                      active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md
-                    `}
+                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md hover:border-gray-300"
                   >
-                    <span className="text-3xl flex-shrink-0">{method.icon}</span>
                     <div className="text-left flex-1">
                       <p className="font-bold text-base">{method.label}</p>
-                      <p className={`text-xs mt-0.5 ${method.id === 'card' ? 'text-gray-400' : 'opacity-70'}`}>
+                      <p className="text-xs mt-0.5 text-gray-400">
                         {method.desc}
                       </p>
                     </div>
-                    <span className={`text-xl flex-shrink-0 ${method.id === 'card' ? 'text-gray-400' : 'opacity-50'}`}>
-                      ›
-                    </span>
+                    <span className="text-xl flex-shrink-0 text-gray-300">›</span>
                   </button>
                 ))}
               </div>
@@ -316,13 +303,8 @@ export default function PaymentPage() {
               <button
                 key={method.id}
                 onClick={() => handlePay(method)}
-                className={`
-                  flex items-center gap-2 px-3 py-3 rounded-xl border-2
-                  ${method.style}
-                  active:scale-95 transition-all duration-150
-                `}
+                className="flex items-center gap-2 px-3 py-3 rounded-xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all duration-150 hover:border-gray-300"
               >
-                <span className="text-2xl flex-shrink-0">{method.icon}</span>
                 <div className="text-left">
                   <p className="font-bold text-sm">{method.label}</p>
                 </div>

@@ -9,62 +9,38 @@ const PAYMENT_METHODS = [
   {
     id: 'card',
     label: '신용 / 체크카드',
-    icon: '💳',
     desc: 'IC칩 또는 마그네틱 결제',
     discount: null,
-    bg: '#fff',
-    border: '#fde8d8',
-    color: '#374151',
   },
   {
     id: 'kakao_pay',
     label: '카카오페이',
-    icon: '💛',
     desc: '카카오페이로 간편 결제',
     discount: null,
-    bg: '#FEE500',
-    border: '#FEE500',
-    color: '#391B1B',
   },
   {
     id: 'naver_pay',
     label: '네이버페이',
-    icon: '🟢',
     desc: '네이버페이로 간편 결제',
     discount: null,
-    bg: '#03C75A',
-    border: '#03C75A',
-    color: '#fff',
   },
   {
     id: 'samsung_pay',
     label: '삼성페이',
-    icon: '📱',
     desc: '삼성페이로 간편 결제',
     discount: null,
-    bg: '#1428A0',
-    border: '#1428A0',
-    color: '#fff',
   },
   {
     id: 'telecom',
     label: '통신사 할인',
-    icon: '📡',
     desc: 'SKT · KT · LG U+ 최대 20% 할인',
     discount: 0.2,
-    bg: '#E51937',
-    border: '#E51937',
-    color: '#fff',
   },
   {
     id: 'membership',
     label: '멤버십 카드',
-    icon: '⭐',
     desc: '스탬프 2배 적립',
     discount: null,
-    bg: '#7C3AED',
-    border: '#7C3AED',
-    color: '#fff',
   },
 ]
 
@@ -207,7 +183,9 @@ export default function MiddlePaymentPage() {
 
     return (
       <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
-        <div className="text-6xl mb-6 animate-bounce">{method?.icon}</div>
+        <div className="w-16 h-16 mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+          <span className="text-2xl font-bold text-amber-600">결제</span>
+        </div>
         <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin mb-6"
           style={{ borderColor: '#f4a261', borderTopColor: 'transparent' }} />
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#374151' }}>결제 중...</h2>
@@ -310,9 +288,8 @@ export default function MiddlePaymentPage() {
                 key={method.id}
                 onClick={() => method.id === 'telecom' ? handleTelecomClick() : handlePay(method)}
                 className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
-                style={{ background: method.bg, borderColor: method.border, color: method.color }}
+                style={{ background: '#fff', borderColor: '#e5e7eb', color: '#374151' }}
               >
-                <span className="text-3xl flex-shrink-0">{method.icon}</span>
                 <div className="text-left flex-1">
                   <p className="font-bold text-base">{method.label}</p>
                   <p className="text-xs mt-0.5 opacity-80">{method.desc}</p>
