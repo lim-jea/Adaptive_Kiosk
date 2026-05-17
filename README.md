@@ -1,21 +1,11 @@
 # 수정 사항
 service/face_service.py
 
-backend/dockerfile
-
-requirments.txt
-
 data/(가중치파일).pth
+> 기존 가중치 파일 삭제 후 2개 추가
 
-uv.lock 삭제
+pyproject.toml
 
-환경에 따라 30~60분 정도 패키지 설치시간 소요
-
-첫 시작 시 카메라를 사용할 수 없다고 뜰 확률이 매우 높은데,
-
-docker log 에서 insightface 패키지 설치 중이라고 뜰 경우 정상이므로
-
-기다리셨다가 다시 실행 하시면 됩니다.
 
 
 # Adaptive Kiosk
