@@ -16,15 +16,15 @@ dependencies = [
     "aiomysql>=0.3.2",
     "cryptography>=44.0.0",
     "google-genai>=1.0.0",
+    "greenlet>=3.3.2",
     "pandas>=3.0.2",
+    "torch>=2.0.0",
     "insightface>=0.7.3",
-    "opencv-python-headless>=4.13.0.92",
-    "onnxruntime>=1.25.1",
+    "onnxruntime>=1.15.0",
+    "opencv-python-headless>=4.8.0",
+    "numpy>=1.24.0",
     "edge-tts>=6.1.0",
-    "numpy>=2.0.0",
     "Pillow>=10.0.0",
-    "torch>=2.4.0",
-    "wheel>=0.45.0",
 ]
 
 [tool.uv]
