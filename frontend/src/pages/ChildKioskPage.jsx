@@ -548,6 +548,7 @@ function ChildCartRow({ item, onQtyChange }) {
 }
 
 function ChildOptionModal({ menu, onClose, onConfirm, onLog }) {
+  const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
 
@@ -664,10 +665,27 @@ function ChildOptionModal({ menu, onClose, onConfirm, onLog }) {
     })
   }
 
+  const closeWithoutCart = () => {
+    onLog?.({
+      eventType: 'option',
+      actionName: 'menu_detail_close',
+      targetType: 'menu',
+      targetId: menu.id,
+      targetLabel: menu.name,
+      durationMs: Math.round(performance.now() - openedAtRef.current),
+      source: menu.fromRecommendation ? 'recommendation' : 'ui',
+      payload: {
+        added_to_cart: false,
+        from_recommendation: Boolean(menu.fromRecommendation),
+      },
+    })
+    onClose()
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
-      onClick={onClose}
+      onClick={closeWithoutCart}
     >
       <div
         className="bg-white rounded-t-[36px] w-full max-w-lg max-h-[90vh] overflow-y-auto"
@@ -686,7 +704,7 @@ function ChildOptionModal({ menu, onClose, onConfirm, onLog }) {
             </div>
 
             <button
-              onClick={onClose}
+              onClick={closeWithoutCart}
               className="text-gray-400 text-4xl leading-none w-10 h-10 flex items-center justify-center"
             >
               ×

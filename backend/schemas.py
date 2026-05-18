@@ -432,6 +432,124 @@ class SessionDurationStats(BaseModel):
     by_age_group: List[SessionDurationByAge] = Field(default_factory=list)
 
 
+class UsabilityMetricCard(BaseModel):
+    key: str
+    label: str
+    value: Union[int, float, str]
+    unit: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class UsabilityFunnelStep(BaseModel):
+    key: str
+    label: str
+    count: int
+    rate: float
+
+
+class UsabilityDurationBucket(BaseModel):
+    label: str
+    count: int
+
+
+class UsabilityAgeRow(BaseModel):
+    age_group: Optional[str] = None
+    sessions: int
+    completed_sessions: int
+    completion_rate: float
+    avg_total_seconds: float
+    median_total_seconds: float
+    avg_menu_select_seconds: float
+    voice_sessions: int
+    voice_completion_rate: float
+    modal_abandon_rate: float
+
+
+class UsabilityMenuFrictionItem(BaseModel):
+    menu_id: Optional[str] = None
+    menu_name: str
+    opens: int
+    cart_adds: int
+    abandons: int
+    abandon_rate: float
+    avg_open_seconds: float
+    recommendation_opens: int
+
+
+class UsabilityVoiceStats(BaseModel):
+    sessions: int
+    completed_sessions: int
+    completion_rate: float
+    action_successes: int
+    action_failures: int
+    action_failure_rate: float
+    avg_total_seconds: float
+
+
+class UsabilityAbandonStep(BaseModel):
+    screen_name: Optional[str] = None
+    action_name: Optional[str] = None
+    count: int
+    rate: float
+
+
+class UsabilitySessionRow(BaseModel):
+    session_uuid: str
+    started_at: datetime
+    age_group: Optional[str] = None
+    gender: Optional[str] = None
+    completed: bool
+    total_seconds: Optional[float] = None
+    first_menu_select_seconds: Optional[float] = None
+    voice_used: bool
+    last_screen_name: Optional[str] = None
+    last_action_name: Optional[str] = None
+    event_count: int
+
+
+class UsabilityTimelineEvent(BaseModel):
+    occurred_at: datetime
+    elapsed_ms: Optional[int] = None
+    event_type: str
+    screen_name: Optional[str] = None
+    screen_label: Optional[str] = None
+    action_name: str
+    action_label: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    target_label: Optional[str] = None
+    source: str
+    duration_ms: Optional[int] = None
+    summary: str
+    payload_json: Optional[Dict[str, Any]] = None
+
+
+class UsabilitySessionTimelineResponse(BaseModel):
+    session: UsabilitySessionRow
+    events: List[UsabilityTimelineEvent]
+    notes: List[str] = Field(default_factory=list)
+
+
+class UsabilityInsight(BaseModel):
+    level: Literal["good", "warning", "info"]
+    title: str
+    message: str
+
+
+class UsabilityAnalyticsResponse(BaseModel):
+    summary: List[UsabilityMetricCard]
+    funnel: List[UsabilityFunnelStep]
+    duration_distribution: List[UsabilityDurationBucket]
+    menu_select_distribution: List[UsabilityDurationBucket]
+    by_age_group: List[UsabilityAgeRow]
+    menu_friction: List[UsabilityMenuFrictionItem]
+    voice: UsabilityVoiceStats
+    touch_only: UsabilityVoiceStats
+    abandon_steps: List[UsabilityAbandonStep]
+    sessions: List[UsabilitySessionRow] = Field(default_factory=list)
+    insights: List[UsabilityInsight]
+
+
 # --- Option catalog (전역 옵션 뷰) ---
 
 class OptionCatalogMenuRef(BaseModel):

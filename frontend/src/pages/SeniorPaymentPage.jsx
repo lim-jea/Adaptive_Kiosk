@@ -79,6 +79,17 @@ export default function SeniorPaymentPage() {
       targetLabel: method.label,
       payload: { total_price: totalPrice, total_count: totalCount },
     })
+    logger.log('payment', 'payment', {
+      actionName: 'payment_start',
+      targetType: 'payment_method',
+      targetId: method.id,
+      targetLabel: method.label,
+      payload: {
+        total_price: totalPrice,
+        total_count: totalCount,
+        used_recommendation: state.cart.some((item) => item.fromRecommendation),
+      },
+    })
     setSelectedMethod(method.id)
     setStatus('processing')
 

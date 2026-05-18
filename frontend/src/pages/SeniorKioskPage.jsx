@@ -760,6 +760,7 @@ function SeniorCartCard({ item, onQtyChange, onRemove }) {
 
 /** 옵션 선택 모달 */
 function SeniorOptionModal({ menu, previewSelections = [], onClose, onConfirm, onLog }) {
+  const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
     for (const g of menu.option_groups || []) {
@@ -859,10 +860,27 @@ function SeniorOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
     onConfirm({ selectedOptionIds, optionLabels, quantity, unitPrice })
   }
 
+  const closeWithoutCart = () => {
+    onLog?.({
+      eventType: 'option',
+      actionName: 'menu_detail_close',
+      targetType: 'menu',
+      targetId: menu.id,
+      targetLabel: menu.name,
+      durationMs: Math.round(performance.now() - openedAtRef.current),
+      source: menu.fromRecommendation ? 'recommendation' : 'ui',
+      payload: {
+        added_to_cart: false,
+        from_recommendation: Boolean(menu.fromRecommendation),
+      },
+    })
+    onClose()
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-      onClick={onClose}
+      onClick={closeWithoutCart}
     >
       <div
         className="bg-white rounded-3xl w-full max-w-lg overflow-y-auto mx-4"
@@ -887,7 +905,7 @@ function SeniorOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
               {menu.description && <p className="text-base text-gray-400 mt-1">{menu.description}</p>}
             </div>
             <button
-              onClick={onClose}
+              onClick={closeWithoutCart}
               className="text-gray-400 hover:text-gray-600 text-4xl leading-none w-12 h-12 flex items-center justify-center"
             >
               ×

@@ -64,6 +64,17 @@ export default function ChildPaymentPage() {
         total_count: totalCount,
       },
     })
+    logger.log('payment', 'child_payment', {
+      actionName: 'payment_start',
+      targetType: 'payment_method',
+      targetId: method.id,
+      targetLabel: method.label,
+      payload: {
+        total_price: totalPrice,
+        total_count: totalCount,
+        used_recommendation: state.cart.some((item) => item.fromRecommendation),
+      },
+    })
 
     setSelectedMethod(method)
     setStatus('processing')
@@ -122,7 +133,7 @@ export default function ChildPaymentPage() {
         orderUuid,
       },
     })
-  }, [logger, navigate, state.sessionUuid, totalPrice, totalCount])
+  }, [logger, navigate, state.sessionUuid, state.cart, totalPrice, totalCount])
 
   if (status === 'processing') {
     return (

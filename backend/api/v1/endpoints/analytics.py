@@ -1,7 +1,7 @@
 from typing import Literal, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -21,6 +21,9 @@ from schemas import (
     SessionAnalytics,
     SessionDurationStats,
     TimeseriesBucket,
+    UsabilityAnalyticsResponse,
+    UsabilitySessionTimelineResponse,
+    make_error,
 )
 from services.analytics_service import (
     get_category_breakdown,
@@ -37,6 +40,8 @@ from services.analytics_service import (
     get_session_duration,
     get_session_funnel,
     get_sessions_timeseries,
+    get_usability_analytics,
+    get_usability_session_timeline,
 )
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -226,3 +231,29 @@ async def recommendations_by_type(
         db, by="recommendation_type",
         start_date=req.start_date, end_date=req.end_date, kiosk_id=req.kiosk_id,
     )
+
+
+@router.get("/usability", response_model=UsabilityAnalyticsResponse)
+async def usability_stats(
+    req: AnalyticsRangeRequest = Depends(),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    return await get_usability_analytics(
+        db, start_date=req.start_date, end_date=req.end_date, kiosk_id=req.kiosk_id
+    )
+
+
+@router.get("/usability/sessions/{session_uuid}", response_model=UsabilitySessionTimelineResponse)
+async def usability_session_timeline(
+    session_uuid: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_credentials),
+):
+    result = await get_usability_session_timeline(db, session_uuid=session_uuid)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=make_error("SESSION_NOT_FOUND", "Session not found", session_uuid=session_uuid),
+        )
+    return result

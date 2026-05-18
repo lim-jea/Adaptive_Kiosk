@@ -120,6 +120,19 @@ export default function MiddlePaymentPage() {
 
     const discount = discountRate || method.discount
     const discountedPrice = discount ? Math.floor(totalPrice * (1 - discount)) : totalPrice
+    logger.log('payment', 'payment', {
+      actionName: 'payment_start',
+      targetType: 'payment_method',
+      targetId: method.id,
+      targetLabel: method.label,
+      payload: {
+        total_price: discountedPrice,
+        original_price: totalPrice,
+        total_count: totalCount,
+        discount_rate: discount || 0,
+        used_recommendation: state.cart.some((item) => item.fromRecommendation),
+      },
+    })
 
     await new Promise((resolve) => setTimeout(resolve, 2000))
 

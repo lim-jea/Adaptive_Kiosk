@@ -775,6 +775,7 @@ function MiddleCartRow({ item, onQtyChange }) {
 
 /** 옵션 선택 모달 — option_groups를 동적으로 렌더링 */
 function MiddleOptionModal({ menu, previewSelections = [], onClose, onConfirm, onLog }) {
+  const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
     for (const g of menu.option_groups || []) {
@@ -874,10 +875,27 @@ function MiddleOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
     onConfirm({ selectedOptionIds, optionLabels, quantity, unitPrice })
   }
 
+  const closeWithoutCart = () => {
+    onLog?.({
+      eventType: 'option',
+      actionName: 'menu_detail_close',
+      targetType: 'menu',
+      targetId: menu.id,
+      targetLabel: menu.name,
+      durationMs: Math.round(performance.now() - openedAtRef.current),
+      source: menu.fromRecommendation ? 'recommendation' : 'ui',
+      payload: {
+        added_to_cart: false,
+        from_recommendation: Boolean(menu.fromRecommendation),
+      },
+    })
+    onClose()
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-      onClick={onClose}
+      onClick={closeWithoutCart}
     >
       <div
         className="rounded-3xl w-full max-w-lg overflow-y-auto mx-4"
@@ -907,7 +925,7 @@ function MiddleOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
               )}
             </div>
             <button
-              onClick={onClose}
+              onClick={closeWithoutCart}
               className="text-3xl leading-none w-8 h-8 flex items-center justify-center"
               style={{ color: '#9ca3af' }}
             >×</button>

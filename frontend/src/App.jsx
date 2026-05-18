@@ -21,6 +21,7 @@ import AdminMenuPage from './pages/admin/AdminMenuPage'
 import AdminOptionsPage from './pages/admin/AdminOptionsPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
 import AdminKiosksPage from './pages/admin/AdminKiosksPage'
+import AdminUsabilityPage from './pages/admin/AdminUsabilityPage'
 import AdminAnalyticsLayout, {
   AnalyticsRevenueTab,
   AnalyticsUsersTab,
@@ -83,6 +84,7 @@ export default function App() {
             <Route path="menus" element={<AdminMenuPage />} />
             <Route path="options" element={<AdminOptionsPage />} />
             <Route path="orders" element={<AdminOrdersPage />} />
+            <Route path="usability" element={<AdminUsabilityPage />} />
             <Route path="kiosks" element={<AdminKiosksPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

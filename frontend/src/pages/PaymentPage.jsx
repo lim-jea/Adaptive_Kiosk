@@ -68,6 +68,19 @@ export default function PaymentPage() {
       targetLabel: method.label,
       payload: { total_price: totalPrice, total_count: totalCount, discount_type: discountType },
     })
+    logger.log('payment', 'payment', {
+      actionName: 'payment_start',
+      targetType: 'payment_method',
+      targetId: method.id,
+      targetLabel: method.label,
+      payload: {
+        total_price: finalPrice,
+        original_price: totalPrice,
+        total_count: totalCount,
+        discount_type: discountType,
+        used_recommendation: state.cart.some((item) => item.fromRecommendation),
+      },
+    })
     setSelectedMethod(method)
     setStatus('processing')
     setErrorMessage('')
@@ -124,7 +137,7 @@ export default function PaymentPage() {
         isMembership: ['employee', 'skt', 'lg'].includes(discountType),
       },
     })
-  }, [logger, navigate, state, totalCount, totalPrice, discountType, discountLabel])
+  }, [logger, navigate, state, totalCount, totalPrice, finalPrice, discountAmount, discountType, discountLabel])
 
   const handleCallStaff = () => {
     logger.log('click', 'payment', {

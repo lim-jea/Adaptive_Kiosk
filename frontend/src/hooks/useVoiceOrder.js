@@ -72,7 +72,17 @@ export function useVoiceOrder({
   const dispatchActions = useCallback((actions) => {
     for (const a of actions || []) {
       if (a.type === 'speak') continue // TTS는 별도 처리
-      try { onActionRef.current?.(a) } catch (e) { console.error('[voice action]', e) }
+      try {
+        onActionRef.current?.(a)
+      } catch (e) {
+        console.error('[voice action]', e)
+        try {
+          onVoiceEventRef.current?.('voice_action_failed', {
+            action_type: a.type,
+            reason: e?.message || 'action_dispatch_failed',
+          })
+        } catch {}
+      }
     }
   }, [])
 
@@ -121,6 +131,12 @@ export function useVoiceOrder({
       await handleAIResponseRef.current?.(data.response, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
+      try {
+        onVoiceEventRef.current?.('voice_action_failed', {
+          action_type: 'voice_message',
+          reason: e.response?.data?.detail?.message || e.message,
+        })
+      } catch {}
       setStatus('error')
     } finally {
       inFlightRef.current = false
@@ -188,6 +204,12 @@ export function useVoiceOrder({
       await handleAIResponseRef.current?.(data.greeting, data.audio_b64)
     } catch (e) {
       setError(e.response?.data?.detail?.message || e.message)
+      try {
+        onVoiceEventRef.current?.('voice_action_failed', {
+          action_type: 'voice_start',
+          reason: e.response?.data?.detail?.message || e.message,
+        })
+      } catch {}
       setStatus('error')
       startedRef.current = false
     }
