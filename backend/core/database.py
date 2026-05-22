@@ -63,7 +63,10 @@ async def initialize_connection_pool():
             max_overflow=5,         # 초과 시 임시 연결
             pool_timeout=30,        # 연결 대기 최대 시간
             pool_recycle=600,       # 10분마다 연결 재활용 (클라우드 idle timeout 대비)
-            pool_pre_ping=True,     # 사용 전 연결 유효성 체크 (끊긴 연결 자동 복구)
+            # aiomysql's async adapter can fail SQLAlchemy's MySQL pre-ping path
+            # because ping() is called without its reconnect argument. pool_recycle
+            # still prevents most stale idle connections.
+            pool_pre_ping=False,
             connect_args=connect_args,
         )
 
@@ -72,7 +75,7 @@ async def initialize_connection_pool():
             await conn.execute(text("SELECT 1"))
         logger.info(
             "SQLAlchemy Async Connection Pool initialized successfully. "
-            "(pool_size=5, max_overflow=5, pool_pre_ping=True)"
+            "(pool_size=5, max_overflow=5, pool_pre_ping=False)"
         )
 
         _async_session_factory = async_sessionmaker(
