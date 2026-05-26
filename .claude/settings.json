@@ -10,7 +10,15 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://images.unsplash.com/photo-1582015752624-e8b1f93e6df6?w=400&h=400&fit=crop&auto=format\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://images.unsplash.com/photo-1570696516188-ade861b84a49?w=400&h=400&fit=crop&auto=format\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=400&h=400&fit=crop&auto=format\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?w=400&h=400&fit=crop&auto=format\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?w=400&h=400&fit=crop&auto=format\")",
+      "Read(//Users/kyumin/.cloudflared/**)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('AccountTag:', d.get\\('AccountTag','?'\\)[:8]+'...'\\); print\\('TunnelID:', d.get\\('TunnelID','?'\\)\\)\")",
+      "Bash(cp /Users/kyumin/.cloudflared/2c4c2223-8e93-4dd6-b2dd-47926baf11b7.json /Users/kyumin/Documents/GitHub/Adaptive_Kiosk/cloudflared/credentials.json && echo \"복사 완료\")",
+      "Bash(cloudflared tunnel *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://adaptivekiosk.uk)"
+    ],
+    "additionalDirectories": [
+      "/Users/kyumin/.cloudflared"
     ]
   }
 }

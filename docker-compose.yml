@@ -34,7 +34,10 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate --protocol http2 --url http://proxy:80
+    command: tunnel --no-autoupdate run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/credentials.json:/etc/cloudflared/credentials.json:ro
     depends_on:
       - proxy
     restart: unless-stopped

@@ -1,0 +1,7 @@
+tunnel: 2c4c2223-8e93-4dd6-b2dd-47926baf11b7
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: adaptivekiosk.uk
+    service: http://proxy:80
+  - service: http_status:404
