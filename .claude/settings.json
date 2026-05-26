@@ -15,7 +15,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('AccountTag:', d.get\\('AccountTag','?'\\)[:8]+'...'\\); print\\('TunnelID:', d.get\\('TunnelID','?'\\)\\)\")",
       "Bash(cp /Users/kyumin/.cloudflared/2c4c2223-8e93-4dd6-b2dd-47926baf11b7.json /Users/kyumin/Documents/GitHub/Adaptive_Kiosk/cloudflared/credentials.json && echo \"복사 완료\")",
       "Bash(cloudflared tunnel *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://adaptivekiosk.uk)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://adaptivekiosk.uk)",
+      "Bash(docker-compose ps *)"
     ],
     "additionalDirectories": [
       "/Users/kyumin/.cloudflared"
