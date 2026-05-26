@@ -262,11 +262,11 @@ export default function MiddleCompletePage() {
           </button>
           <button
             onClick={() => navigate('/survey')}
-            className="flex-1 rounded-2xl py-3 flex flex-col items-center gap-1 transition-colors hover:opacity-80"
-            style={{ background: '#fff3ec', border: '1px solid #f4a261', color: '#c2703a' }}
+            className="flex-1 rounded-2xl py-5 flex flex-col items-center gap-2 font-black text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95"
+            style={{ background: '#10b981', border: '2px solid #059669' }}
           >
-            <span className="text-xl">📝</span>
-            <span className="text-xs font-medium">설문 참여하기</span>
+            <span className="text-3xl">📝</span>
+            <span className="text-base">설문 참여하기</span>
           </button>
         </div>
       </div>

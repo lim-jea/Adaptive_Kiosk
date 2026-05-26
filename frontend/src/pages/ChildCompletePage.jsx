@@ -183,7 +183,16 @@ export default function ChildCompletePage() {
     navigate('/', { replace: true })
   }
 
-  const setAnswer = (id) => (v) => setAnswers((prev) => ({ ...prev, [id]: { value: v } }))
+  const setAnswer = (id, labels) => (v) => {
+    const found = labels.find((opt) => opt.value === v)
+    setAnswers((prev) => ({ ...prev, [id]: { value: v, label: found?.label || null } }))
+  }
+
+  const getEasyModeAnswer = () => {
+    if (easyMode === undefined) return undefined
+    const found = EASY_MODE_OPTIONS.find((opt) => opt.value === easyMode)
+    return { value: easyMode, label: found?.label || null }
+  }
 
   const toggleG1 = (opt) => {
     setG1Choices((prev) =>
@@ -200,7 +209,7 @@ export default function ChildCompletePage() {
         resp_age: respAge === '' ? null : Number(respAge),
         resp_gender: respGender,
         resp_kiosk_freq: null,
-        answers: { ...answers, q22: easyMode !== undefined ? { value: easyMode } : undefined },
+        answers: { ...answers, q22: getEasyModeAnswer() },
         multi_choices: { g1: g1Choices },
         free_texts: {},
         q7_no_experience: q7NoExperience,
@@ -257,22 +266,22 @@ export default function ChildCompletePage() {
       </div>
 
       {/* 의견 들려주기 토글 */}
-      <div className="bg-white rounded-3xl border-2 border-sky-100 shadow-sm w-full max-w-sm mb-6 overflow-hidden">
+      <div className="rounded-3xl border-2 border-emerald-500 shadow-lg w-full max-w-sm mb-6 overflow-hidden bg-emerald-500">
         <button
           onClick={() => !surveyDone && setSurveyOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-5 py-4"
+          className="w-full flex items-center justify-between px-6 py-5 text-white"
         >
           <div className="text-left">
-            <p className="font-black text-gray-800 text-lg">
+            <p className="font-black text-white text-2xl">
               {surveyDone ? '의견 제출 완료! 감사해요 😊' : '의견 남기기'}
             </p>
             {!surveyDone && (
-              <p className="text-sm text-gray-400 mt-0.5">2~3분 · 더 좋은 키오스크를 만드는 데 써요</p>
+              <p className="text-base font-semibold text-emerald-50 mt-1">2~3분 · 더 좋은 키오스크를 만드는 데 써요</p>
             )}
           </div>
           {!surveyDone && (
             <span
-              className="text-gray-400 text-lg font-bold transition-transform duration-200"
+              className="text-white text-2xl font-black transition-transform duration-200"
               style={{ transform: surveyOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
             >
               ▾
@@ -281,7 +290,7 @@ export default function ChildCompletePage() {
         </button>
 
         {surveyOpen && !surveyDone && (
-          <div className="px-5 pb-6 border-t border-sky-100 space-y-5 pt-4">
+          <div className="px-5 pb-6 border-t border-emerald-100 space-y-5 pt-4 bg-white">
 
             <div>
               <p className="text-sm font-bold text-gray-800 mb-2">만 나이</p>
@@ -325,7 +334,7 @@ export default function ChildCompletePage() {
                           </label>
                         )}
                         {(!q.hasNoExperience || !q7NoExperience) && (
-                          <RatingRow value={answers[id]?.value} onChange={setAnswer(id)} labels={q.labels} />
+                          <RatingRow value={answers[id]?.value} onChange={setAnswer(id, q.labels)} labels={q.labels} />
                         )}
                       </div>
                     )

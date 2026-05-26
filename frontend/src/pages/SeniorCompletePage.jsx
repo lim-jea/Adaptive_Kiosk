@@ -242,7 +242,7 @@ export default function SeniorCompletePage() {
       {/* 설문 버튼 */}
       <button
         onClick={() => navigate('/survey')}
-        className="w-full max-w-sm py-5 bg-white border-2 border-amber-400 text-amber-600 font-bold text-2xl rounded-2xl transition-colors hover:bg-amber-50 active:scale-95 mb-4"
+        className="w-full max-w-sm py-7 bg-emerald-500 border-2 border-emerald-600 text-white font-black text-3xl rounded-2xl transition-transform shadow-lg hover:bg-emerald-600 active:scale-95 mb-5"
       >
         📝 설문 참여하기
       </button>
