@@ -73,3 +73,6 @@ build/
 
 # ─── Project-specific ───
 backend/uv.lock
+
+
+cloudflared/credentials.json
