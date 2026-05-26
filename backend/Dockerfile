@@ -6,6 +6,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    libxcb1 \
+    libxcb-shm0 \
+    libxcb-xfixes0 \
+    libglib2.0-0 \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 의존성 먼저 설치 (캐시 활용)
