@@ -148,10 +148,14 @@ _origins = (
     else [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
 )
 
+# allow_credentials=True 는 관리자 HttpOnly 쿠키 흐름에 필요.
+# 단, allow_origins=["*"] 와 동시에 사용 불가능 → "*" 일 때만 credentials 비활성.
+_allow_credentials = bool(_origins) and _origins != ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_credentials=False,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

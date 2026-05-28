@@ -9,6 +9,7 @@ import { useVoiceOrder } from '../hooks/useVoiceOrder.js'
 import { useLogger } from '../hooks/useLogger.js'
 import VoiceOverlay from '../components/VoiceOverlay.jsx'
 import RecommendationPanel from '../components/RecommendationPanel.jsx'
+import { shouldShowRecommendation } from '../utils/recommendation'
 
 // 중장년 선호 메뉴 순서
 const MIDDLE_PREFERRED = [
@@ -64,6 +65,7 @@ export default function MiddleKioskPage() {
       option_item_id: option.option_item_id,
     }))
     const optionExtra = (item.options || []).reduce((sum, option) => sum + option.extra_price, 0)
+    const menuMeta = menus.find((m) => m.name === item.menu_name) || null
 
     return {
       cartItemId: item.line_id,
@@ -76,8 +78,10 @@ export default function MiddleKioskPage() {
       fromRecommendation: Boolean(item.from_recommendation),
       selectedOptions,
       optionLabels,
+      menuImageUrl: menuMeta?.image_url || null,
+      menuEmoji: menuMeta?.icon_emoji || '☕',
     }
-  }), [])
+  }), [menus])
 
   const flash = useCallback((key) => {
     setVoiceFlash(key)
@@ -109,6 +113,39 @@ export default function MiddleKioskPage() {
     }
     loadAll()
   }, [])
+
+  // 옵션 편집 진입 (CartReview 또는 카트 패널)
+  const editTriggeredRef = useRef(null)
+  useEffect(() => {
+    if (!state.editCartItemId) {
+      editTriggeredRef.current = null
+      return
+    }
+    if (editTriggeredRef.current === state.editCartItemId) return
+    editTriggeredRef.current = state.editCartItemId
+    const cartItem = state.cart.find((item) => item.cartItemId === state.editCartItemId)
+    if (!cartItem) {
+      dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      return
+    }
+    const editSource = state.editCartSource
+    ;(async () => {
+      try {
+        const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(cartItem.menuName)}`)
+        setOptionMenu({
+          ...detailRes.data,
+          editingItemId: cartItem.cartItemId,
+          editSource,
+          initialSelections: (cartItem.selectedOptions || []).map((o) => o.option_item_id),
+          initialQuantity: cartItem.quantity,
+          fromRecommendation: Boolean(cartItem.fromRecommendation),
+        })
+      } catch (err) {
+        console.error('옵션 편집용 메뉴 로드 실패:', err)
+        dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      }
+    })()
+  }, [state.editCartItemId, state.editCartSource, state.cart, dispatch, ACTIONS])
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -242,9 +279,24 @@ export default function MiddleKioskPage() {
 
   const handleConfirmOption = useCallback(({ selectedOptionIds, optionLabels, quantity, unitPrice }) => {
     const cartItemId = `${optionMenu.name}_${[...selectedOptionIds].sort().join('-')}`
+    const isEditing = Boolean(optionMenu.editingItemId)
+    const newItem = {
+      cartItemId,
+      menuId: optionMenu.id,
+      menuName: optionMenu.name,
+      displayName: optionMenu.name,
+      basePrice: optionMenu.price,
+      unitPrice,
+      quantity,
+      fromRecommendation: Boolean(optionMenu.fromRecommendation),
+      selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
+      optionLabels,
+      menuImageUrl: optionMenu.image_url || null,
+      menuEmoji: optionMenu.icon_emoji || '☕',
+    }
 
     logger.log('cart', 'kiosk', {
-      actionName: 'cart_add',
+      actionName: isEditing ? 'cart_edit_commit' : 'cart_add',
       targetType: 'menu',
       targetId: optionMenu.id,
       targetLabel: optionMenu.name,
@@ -254,25 +306,44 @@ export default function MiddleKioskPage() {
         option_item_ids: selectedOptionIds,
         option_labels: optionLabels,
         from_recommendation: Boolean(optionMenu.fromRecommendation),
+        old_cart_item_id: isEditing ? optionMenu.editingItemId : undefined,
       },
+    })
+    if (isEditing) {
+      dispatch({
+        type: ACTIONS.REPLACE_CART_ITEM,
+        payload: {
+          oldCartItemId: optionMenu.editingItemId,
+          oldMatch: {
+            menuName: optionMenu.name,
+            optionItemIds: optionMenu.initialSelections || [],
+          },
+          newItem,
+        },
+      })
+      setOptionMenu(null)
+      if (optionMenu.editSource !== 'cart_panel') {
+        navigate('/cart-review')
+      }
+      return
+    }
+    dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
+    setOptionMenu(null)
+  }, [optionMenu, logger, dispatch, ACTIONS, navigate])
+
+  const handleEditCartFromPanel = useCallback((item) => {
+    logger.log('cart', 'kiosk', {
+      actionName: 'cart_edit_open',
+      targetType: 'cart_item',
+      targetId: item.cartItemId,
+      targetLabel: item.menuName,
+      payload: { source: 'cart_panel', menu_name: item.menuName, option_item_ids: (item.selectedOptions || []).map((o) => o.option_item_id) },
     })
     dispatch({
-      type: ACTIONS.ADD_TO_CART,
-      payload: {
-        cartItemId,
-        menuId: optionMenu.id,
-        menuName: optionMenu.name,
-        displayName: optionMenu.name,
-        basePrice: optionMenu.price,
-        unitPrice,
-        quantity,
-        fromRecommendation: Boolean(optionMenu.fromRecommendation),
-        selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
-        optionLabels,
-      },
+      type: ACTIONS.SET_EDIT_TARGET,
+      payload: { cartItemId: item.cartItemId, source: 'cart_panel' },
     })
-    setOptionMenu(null)
-  }, [optionMenu, logger, dispatch, ACTIONS])
+  }, [logger, dispatch, ACTIONS])
 
   const handleQtyChange = useCallback((cartItemId, delta) => {
     const item = state.cart.find((i) => i.cartItemId === cartItemId)
@@ -503,7 +574,13 @@ export default function MiddleKioskPage() {
   })
 
   const hasUserProfile = state.gender && (state.ageGroup || state.ageEst)
-  const showSidebar = hasUserProfile
+  // 미성년 등으로 추천 패널이 null 반환 시 wrapper 도 숨겨 오른쪽 빈 공간 방지.
+  const showSidebar = shouldShowRecommendation({
+    ageGroup: state.ageGroup,
+    ageEst: state.ageEst,
+    isChild: false,
+    hasUserProfile,
+  })
 
   const handleRecommendSelect = (menuName, meta = {}) => {
     if (activeCategory !== 'all') setActiveCategory('all')
@@ -606,6 +683,7 @@ export default function MiddleKioskPage() {
                 key={item.cartItemId}
                 item={item}
                 onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                onEditOptions={handleEditCartFromPanel}
               />
             ))}
             <div className="px-4 py-2 flex justify-between text-sm font-bold text-gray-700 bg-white">
@@ -663,8 +741,16 @@ export default function MiddleKioskPage() {
       {optionMenu && (
         <MiddleOptionModal
           menu={optionMenu}
-          previewSelections={optionPreview}
-          onClose={() => { setOptionMenu(null); setOptionPreview([]) }}
+          previewSelections={optionMenu.initialSelections?.length ? optionMenu.initialSelections : optionPreview}
+          initialQuantity={optionMenu.initialQuantity || 1}
+          editing={Boolean(optionMenu.editingItemId)}
+          onClose={() => {
+            if (optionMenu.editingItemId) {
+              dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+            }
+            setOptionMenu(null)
+            setOptionPreview([])
+          }}
           onConfirm={handleConfirmOption}
           onLog={(event) => logger.log(event.eventType, 'kiosk', event)}
         />
@@ -743,14 +829,22 @@ function MiddleMenuCard({ menu, cartCount, onClick }) {
 }
 
 /** 장바구니 행 */
-function MiddleCartRow({ item, onQtyChange }) {
+function MiddleCartRow({ item, onQtyChange, onEditOptions }) {
   const optionLabel = (item.optionLabels || []).join(' · ')
   return (
-    <div className="flex items-center px-4 py-2.5 gap-3 bg-white">
+    <div className="flex items-center px-4 py-2.5 gap-2 bg-white">
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-800 truncate">{item.displayName}</p>
         {optionLabel && <p className="text-xs text-gray-400">{optionLabel}</p>}
       </div>
+      {onEditOptions && (
+        <button
+          onClick={() => onEditOptions(item)}
+          className="flex-shrink-0 px-2 h-7 rounded-full border border-amber-300 text-amber-600 text-xs font-bold hover:bg-amber-50"
+        >
+          옵션
+        </button>
+      )}
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <button
           onClick={() => onQtyChange(-1)}
@@ -774,16 +868,23 @@ function MiddleCartRow({ item, onQtyChange }) {
 }
 
 /** 옵션 선택 모달 — option_groups를 동적으로 렌더링 */
-function MiddleOptionModal({ menu, previewSelections = [], onClose, onConfirm, onLog }) {
+function MiddleOptionModal({ menu, previewSelections = [], initialQuantity = 1, editing = false, onClose, onConfirm, onLog }) {
   const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
+    const preview = previewSelections || []
     for (const g of menu.option_groups || []) {
-      init[g.id] = g.items.filter((i) => i.is_default).map((i) => i.id)
+      const idsInGroup = g.items.map((i) => i.id)
+      const previewInGroup = preview.filter((id) => idsInGroup.includes(id))
+      if (previewInGroup.length > 0) {
+        init[g.id] = g.max_select === 1 ? previewInGroup.slice(-1) : previewInGroup
+      } else {
+        init[g.id] = g.items.filter((i) => i.is_default).map((i) => i.id)
+      }
     }
     return init
   })
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState(initialQuantity)
 
   useEffect(() => {
     if (!previewSelections || previewSelections.length === 0) return
@@ -1021,7 +1122,9 @@ function MiddleOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
             }}
           >
             {isValid
-              ? `장바구니 담기 · ${(unitPrice * quantity).toLocaleString()}원`
+              ? (editing
+                  ? `옵션 변경 완료 · ${(unitPrice * quantity).toLocaleString()}원`
+                  : `장바구니 담기 · ${(unitPrice * quantity).toLocaleString()}원`)
               : '필수 옵션을 선택해주세요'}
           </button>
         </div>

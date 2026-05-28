@@ -3,9 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security import verify_credentials
+from core.session_token import session_token_store
 from crud.kiosk import (
     create_kiosk,
     get_kiosk_by_api_key,
+    get_kiosk_by_id,
     list_kiosks,
     update_kiosk,
 )
@@ -22,17 +24,30 @@ router = APIRouter(prefix="/kiosks", tags=["Kiosk"])
 
 
 async def get_current_kiosk(
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_session_token: str | None = Header(default=None, alias="X-Session-Token"),
     db: AsyncSession = Depends(get_db),
 ):
-    """X-API-Key 헤더로 키오스크를 인증."""
-    kiosk = await get_kiosk_by_api_key(db, x_api_key)
-    if not kiosk or not kiosk.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=make_error("INVALID_API_KEY", "Invalid or inactive API key"),
-        )
-    return kiosk
+    """X-API-Key 헤더(영구 키, /sessions POST 전용) 또는 X-Session-Token(단기 토큰, 세션 생성 후) 으로 키오스크를 인증.
+
+    프런트엔드는 다음 흐름을 권장:
+      1) 첫 요청(/sessions POST): X-API-Key 헤더로 키오스크 인증 → access_token 발급받음
+      2) 이후 요청: X-Session-Token 헤더 사용 (X-API-Key 는 클라이언트 번들 노출 회피)
+    """
+    if x_session_token:
+        record = session_token_store.validate(x_session_token)
+        if record:
+            kiosk = await get_kiosk_by_id(db, record.kiosk_id)
+            if kiosk and kiosk.is_active:
+                return kiosk
+    if x_api_key:
+        kiosk = await get_kiosk_by_api_key(db, x_api_key)
+        if kiosk and kiosk.is_active:
+            return kiosk
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=make_error("INVALID_API_KEY", "Invalid or inactive credentials"),
+    )
 
 
 @router.post(

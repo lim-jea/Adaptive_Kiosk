@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
-import { clearStoredAdminKey, getStoredAdminKey } from '../../utils/adminApi'
+import { adminCheckSession, adminLogout } from '../../utils/adminApi'
 
 const navItems = [
   { to: '/admin', label: '대시보드', end: true },
@@ -13,13 +14,32 @@ const navItems = [
 
 export default function AdminLayout() {
   const navigate = useNavigate()
+  // HttpOnly 쿠키 기반이라 JS 가 직접 토큰을 볼 수 없으므로 서버에 세션 유효성을 묻는다.
+  // 'checking' | 'ok' | 'unauthorized'
+  const [authState, setAuthState] = useState('checking')
 
-  if (!getStoredAdminKey()) {
+  useEffect(() => {
+    let cancelled = false
+    adminCheckSession().then((ok) => {
+      if (cancelled) return
+      setAuthState(ok ? 'ok' : 'unauthorized')
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  if (authState === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500">
+        세션 확인 중...
+      </div>
+    )
+  }
+  if (authState === 'unauthorized') {
     return <Navigate to="/admin/login" replace />
   }
 
-  const logout = () => {
-    clearStoredAdminKey()
+  const logout = async () => {
+    await adminLogout()
     navigate('/admin/login', { replace: true })
   }
 

@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { buildOrderPayload } from '../utils/orderPayload'
+import { splitVAT } from '../utils/price'
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 const PAYMENT_METHODS = [
   {
@@ -95,6 +99,7 @@ export default function MiddlePaymentPage() {
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
+  const vat = splitVAT(totalPrice)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -128,8 +133,11 @@ export default function MiddlePaymentPage() {
       payload: {
         total_price: discountedPrice,
         original_price: totalPrice,
+        discount_amount: discount ? totalPrice - discountedPrice : 0,
         total_count: totalCount,
         discount_rate: discount || 0,
+        discount_type: discount ? (method.id === 'telecom' ? `telecom_${selectedProvider?.id || ''}` : method.id) : null,
+        order_type: state.orderType,
         used_recommendation: state.cart.some((item) => item.fromRecommendation),
       },
     })
@@ -139,7 +147,15 @@ export default function MiddlePaymentPage() {
     let orderUuid = null
     const orderStartedAt = performance.now()
     try {
-      const res = await api.post('/api/v1/orders', { session_uuid: state.sessionUuid })
+      const discountAmountForPayload = discount ? totalPrice - discountedPrice : 0
+      const discountTypeForPayload = discount
+        ? (method.id === 'telecom' ? `telecom_${selectedProvider?.id || ''}` : method.id)
+        : null
+      const res = await api.post('/api/v1/orders', buildOrderPayload(state.sessionUuid, state.cart, {
+        orderType: state.orderType,
+        discountType: discountTypeForPayload,
+        discountAmount: discountAmountForPayload,
+      }))
       orderUuid = res.data.order_uuid
       logClientTiming('payment.createOrder', performance.now() - orderStartedAt, { order_uuid: orderUuid })
     } catch (err) {
@@ -243,6 +259,13 @@ export default function MiddlePaymentPage() {
 
       <div className="flex-1 px-4 py-5 space-y-4 pb-8">
 
+        {DEMO_MODE && (
+          <div className="rounded-xl px-4 py-2 text-xs font-bold text-center"
+            style={{ background: '#FEF9C3', border: '1px solid #FEF08A', color: '#854D0E' }}>
+            🧪 테스트 결제 모드 · 실제 결제는 발생하지 않습니다
+          </div>
+        )}
+
         {/* 주문 내역 */}
         <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: '#fff', border: '1px solid #fde8d8' }}>
           <div className="px-4 py-3 border-b" style={{ background: '#fff8f3', borderColor: '#fde8d8' }}>
@@ -267,10 +290,20 @@ export default function MiddlePaymentPage() {
               )
             })}
           </div>
-          <div className="px-4 py-3 flex justify-between items-center"
+          <div className="px-4 py-3 space-y-1.5"
             style={{ background: '#fff3ec', borderTop: '1px solid #fde8d8' }}>
-            <span className="font-bold" style={{ color: '#6b7280' }}>총 {totalCount}개</span>
-            <span className="text-xl font-black" style={{ color: '#f4a261' }}>{totalPrice.toLocaleString()}원</span>
+            <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
+              <span>공급가액</span>
+              <span>{vat.net.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
+              <span>부가세 (10%)</span>
+              <span>{vat.tax.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center pt-1.5" style={{ borderTop: '1px solid #fde8d8' }}>
+              <span className="font-bold" style={{ color: '#6b7280' }}>총 {totalCount}개</span>
+              <span className="text-xl font-black" style={{ color: '#f4a261' }}>{totalPrice.toLocaleString()}원</span>
+            </div>
           </div>
         </div>
 

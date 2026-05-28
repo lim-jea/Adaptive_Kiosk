@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { setSessionToken } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import ConsentModal from '../components/ConsentModal'
 
 const AGE_GROUPS = [
   { label: '어린이', emoji: '🧒', range: '0 ~ 12세',  ageGroup: '어린이', ageEst: 6  },
@@ -20,6 +21,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(false)
   const [loadingGroup, setLoadingGroup] = useState(null)
   const [error, setError] = useState(null)
+  const [consentOpen, setConsentOpen] = useState(false)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -31,7 +33,9 @@ export default function LandingPage() {
 
   const createSession = async () => {
     const sessionRes = await api.post('/api/v1/sessions')
-    const { session_uuid } = sessionRes.data
+    const { session_uuid, access_token, expires_in } = sessionRes.data
+    // 백엔드가 발급한 단기 토큰 저장 — 이후 모든 호출이 X-Session-Token 사용
+    setSessionToken(access_token, expires_in)
     dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
     sessionStorage.setItem('session_uuid', session_uuid)
     logger.log('session', 'landing', { actionName: 'session_start', source: 'system', payload: { session_uuid } })
@@ -80,12 +84,26 @@ export default function LandingPage() {
     }
   }
 
-  const handleFaceRecognition = async () => {
+  const handleFaceRecognition = () => {
+    if (loading) return
+    setError(null)
+    logger.log('click', 'landing', { actionName: 'face_recognition_click', targetType: 'button', targetLabel: 'camera' })
+    logger.log('consent', 'landing', { actionName: 'consent_view', targetType: 'modal', targetLabel: 'face_consent' })
+    setConsentOpen(true)
+  }
+
+  const handleConsentAccept = async (consentAt) => {
+    setConsentOpen(false)
     if (loading) return
     setLoading(true)
-    setError(null)
     try {
-      logger.log('click', 'landing', { actionName: 'face_recognition_click', targetType: 'button', targetLabel: 'camera' })
+      logger.log('consent', 'landing', {
+        actionName: 'consent_accepted',
+        targetType: 'modal',
+        targetLabel: 'face_consent',
+        payload: { consent_at: consentAt, scope: 'face_analysis' },
+      })
+      sessionStorage.setItem('face_consent_at', consentAt)
       await createSession()
       navigate('/camera')
     } catch (err) {
@@ -96,6 +114,16 @@ export default function LandingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleConsentDecline = () => {
+    setConsentOpen(false)
+    logger.log('consent', 'landing', {
+      actionName: 'consent_declined',
+      targetType: 'modal',
+      targetLabel: 'face_consent',
+      payload: { scope: 'face_analysis' },
+    })
   }
 
   return (
@@ -204,6 +232,12 @@ export default function LandingPage() {
       <div className="px-6 pb-6 text-center">
         <p className="text-xs text-amber-900/50">© BREW AI CAFÉ · 개인정보를 저장하지 않습니다</p>
       </div>
+
+      <ConsentModal
+        open={consentOpen}
+        onAccept={handleConsentAccept}
+        onDecline={handleConsentDecline}
+      />
     </div>
   )
 }

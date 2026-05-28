@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { formatOrderDisplayNo } from '../utils/orderDisplay'
+import { splitVAT } from '../utils/price'
 
 // ── 설문 상수 ──────────────────────────────────────────────────────────────
 const RATING5 = [
@@ -123,9 +125,10 @@ export default function ChildCompletePage() {
   const { state, dispatch, ACTIONS } = useSession()
   const logger = useLogger(state.sessionUuid)
 
-  const { paymentMethod, totalPrice, totalCount } = location.state || {}
+  const { paymentMethod, totalPrice, totalCount, orderUuid } = location.state || {}
+  const vat = splitVAT(totalPrice)
 
-  const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
+  const [orderNum] = useState(() => formatOrderDisplayNo(orderUuid) || String(Math.floor(Math.random() * 9000 + 1000)))
   const [surveyOpen, setSurveyOpen] = useState(false)
   const [surveyDone, setSurveyDone] = useState(false)
   const [surveySubmitting, setSurveySubmitting] = useState(false)
@@ -247,9 +250,19 @@ export default function ChildCompletePage() {
             )
           })}
         </div>
-        <div className="border-t pt-3 mt-2 flex justify-between items-center">
-          <span className="text-lg font-bold text-gray-600">총 {totalCount}개</span>
-          <span className="text-2xl font-black text-sky-600">{totalPrice?.toLocaleString()}원</span>
+        <div className="border-t pt-3 mt-2 space-y-1">
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>공급가액</span>
+            <span>{vat.net.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>부가세 (10%)</span>
+            <span>{vat.tax.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-lg font-bold text-gray-600">총 {totalCount}개</span>
+            <span className="text-2xl font-black text-sky-600">{totalPrice?.toLocaleString()}원</span>
+          </div>
         </div>
       </div>
 

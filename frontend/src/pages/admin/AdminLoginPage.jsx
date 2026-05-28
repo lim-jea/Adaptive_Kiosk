@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import adminApi, { clearStoredAdminKey, setStoredAdminKey } from '../../utils/adminApi'
+import { adminLogin } from '../../utils/adminApi'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
@@ -13,12 +13,10 @@ export default function AdminLoginPage() {
     setError('')
     setLoading(true)
     try {
-      setStoredAdminKey(apiKey.trim())
-      // 가벼운 보호 엔드포인트로 키 검증 (분석 쿼리보다 비용이 낮음).
-      await adminApi.get('/api/v1/kiosks', { params: { limit: 1 } })
+      // 서버가 HttpOnly 쿠키로 세션을 설정. JS 는 토큰을 직접 보관하지 않는다.
+      await adminLogin({ apiKey: apiKey.trim() })
       navigate('/admin', { replace: true })
     } catch {
-      clearStoredAdminKey()
       setError('관리자 API 키가 올바르지 않습니다.')
     } finally {
       setLoading(false)

@@ -49,10 +49,27 @@ async def initialize_connection_pool():
     try:
         # SSL: 클라우드 DB (Aiven 등) 자동 감지
         connect_args = {}
-        if "aivencloud" in settings.DATABASE_CONN or "tidbcloud" in settings.DATABASE_CONN or "ssl" in settings.DATABASE_CONN.lower():
+        is_cloud_db = (
+            "aivencloud" in settings.DATABASE_CONN
+            or "tidbcloud" in settings.DATABASE_CONN
+            or "ssl" in settings.DATABASE_CONN.lower()
+        )
+        if is_cloud_db:
             ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
+            mode = (settings.DB_SSL_MODE or "none").lower()
+            if mode == "verify":
+                # 운영 권장: 클라우드 DB 제공자가 발급한 CA 인증서로 검증
+                ca_path = settings.DB_SSL_CA_PATH.strip()
+                if ca_path:
+                    ssl_ctx.load_verify_locations(ca_path)
+                ssl_ctx.check_hostname = True
+                ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+                logger.info("DB SSL: CERT_REQUIRED (verify) — CA=%s", ca_path or "system")
+            else:
+                # 개발/임시: 검증 비활성. MITM 위험 — 운영 환경에서는 DB_SSL_MODE=verify 권장.
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+                logger.warning("DB SSL: CERT_NONE — 개발용 설정. 운영 환경은 DB_SSL_MODE=verify 권장")
             connect_args["ssl"] = ssl_ctx
 
         _engine = create_async_engine(

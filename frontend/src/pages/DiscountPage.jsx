@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { getKioskRoute, getPaymentRoute } from '../utils/routes'
 
 const DISCOUNT_OPTIONS = [
   {
@@ -58,9 +59,9 @@ export default function DiscountPage() {
 
   useEffect(() => {
     if (state.cart.length === 0) {
-      navigate('/kiosk', { replace: true })
+      navigate(getKioskRoute(state.ageGroup), { replace: true })
     }
-  }, [state.cart.length, navigate])
+  }, [state.ageGroup, state.cart.length, navigate])
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -78,7 +79,7 @@ export default function DiscountPage() {
     setScanStatus('scanning')
 
     setTimeout(() => {
-      navigate('/payment', {
+      navigate(getPaymentRoute(state.ageGroup), {
         state: {
           discountType: discount.id,
           discountLabel: discount.label,
@@ -94,7 +95,7 @@ export default function DiscountPage() {
       targetType: 'button',
       targetLabel: 'no_discount',
     })
-    navigate('/payment', { state: { discountType: null, discountLabel: null } })
+    navigate(getPaymentRoute(state.ageGroup), { state: { discountType: null, discountLabel: null } })
   }
 
   // 바코드 인식 중 오버레이

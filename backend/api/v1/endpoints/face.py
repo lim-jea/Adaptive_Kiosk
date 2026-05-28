@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from core.rate_limit import make_debounce
+from core.session_auth import assert_token_matches_session
 from crud.session import get_session_by_uuid, update_session
 from crud.vision import create_vision_event
 from services.face_service import face_service
@@ -12,12 +16,19 @@ from schemas import FaceAnalyzeRequest, FaceAnalyzeResponse, VisionEventCreate, 
 router = APIRouter(prefix="/face", tags=["Face"])
 
 
-@router.post("/analyze", response_model=FaceAnalyzeResponse)
+@router.post(
+    "/analyze",
+    response_model=FaceAnalyzeResponse,
+    dependencies=[Depends(make_debounce("face/analyze", min_interval=1.0, daily_cap=20))],
+)
 async def analyze_face(
     req: FaceAnalyzeRequest,
     db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
 ):
     """카메라 프레임 분석 + 세션 업데이트 + vision_event 저장."""
+    # 0. X-Session-Token 이 body.session_uuid 와 매칭되는지 검증
+    assert_token_matches_session(req.session_uuid, x_session_token)
     # 1. 세션 검증
     session = await get_session_by_uuid(db, req.session_uuid)
     if not session:

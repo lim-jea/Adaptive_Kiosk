@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from model import Menu, Order, OrderItem
 from crud.session import get_session_by_uuid, get_session_by_id
 from crud import order as order_crud
+from crud.cart import get_cart_by_session_id
 from services.cart_service import calculate_unit_price, get_cart_items_for_checkout
 from services.recommendation_service import append_runtime_order_records, get_recommendation_engine
 from schemas import (
@@ -173,7 +174,20 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
             )
         )
 
-    order.total_price = total_price
+    # 할인 적용: discount_amount 만큼 차감하여 final_price 로 저장.
+    # 결과적으로 orders.total_price 가 매출 분석에서 정확한 결제액으로 집계된다.
+    # gross_total 자체는 ActivityLog payload (payment_start) 에 이미 기록됨.
+    gross_total = total_price
+    discount_amount = max(0, int(data.discount_amount or 0))
+    if discount_amount > gross_total:
+        discount_amount = gross_total
+    final_price = gross_total - discount_amount
+
+    order.total_price = final_price
+    # 회귀 버그 수정: 프런트가 items 를 직접 전송하는 경우에도(cart=None) 서버 cart 를 마감 처리.
+    # 그렇지 않으면 결제 후 재진입/새로고침 시 기존 장바구니가 살아 남는다.
+    if cart is None:
+        cart = await get_cart_by_session_id(db, session.id)
     if cart is not None:
         cart.status = "checked_out"
     await db.commit()
@@ -187,7 +201,7 @@ async def create_order(db: AsyncSession, data: OrderCreateRequest) -> OrderRespo
         order_uuid=order.order_uuid,
         session_uuid=data.session_uuid,
         created_at=order.created_at,
-        total_price=total_price,
+        total_price=final_price,
         used_recommendation=order.used_recommendation,
         status=order.status,
         items=response_items,

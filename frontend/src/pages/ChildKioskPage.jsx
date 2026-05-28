@@ -32,12 +32,14 @@ export default function ChildKioskPage() {
     }))
   ), [])
 
+  // 서버 cart 응답에는 image/emoji 가 없음 — 현재 로드된 menus 에서 조회해 복원.
   const mapServerCartToLocal = useCallback((items = []) => items.map((item) => {
     const optionLabels = (item.options || []).map((option) => option.option_name)
     const selectedOptions = (item.options || []).map((option) => ({
       option_item_id: option.option_item_id,
     }))
     const optionExtra = (item.options || []).reduce((sum, option) => sum + option.extra_price, 0)
+    const menuMeta = menus.find((m) => m.name === item.menu_name) || null
 
     return {
       cartItemId: item.line_id,
@@ -50,10 +52,10 @@ export default function ChildKioskPage() {
       fromRecommendation: Boolean(item.from_recommendation),
       selectedOptions,
       optionLabels,
-      menuImageUrl: item.image_url || null,
-      menuEmoji: item.icon_emoji || '🍽️',
+      menuImageUrl: menuMeta?.image_url || null,
+      menuEmoji: menuMeta?.icon_emoji || '🍽️',
     }
-  }), [])
+  }), [menus])
 
   useEffect(() => {
     const loadAll = async () => {
@@ -82,6 +84,39 @@ export default function ChildKioskPage() {
 
     loadAll()
   }, [])
+
+  // 옵션 편집 진입 (CartReview 또는 카트 패널)
+  const editTriggeredRef = useRef(null)
+  useEffect(() => {
+    if (!state.editCartItemId) {
+      editTriggeredRef.current = null
+      return
+    }
+    if (editTriggeredRef.current === state.editCartItemId) return
+    editTriggeredRef.current = state.editCartItemId
+    const cartItem = state.cart.find((item) => item.cartItemId === state.editCartItemId)
+    if (!cartItem) {
+      dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      return
+    }
+    const editSource = state.editCartSource
+    ;(async () => {
+      try {
+        const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(cartItem.menuName)}`)
+        setOptionMenu({
+          ...detailRes.data,
+          editingItemId: cartItem.cartItemId,
+          editSource,
+          initialSelections: (cartItem.selectedOptions || []).map((o) => o.option_item_id),
+          initialQuantity: cartItem.quantity,
+          fromRecommendation: Boolean(cartItem.fromRecommendation),
+        })
+      } catch (err) {
+        console.error('옵션 편집용 메뉴 로드 실패:', err)
+        dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      }
+    })()
+  }, [state.editCartItemId, state.editCartSource, state.cart, dispatch, ACTIONS])
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -229,9 +264,24 @@ export default function ChildKioskPage() {
     if (!optionMenu) return
 
     const cartItemId = `${optionMenu.name}_${normalizeOptionIds(selectedOptionIds).join('-')}`
+    const isEditing = Boolean(optionMenu.editingItemId)
+    const newItem = {
+      cartItemId,
+      menuId: optionMenu.id,
+      menuName: optionMenu.name,
+      displayName: optionMenu.name,
+      basePrice: optionMenu.price,
+      unitPrice,
+      quantity,
+      fromRecommendation: Boolean(optionMenu.fromRecommendation),
+      selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
+      optionLabels,
+      menuImageUrl: optionMenu.image_url || null,
+      menuEmoji: optionMenu.icon_emoji || '🍽️',
+    }
 
     logger.log('cart', 'child_kiosk', {
-      actionName: 'cart_add',
+      actionName: isEditing ? 'cart_edit_commit' : 'cart_add',
       targetType: 'menu',
       targetId: optionMenu.id,
       targetLabel: optionMenu.name,
@@ -239,30 +289,48 @@ export default function ChildKioskPage() {
         quantity,
         option_item_ids: selectedOptionIds,
         option_labels: optionLabels,
+        old_cart_item_id: isEditing ? optionMenu.editingItemId : undefined,
       },
     })
 
-    dispatch({
-      type: ACTIONS.ADD_TO_CART,
-      payload: {
-        cartItemId,
-        menuId: optionMenu.id,
-        menuName: optionMenu.name,
-        displayName: optionMenu.name,
-        basePrice: optionMenu.price,
-        unitPrice,
-        quantity,
-        fromRecommendation: false,
-        selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
-        optionLabels,
-        menuImageUrl: optionMenu.image_url || null,
-        menuEmoji: optionMenu.icon_emoji || '🍽️',
-      },
-    })
+    if (isEditing) {
+      dispatch({
+        type: ACTIONS.REPLACE_CART_ITEM,
+        payload: {
+          oldCartItemId: optionMenu.editingItemId,
+          oldMatch: {
+            menuName: optionMenu.name,
+            optionItemIds: optionMenu.initialSelections || [],
+          },
+          newItem,
+        },
+      })
+      setOptionMenu(null)
+      if (optionMenu.editSource !== 'cart_panel') {
+        navigate('/cart-review')
+      }
+      return
+    }
+
+    dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
 
     setOptionMenu(null)
     setCartOpen(true)
-  }, [optionMenu, logger, dispatch, ACTIONS])
+  }, [optionMenu, logger, dispatch, ACTIONS, navigate])
+
+  const handleEditCartFromPanel = useCallback((item) => {
+    logger.log('cart', 'child_kiosk', {
+      actionName: 'cart_edit_open',
+      targetType: 'cart_item',
+      targetId: item.cartItemId,
+      targetLabel: item.menuName,
+      payload: { source: 'cart_panel', menu_name: item.menuName, option_item_ids: (item.selectedOptions || []).map((o) => o.option_item_id) },
+    })
+    dispatch({
+      type: ACTIONS.SET_EDIT_TARGET,
+      payload: { cartItemId: item.cartItemId, source: 'cart_panel' },
+    })
+  }, [logger, dispatch, ACTIONS])
 
   const handleQtyChange = useCallback((cartItemId, delta) => {
     const item = state.cart.find((cartItem) => cartItem.cartItemId === cartItemId)
@@ -382,6 +450,7 @@ export default function ChildKioskPage() {
                 key={item.cartItemId}
                 item={item}
                 onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                onEditOptions={handleEditCartFromPanel}
               />
             ))}
 
@@ -428,7 +497,15 @@ export default function ChildKioskPage() {
       {optionMenu && (
         <ChildOptionModal
           menu={optionMenu}
-          onClose={() => setOptionMenu(null)}
+          initialSelections={optionMenu.initialSelections || []}
+          initialQuantity={optionMenu.initialQuantity || 1}
+          editing={Boolean(optionMenu.editingItemId)}
+          onClose={() => {
+            if (optionMenu.editingItemId) {
+              dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+            }
+            setOptionMenu(null)
+          }}
           onConfirm={handleConfirmOption}
           onLog={(event) => logger.log(event.eventType, 'child_kiosk', event)}
         />
@@ -512,15 +589,24 @@ function ChildMenuCard({ menu, cartCount, onClick }) {
   )
 }
 
-function ChildCartRow({ item, onQtyChange }) {
+function ChildCartRow({ item, onQtyChange, onEditOptions }) {
   const optionLabel = (item.optionLabels || []).join(' · ')
 
   return (
-    <div className="flex items-center px-4 py-3 gap-3 bg-white">
+    <div className="flex items-center px-4 py-3 gap-2 bg-white">
       <div className="flex-1 min-w-0">
         <p className="text-base font-black text-gray-800 truncate">{item.displayName}</p>
         {optionLabel && <p className="text-sm text-gray-400 truncate">{optionLabel}</p>}
       </div>
+
+      {onEditOptions && (
+        <button
+          onClick={() => onEditOptions(item)}
+          className="flex-shrink-0 px-2.5 h-8 rounded-full border-2 border-sky-300 text-sky-600 text-xs font-black hover:bg-sky-50"
+        >
+          옵션
+        </button>
+      )}
 
       <div className="flex items-center gap-2">
         <button
@@ -547,21 +633,28 @@ function ChildCartRow({ item, onQtyChange }) {
   )
 }
 
-function ChildOptionModal({ menu, onClose, onConfirm, onLog }) {
+function ChildOptionModal({ menu, initialSelections = [], initialQuantity = 1, editing = false, onClose, onConfirm, onLog }) {
   const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
+    const preview = initialSelections || []
 
     for (const group of menu.option_groups || []) {
-      init[group.id] = group.items
-        .filter((item) => item.is_default)
-        .map((item) => item.id)
+      const idsInGroup = group.items.map((i) => i.id)
+      const previewInGroup = preview.filter((id) => idsInGroup.includes(id))
+      if (previewInGroup.length > 0) {
+        init[group.id] = group.max_select === 1 ? previewInGroup.slice(-1) : previewInGroup
+      } else {
+        init[group.id] = group.items
+          .filter((item) => item.is_default)
+          .map((item) => item.id)
+      }
     }
 
     return init
   })
 
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState(initialQuantity)
 
   const extraSum = useMemo(() => {
     let sum = 0
@@ -778,7 +871,9 @@ function ChildOptionModal({ menu, onClose, onConfirm, onLog }) {
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
           >
             {isValid
-              ? `담기 · ${(unitPrice * quantity).toLocaleString()}원`
+              ? (editing
+                  ? `옵션 변경 완료 · ${(unitPrice * quantity).toLocaleString()}원`
+                  : `담기 · ${(unitPrice * quantity).toLocaleString()}원`)
               : '필수 옵션을 골라주세요'}
           </button>
         </div>

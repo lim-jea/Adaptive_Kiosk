@@ -718,6 +718,32 @@ _ACTION_LABELS = {
     "voice_action_failed": "음성 동작 실패",
     "transcript_submitted": "음성 발화 제출",
     "response_received": "음성 응답 수신",
+    # 동의 화면
+    "consent_view": "동의 모달 표시",
+    "consent_accepted": "얼굴 분석 동의",
+    "consent_declined": "동의 거부",
+    # 장바구니 옵션 편집
+    "cart_edit_open": "옵션 변경 시작",
+    "cart_edit_commit": "옵션 변경 완료",
+    # 결제 재시도 / idle
+    "payment_retry_exhausted": "결제 재시도 한도 초과",
+    "idle_timeout": "장시간 무동작 종료",
+    "idle_warning_shown": "무동작 경고 표시",
+    # 주차/영수증/직원호출
+    "parking_register": "주차 등록",
+    "stamp_register": "스탬프 적립",
+    "receipt_open": "영수증 확인",
+    "call_staff": "직원 호출",
+    # 할인
+    "discount_select": "할인 선택",
+    "skip_discount": "할인 없이 진행",
+    # 매장/포장
+    "order_type_select": "매장/포장 선택",
+    # 홈
+    "go_home": "처음으로",
+    "back_home": "처음으로 (뒤로)",
+    "add_more_items": "추가 주문",
+    "proceed_to_discount": "할인으로 진행",
 }
 
 

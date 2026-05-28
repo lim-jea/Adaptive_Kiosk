@@ -105,6 +105,14 @@ class SessionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SessionCreateResponse(SessionResponse):
+    """세션 생성 시에만 추가로 단기 access_token 을 반환.
+    프런트엔드는 이후 호출 시 X-Session-Token 헤더에 사용.
+    """
+    access_token: Optional[str] = None
+    expires_in: Optional[int] = None  # 초 단위 유효 시간
+
+
 # ============================================================================
 # Menu / Option / Order
 # ============================================================================
@@ -293,6 +301,21 @@ class OrderCreateRequest(BaseModel):
         description="생략 시 서버에 저장된 cart를 기준으로 주문 생성",
     )
     used_recommendation: Optional[bool] = Field(default=None)
+    # ↓ 매장/포장 및 할인 메타. 컬럼 추가 없이 ActivityLog payload 및 total_price 조정으로만 활용.
+    order_type: Optional[Literal["dine_in", "takeout"]] = Field(
+        default=None,
+        description="매장(dine_in) / 포장(takeout). orders.total_price 산정에는 영향 없음 (분석용 메타)",
+    )
+    discount_type: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="할인 유형 식별자(예: employee, skt, lg, telecom_skt). 단순 메타.",
+    )
+    discount_amount: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="할인 차감 금액(원). orders.total_price 에서 차감되어 저장된다.",
+    )
 
 
 class OrderListRequest(BaseModel):

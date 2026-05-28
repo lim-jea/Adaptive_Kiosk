@@ -15,13 +15,14 @@ GET /api/v1/survey/codebook
 """
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from core.security import verify_credentials
+from core.session_auth import assert_token_matches_session
 from crud.survey import (
     get_response_summary,
     get_session_internal_id,
@@ -72,8 +73,10 @@ async def get_codebook():
 async def upsert_survey_response(
     req: SurveyResponseUpsertRequest,
     db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
 ):
     """세션당 1행 idempotent upsert. 종결 상태로 진입하면 잠김."""
+    assert_token_matches_session(req.session_uuid, x_session_token)
     session_internal_id = await get_session_internal_id(db, req.session_uuid)
     if session_internal_id is None:
         raise HTTPException(

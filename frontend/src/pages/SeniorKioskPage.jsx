@@ -59,6 +59,7 @@ export default function SeniorKioskPage() {
       option_item_id: option.option_item_id,
     }))
     const optionExtra = (item.options || []).reduce((sum, option) => sum + option.extra_price, 0)
+    const menuMeta = menus.find((m) => m.name === item.menu_name) || null
 
     return {
       cartItemId: item.line_id,
@@ -71,8 +72,10 @@ export default function SeniorKioskPage() {
       fromRecommendation: Boolean(item.from_recommendation),
       selectedOptions,
       optionLabels,
+      menuImageUrl: menuMeta?.image_url || null,
+      menuEmoji: menuMeta?.icon_emoji || '🍽️',
     }
-  }), [])
+  }), [menus])
 
   const flash = useCallback((key) => {
     setVoiceFlash(key)
@@ -104,6 +107,39 @@ export default function SeniorKioskPage() {
     }
     loadAll()
   }, [])
+
+  // 옵션 편집 진입 (CartReview 또는 카트 패널에서 SET_EDIT_TARGET)
+  const editTriggeredRef = useRef(null)
+  useEffect(() => {
+    if (!state.editCartItemId) {
+      editTriggeredRef.current = null
+      return
+    }
+    if (editTriggeredRef.current === state.editCartItemId) return
+    editTriggeredRef.current = state.editCartItemId
+    const cartItem = state.cart.find((item) => item.cartItemId === state.editCartItemId)
+    if (!cartItem) {
+      dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      return
+    }
+    const editSource = state.editCartSource
+    ;(async () => {
+      try {
+        const detailRes = await api.get(`/api/v1/menus/${encodeURIComponent(cartItem.menuName)}`)
+        setOptionMenu({
+          ...detailRes.data,
+          editingItemId: cartItem.cartItemId,
+          editSource,
+          initialSelections: (cartItem.selectedOptions || []).map((o) => o.option_item_id),
+          initialQuantity: cartItem.quantity,
+          fromRecommendation: Boolean(cartItem.fromRecommendation),
+        })
+      } catch (err) {
+        console.error('옵션 편집용 메뉴 로드 실패:', err)
+        dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+      }
+    })()
+  }, [state.editCartItemId, state.editCartSource, state.cart, dispatch, ACTIONS])
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -232,9 +268,24 @@ export default function SeniorKioskPage() {
     const cartItemId = `${optionMenu.name}_${[...selectedOptionIds].sort().join('-')}`
     const menuName = optionMenu.name
     const qty = quantity
+    const isEditing = Boolean(optionMenu.editingItemId)
+    const newItem = {
+      cartItemId,
+      menuId: optionMenu.id,
+      menuName: optionMenu.name,
+      displayName: optionMenu.name,
+      basePrice: optionMenu.price,
+      unitPrice,
+      quantity,
+      fromRecommendation: Boolean(optionMenu.fromRecommendation),
+      selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
+      optionLabels,
+      menuImageUrl: optionMenu.image_url || null,
+      menuEmoji: optionMenu.icon_emoji || '🍽️',
+    }
 
     logger.log('cart', 'kiosk', {
-      actionName: 'cart_add',
+      actionName: isEditing ? 'cart_edit_commit' : 'cart_add',
       targetType: 'menu',
       targetId: optionMenu.id,
       targetLabel: optionMenu.name,
@@ -244,25 +295,28 @@ export default function SeniorKioskPage() {
         option_item_ids: selectedOptionIds,
         option_labels: optionLabels,
         from_recommendation: Boolean(optionMenu.fromRecommendation),
+        old_cart_item_id: isEditing ? optionMenu.editingItemId : undefined,
       },
     })
-    dispatch({
-      type: ACTIONS.ADD_TO_CART,
-      payload: {
-        cartItemId,
-        menuId: optionMenu.id,
-        menuName: optionMenu.name,
-        displayName: optionMenu.name,
-        basePrice: optionMenu.price,
-        unitPrice,
-        quantity,
-        fromRecommendation: Boolean(optionMenu.fromRecommendation),
-        selectedOptions: selectedOptionIds.map((id) => ({ option_item_id: id })),
-        optionLabels,
-        menuImageUrl: optionMenu.image_url || null,
-        menuEmoji: optionMenu.icon_emoji || '🍽️',
-      },
-    })
+    if (isEditing) {
+      dispatch({
+        type: ACTIONS.REPLACE_CART_ITEM,
+        payload: {
+          oldCartItemId: optionMenu.editingItemId,
+          oldMatch: {
+            menuName: optionMenu.name,
+            optionItemIds: optionMenu.initialSelections || [],
+          },
+          newItem,
+        },
+      })
+      setOptionMenu(null)
+      if (optionMenu.editSource !== 'cart_panel') {
+        navigate('/cart-review')
+      }
+      return
+    }
+    dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
     setOptionMenu(null)
 
 
@@ -277,9 +331,22 @@ export default function SeniorKioskPage() {
     if (!vStatus || vStatus === 'idle' || vStatus === 'ended') {
       tts.speak(`${menuName} ${qty}개 담겼습니다`)
     }
-  }, [optionMenu, logger, dispatch, ACTIONS, tts])
+  }, [optionMenu, logger, dispatch, ACTIONS, tts, navigate])
 
-  
+  const handleEditCartFromPanel = useCallback((item) => {
+    logger.log('cart', 'kiosk', {
+      actionName: 'cart_edit_open',
+      targetType: 'cart_item',
+      targetId: item.cartItemId,
+      targetLabel: item.menuName,
+      payload: { source: 'cart_panel', menu_name: item.menuName, option_item_ids: (item.selectedOptions || []).map((o) => o.option_item_id) },
+    })
+    dispatch({
+      type: ACTIONS.SET_EDIT_TARGET,
+      payload: { cartItemId: item.cartItemId, source: 'cart_panel' },
+    })
+  }, [logger, dispatch, ACTIONS])
+
   const handleQtyChange = useCallback((cartItemId, delta) => {
     const item = state.cart.find((i) => i.cartItemId === cartItemId)
     if (!item) return
@@ -361,7 +428,7 @@ export default function SeniorKioskPage() {
           setCartOpen(true)
         } else if (action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
-          if (cartRef.current.length > 0) navigate('/payment')
+          if (cartRef.current.length > 0) navigate('/seniorpayment')
           else console.warn('[voice] cart empty, payment navigation skipped')
         }
         break
@@ -484,7 +551,7 @@ export default function SeniorKioskPage() {
       case 'place_order': {
         setOptionMenu(null)
         setOptionPreview([])
-        if (cartRef.current.length > 0) navigate('/payment')
+        if (cartRef.current.length > 0) navigate('/seniorpayment')
         break
       }
       case 'scroll': {
@@ -591,6 +658,7 @@ export default function SeniorKioskPage() {
                     key={item.cartItemId}
                     item={item}
                     onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                    onEditOptions={handleEditCartFromPanel}
                     onRemove={() => dispatch({
                       type: ACTIONS.REMOVE_FROM_CART,
                       payload: { cartItemId: item.cartItemId },
@@ -634,8 +702,16 @@ export default function SeniorKioskPage() {
       {optionMenu && (
         <SeniorOptionModal
           menu={optionMenu}
-          previewSelections={optionPreview}
-          onClose={() => { setOptionMenu(null); setOptionPreview([]) }}
+          previewSelections={optionMenu.initialSelections?.length ? optionMenu.initialSelections : optionPreview}
+          initialQuantity={optionMenu.initialQuantity || 1}
+          editing={Boolean(optionMenu.editingItemId)}
+          onClose={() => {
+            if (optionMenu.editingItemId) {
+              dispatch({ type: ACTIONS.SET_EDIT_TARGET, payload: { cartItemId: null } })
+            }
+            setOptionMenu(null)
+            setOptionPreview([])
+          }}
           onConfirm={handleConfirmOption}
           onLog={(event) => logger.log(event.eventType, 'kiosk', event)}
         />
@@ -707,11 +783,11 @@ function MenuCard({ menu, cartCount, onClick }) {
 }
 
 /** 장바구니 카드 */
-function SeniorCartCard({ item, onQtyChange, onRemove }) {
+function SeniorCartCard({ item, onQtyChange, onRemove, onEditOptions }) {
   return (
     <div
       className="flex flex-col items-center bg-white rounded-3xl border-2 border-gray-200 p-3 gap-2"
-      style={{ width: '110px', flexShrink: 0 }}
+      style={{ width: '120px', flexShrink: 0 }}
     >
       <button
         onClick={onRemove}
@@ -754,21 +830,36 @@ function SeniorCartCard({ item, onQtyChange, onRemove }) {
           +
         </button>
       </div>
+      {onEditOptions && (
+        <button
+          onClick={() => onEditOptions(item)}
+          className="w-full mt-1 py-1.5 rounded-full border-2 border-amber-300 text-amber-600 text-sm font-bold hover:bg-amber-50"
+        >
+          옵션 변경
+        </button>
+      )}
     </div>
   )
 }
 
 /** 옵션 선택 모달 */
-function SeniorOptionModal({ menu, previewSelections = [], onClose, onConfirm, onLog }) {
+function SeniorOptionModal({ menu, previewSelections = [], initialQuantity = 1, editing = false, onClose, onConfirm, onLog }) {
   const openedAtRef = useRef(performance.now())
   const [selections, setSelections] = useState(() => {
     const init = {}
+    const preview = previewSelections || []
     for (const g of menu.option_groups || []) {
-      init[g.id] = g.items.filter((i) => i.is_default).map((i) => i.id)
+      const idsInGroup = g.items.map((i) => i.id)
+      const previewInGroup = preview.filter((id) => idsInGroup.includes(id))
+      if (previewInGroup.length > 0) {
+        init[g.id] = g.max_select === 1 ? previewInGroup.slice(-1) : previewInGroup
+      } else {
+        init[g.id] = g.items.filter((i) => i.is_default).map((i) => i.id)
+      }
     }
     return init
   })
-  const [quantity, setQuantity] = useState(1)
+  const [quantity, setQuantity] = useState(initialQuantity)
 
   useEffect(() => {
     if (!previewSelections || previewSelections.length === 0) return
@@ -970,7 +1061,9 @@ function SeniorOptionModal({ menu, previewSelections = [], onClose, onConfirm, o
                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
           >
             {isValid
-              ? `장바구니 담기 · ${(unitPrice * quantity).toLocaleString()}원`
+              ? (editing
+                  ? `옵션 변경 완료 · ${(unitPrice * quantity).toLocaleString()}원`
+                  : `장바구니 담기 · ${(unitPrice * quantity).toLocaleString()}원`)
               : '필수 옵션을 선택해주세요'}
           </button>
         </div>

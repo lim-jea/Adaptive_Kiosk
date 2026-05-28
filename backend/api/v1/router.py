@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from api.v1.endpoints.admin_auth import router as admin_auth_router
 from api.v1.endpoints.kiosk import router as kiosk_router
 from api.v1.endpoints.session import router as session_router
 from api.v1.endpoints.menu import router as menu_router
@@ -14,6 +15,9 @@ from api.v1.endpoints.recommendation import router as recommendation_router
 from api.v1.endpoints.survey import router as survey_router, admin_router as survey_admin_router
 
 v1_router = APIRouter(prefix="/api/v1")
+
+# ─── 관리자 인증 (HttpOnly 쿠키 기반) ───
+v1_router.include_router(admin_auth_router)
 
 # ─── 기본 키오스크 + 비전 API ───
 v1_router.include_router(kiosk_router)

@@ -3,20 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { useCallback } from 'react'
+import { getKioskRoute } from '../utils/routes'
 
 export default function OrderTypePage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
   const logger = useLogger(state.sessionUuid)
 
-  const getKioskRoute = useCallback(() => {
-    const age = state.ageGroup
-    if (age === '노년')  return '/seniorkiosk'
-    if (age === '중년')  return '/middlekiosk'
-    if (age === '어린이') return '/childkiosk'
-    if (age === '청년')  return '/youngkiosk'
-    return '/kiosk'
-  }, [state.ageGroup])
+  const kioskRoute = useCallback(() => getKioskRoute(state.ageGroup), [state.ageGroup])
 
   const handleSelect = useCallback((orderType) => {
     logger.log('click', 'ordertype', {
@@ -29,8 +23,8 @@ export default function OrderTypePage() {
       type: ACTIONS.SET_ORDER_TYPE,
       payload: { orderType },
     })
-    navigate(getKioskRoute())
-  }, [logger, dispatch, ACTIONS, navigate, getKioskRoute, state.ageGroup])
+    navigate(kioskRoute())
+  }, [logger, dispatch, ACTIONS, navigate, kioskRoute, state.ageGroup])
 
   const isSenior = state.ageGroup === '노년'
 

@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCamera } from '../hooks/useCamera'
-import api from '../utils/api'
+import api, { setSessionToken } from '../utils/api'
 import { useLogger } from '../hooks/useLogger'
 
 export default function CameraPage() {
@@ -65,11 +65,15 @@ export default function CameraPage() {
     })
 
     try {
-      // session_uuid는 LandingPage에서 이미 발급됨
+      // session_uuid는 LandingPage에서 이미 발급됨.
+      // 직접 /camera 진입 등 폴백 경로에서만 여기서 발급 — 응답의 access_token 도 반드시 함께 저장.
+      // (저장하지 않으면 이후 /face/analyze 등 세션 토큰 검증이 필수인 호출이 401 로 깨진다.)
       let sessionUuid = sessionStorage.getItem('session_uuid')
       if (!sessionUuid) {
         const sessionRes = await api.post('/api/v1/sessions')
-        sessionUuid = sessionRes.data.session_uuid
+        const { session_uuid, access_token, expires_in } = sessionRes.data
+        sessionUuid = session_uuid
+        setSessionToken(access_token, expires_in)
         sessionStorage.setItem('session_uuid', sessionUuid)
       }
 

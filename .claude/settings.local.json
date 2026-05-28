@@ -19,7 +19,24 @@
       "Bash(Select-Object Name, PSIsContainer)",
       "WebFetch(domain:unsplash.com)",
       "WebFetch(domain:images.unsplash.com)",
-      "WebSearch"
+      "WebSearch",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\jeayy\\\\Desktop\\\\26년도 산학협력캡스톤\\\\Adaptive_Kiosk\\\\backend\" -Recurse -Exclude \".venv\" | Where-Object { -not $_.PSIsContainer } | Select-Object -Property FullName | Sort-Object FullName)",
+      "Bash(findstr /i \"\\\\.env\")",
+      "Bash(Select-String -Pattern '\\\\.env|credentials|cloudflared')",
+      "Bash(xargs grep -l \"dangerouslySetInnerHTML\\\\|document.write\\\\|eval\\\\|Function\\(\")",
+      "Bash(npx vite *)",
+      "PowerShell(npx vite build --logLevel warn 2>&1)",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\(r'backend/schemas.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\(r'backend/services/order_service.py', encoding='utf-8'\\).read\\(\\)\\); 'OK'\")",
+      "PowerShell(npx vite build --logLevel error 2>&1)",
+      "PowerShell(npx vite build 2>&1)",
+      "PowerShell(python -c \"import ast; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\)\\) for f in [r'backend/core/rate_limit.py', r'backend/api/v1/endpoints/face.py', r'backend/api/v1/endpoints/voice.py', r'backend/api/v1/endpoints/order.py', r'backend/core/config.py', r'backend/services/order_service.py', r'backend/schemas.py']]; print\\('OK'\\)\")",
+      "PowerShell(Write-Output \"PWD=$\\(Get-Location\\)\"; Set-Location \"C:\\\\Users\\\\jeayy\\\\Desktop\\\\26년도 산학협력캡스톤\\\\Adaptive_Kiosk\"; python -c \"import ast; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\)\\) for f in [r'backend/core/rate_limit.py', r'backend/api/v1/endpoints/face.py', r'backend/api/v1/endpoints/voice.py', r'backend/api/v1/endpoints/order.py', r'backend/core/config.py', r'backend/services/order_service.py', r'backend/schemas.py']]; print\\('OK'\\)\")",
+      "PowerShell(Write-Output \"PWD=$\\(Get-Location\\)\"; Set-Location \"C:\\\\Users\\\\jeayy\\\\Desktop\\\\26년도 산학협력캡스톤\\\\Adaptive_Kiosk\"; python -c \"import ast; [ast.parse\\(open\\(f, encoding='utf-8'\\).read\\(\\)\\) for f in [r'backend/core/session_token.py', r'backend/api/v1/endpoints/kiosk.py', r'backend/api/v1/endpoints/session.py', r'backend/schemas.py']]; print\\('OK'\\)\"; Set-Location frontend; npx vite build 2>&1 | Select-Object -Last 6)",
+      "Bash(python -c \"import json, sys; d = json.load\\(sys.stdin\\); print\\('lint script:', d.get\\('scripts', {}\\).get\\('lint', 'NOT FOUND'\\)\\); print\\('eslint deps:', [k for k in {**d.get\\('devDependencies', {}\\), **d.get\\('dependencies', {}\\)}.keys\\(\\) if 'eslint' in k.lower\\(\\)]\\)\")",
+      "Bash(cd \"/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk\" && grep -rn \"@router\\\\.\\\\\\(post\\\\|put\\\\|delete\\\\|patch\\\\\\)\" backend/api/v1/endpoints/ --include=\"*.py\" | grep -v __pycache__)",
+      "Read(//c/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk/backend/api/v1/**)",
+      "Bash(cd \"/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk\" && wc -l frontend/src/pages/CompletionPage.jsx frontend/src/pages/ChildCompletePage.jsx)",
+      "Read(//c/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk/frontend/src/pages/**)"
     ]
   }
 }

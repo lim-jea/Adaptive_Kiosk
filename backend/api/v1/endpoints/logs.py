@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from core.session_auth import assert_token_matches_session
 from crud.session import get_session_by_uuid
 from model import SessionActivityLog
 from schemas import ActivityLogBatchRequest, ActivityLogBatchResponse, make_error
@@ -14,7 +17,9 @@ router = APIRouter(prefix="/logs", tags=["Logs"])
 async def create_activity_logs(
     req: ActivityLogBatchRequest,
     db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
 ):
+    assert_token_matches_session(req.session_uuid, x_session_token)
     session = await get_session_by_uuid(db, req.session_uuid)
     if not session:
         raise HTTPException(

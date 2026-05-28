@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { formatOrderDisplayNo } from '../utils/orderDisplay'
+import { splitVAT } from '../utils/price'
 
 // ── 설문 상수 ──────────────────────────────────────────────────────────────
 const RATING5 = [
@@ -126,7 +128,8 @@ export default function CompletionPage() {
   const { state, dispatch, ACTIONS } = useSession()
   const logger = useLogger(state.sessionUuid)
 
-  const { paymentMethod, totalPrice, discountAmount = 0, discountLabel } = location.state || {}
+  const { paymentMethod, totalPrice, discountAmount = 0, discountLabel, orderUuid } = location.state || {}
+  const vat = splitVAT(totalPrice)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -152,9 +155,12 @@ export default function CompletionPage() {
     endSession()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
+  const [orderNum] = useState(() => formatOrderDisplayNo(orderUuid) || String(Math.floor(Math.random() * 9000 + 1000)))
   const [parkingDone, setParkingDone] = useState(false)
   const [parkingToast, setParkingToast] = useState(false)
+  const [parkingOpen, setParkingOpen] = useState(false)
+  const [carNumber, setCarNumber] = useState('')
+  const [receiptOpen, setReceiptOpen] = useState(false)
   const [staffCalled, setStaffCalled] = useState(false)
 
   // 의견 토글
@@ -182,10 +188,17 @@ export default function CompletionPage() {
 
   const handleParking = () => {
     if (parkingDone) return
+    if (carNumber.length < 4) return
     logger.log('click', 'completion', { actionName: 'parking_register', targetType: 'button', targetLabel: 'parking_register' })
     setParkingDone(true)
+    setParkingOpen(false)
     setParkingToast(true)
     setTimeout(() => setParkingToast(false), 3000)
+  }
+
+  const handleReceipt = () => {
+    logger.log('click', 'completion', { actionName: 'receipt_open', targetType: 'button', targetLabel: 'receipt' })
+    setReceiptOpen(true)
   }
 
   const handleStaffCall = () => {
@@ -261,7 +274,7 @@ export default function CompletionPage() {
         <div className="grid grid-cols-3 gap-3">
           {/* 주차 등록 */}
           <button
-            onClick={handleParking}
+            onClick={() => !parkingDone && setParkingOpen(true)}
             disabled={parkingDone}
             className={`bg-white rounded-2xl border shadow-sm py-4 flex flex-col items-center gap-1.5 transition-colors
               ${parkingDone
@@ -273,7 +286,10 @@ export default function CompletionPage() {
           </button>
 
           {/* 영수증 */}
-          <button className="bg-white rounded-2xl border border-gray-100 shadow-sm py-4 flex flex-col items-center gap-1.5 text-gray-500 hover:bg-gray-50 transition-colors">
+          <button
+            onClick={handleReceipt}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm py-4 flex flex-col items-center gap-1.5 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
             <span className="text-xl">🧾</span>
             <span className="text-xs font-semibold">영수증</span>
           </button>
@@ -444,7 +460,66 @@ export default function CompletionPage() {
       {parkingToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-green-600 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 z-50 animate-bounce">
           <span>🚗</span>
-          <span className="font-bold text-sm">주차 등록 완료! 1시간 무료</span>
+          <span className="font-bold text-sm">{carNumber} 주차 등록 완료! 1시간 무료</span>
+        </div>
+      )}
+
+      {parkingOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-6" onClick={() => setParkingOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6" onClick={(event) => event.stopPropagation()}>
+            <h2 className="text-xl font-black text-gray-800 mb-1">주차 등록</h2>
+            <p className="text-sm text-gray-400 mb-4">차량 번호 뒤 4자리 이상을 입력해 주세요.</p>
+            <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={9}
+              value={carNumber}
+              onChange={(event) => setCarNumber(event.target.value.replace(/\D/g, '').slice(0, 9))}
+              placeholder="예: 1234"
+              className="w-full rounded-2xl border-2 border-gray-200 px-4 py-4 text-2xl font-black text-center tracking-widest outline-none focus:border-amber-400"
+            />
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <button
+                type="button"
+                onClick={() => setParkingOpen(false)}
+                className="py-3 rounded-2xl border-2 border-gray-200 text-gray-500 font-bold"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleParking}
+                disabled={carNumber.length < 4}
+                className="py-3 rounded-2xl bg-amber-500 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold"
+              >
+                등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receiptOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-6" onClick={() => setReceiptOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 text-center" onClick={(event) => event.stopPropagation()}>
+            <div className="text-5xl mb-3">🧾</div>
+            <h2 className="text-xl font-black text-gray-800 mb-2">영수증 출력 중</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              주문번호 #{orderNum} 영수증이 출력되고 있습니다.
+            </p>
+            <div className="bg-gray-50 rounded-2xl px-5 py-3 mb-4 text-left text-sm space-y-1">
+              <div className="flex justify-between"><span className="text-gray-500">공급가액</span><span className="font-semibold text-gray-700">{vat.net.toLocaleString()}원</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">부가세 (10%)</span><span className="font-semibold text-gray-700">{vat.tax.toLocaleString()}원</span></div>
+              <div className="flex justify-between pt-1 border-t border-gray-200"><span className="font-bold text-gray-800">합계</span><span className="font-black text-amber-600">{vat.gross.toLocaleString()}원</span></div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReceiptOpen(false)}
+              className="w-full py-3 rounded-2xl bg-amber-500 text-white font-bold"
+            >
+              확인
+            </button>
+          </div>
         </div>
       )}
     </div>

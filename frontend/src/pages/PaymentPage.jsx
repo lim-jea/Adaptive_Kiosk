@@ -4,6 +4,11 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { buildOrderPayload } from '../utils/orderPayload'
+import { getCompleteRoute } from '../utils/routes'
+import { splitVAT } from '../utils/price'
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 const PAYMENT_METHODS = [
   {
@@ -40,11 +45,14 @@ export default function PaymentPage() {
   const [status, setStatus] = useState('idle')
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
+  const [retryCount, setRetryCount] = useState(0)
+  const MAX_RETRY = 3
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
   const discountAmount = Math.floor(totalPrice * discountRate)
   const finalPrice = totalPrice - discountAmount
+  const vat = splitVAT(finalPrice)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -76,8 +84,10 @@ export default function PaymentPage() {
       payload: {
         total_price: finalPrice,
         original_price: totalPrice,
+        discount_amount: discountAmount,
         total_count: totalCount,
         discount_type: discountType,
+        order_type: state.orderType,
         used_recommendation: state.cart.some((item) => item.fromRecommendation),
       },
     })
@@ -90,9 +100,11 @@ export default function PaymentPage() {
     let orderUuid = null
     const orderStartedAt = performance.now()
     try {
-      const res = await api.post('/api/v1/orders', {
-        session_uuid: state.sessionUuid,
-      })
+      const res = await api.post('/api/v1/orders', buildOrderPayload(state.sessionUuid, state.cart, {
+        orderType: state.orderType,
+        discountType,
+        discountAmount,
+      }))
       orderUuid = res.data.order_uuid
       logClientTiming('payment.createOrder', performance.now() - orderStartedAt, { order_uuid: orderUuid })
       logger.log('order', 'payment', {
@@ -107,14 +119,24 @@ export default function PaymentPage() {
         session_uuid: state.sessionUuid,
       })
       console.error('주문 저장 실패:', err)
+      const nextRetry = retryCount + 1
       logger.log('order', 'payment', {
         actionName: 'order_submit_error',
-        payload: { message: err?.message || 'order_submit_failed' },
+        payload: { message: err?.message || 'order_submit_failed', retry_count: nextRetry },
         source: 'system',
       })
+      setRetryCount(nextRetry)
 
+      if (nextRetry >= MAX_RETRY) {
+        logger.log('payment', 'payment', { actionName: 'payment_retry_exhausted', source: 'system', payload: { max_retry: MAX_RETRY } })
+        setStatus('calling_staff')
+        setErrorMessage(`결제가 ${MAX_RETRY}회 실패했습니다. 직원을 호출했습니다.`)
+        // calling_staff 오버레이는 자동으로 닫혀 사용자가 결제 화면에 묶이지 않도록 한다.
+        setTimeout(() => setStatus('idle'), 3000)
+        return
+      }
       setStatus('idle')
-      setErrorMessage('주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.')
+      setErrorMessage(`주문 생성에 실패했습니다. (${nextRetry}/${MAX_RETRY}) 잠시 후 다시 시도해주세요.`)
       return
     }
 
@@ -124,7 +146,7 @@ export default function PaymentPage() {
     logClientTiming('payment.loggerFlush', performance.now() - flushStartedAt, {
       session_uuid: state.sessionUuid,
     })
-    navigate('/complete', {
+    navigate(getCompleteRoute(state.ageGroup), {
       replace: true,
       state: {
         paymentMethod: method.label,
@@ -137,7 +159,7 @@ export default function PaymentPage() {
         isMembership: ['employee', 'skt', 'lg'].includes(discountType),
       },
     })
-  }, [logger, navigate, state, totalCount, totalPrice, finalPrice, discountAmount, discountType, discountLabel])
+  }, [logger, navigate, state, totalCount, totalPrice, finalPrice, discountAmount, discountType, discountLabel, retryCount])
 
   const handleCallStaff = () => {
     logger.log('click', 'payment', {
@@ -148,6 +170,9 @@ export default function PaymentPage() {
     setStatus('calling_staff')
     setTimeout(() => setStatus('idle'), 2000)
   }
+
+  // 테스트 배포용: 무동작 자동 복귀 비활성화 (각 사용자에게 보내 자유롭게 둘러볼 수 있도록).
+  // 향후 운영 시 useIdleTimeout / IdleWarningOverlay 를 다시 도입하면 된다.
 
   // 결제 중 오버레이
   if (status === 'processing') {
@@ -204,6 +229,11 @@ export default function PaymentPage() {
       </header>
 
       <div className={`flex-1 px-4 py-5 space-y-5 ${isChild ? 'pb-[380px]' : 'pb-6'}`}>
+        {DEMO_MODE && (
+          <div className="rounded-xl px-4 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs font-bold text-center">
+            🧪 테스트 결제 모드 · 실제 결제는 발생하지 않습니다
+          </div>
+        )}
         {/* 금액 요약 */}
         <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100 space-y-2">
           <div className="flex justify-between items-center text-sm text-gray-400">
@@ -222,9 +252,19 @@ export default function PaymentPage() {
               </span>
             </div>
           )}
-          <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-            <span className="text-base font-bold text-gray-800">최종 결제 금액</span>
-            <span className="text-2xl font-black text-amber-600">{finalPrice.toLocaleString()}원</span>
+          <div className="pt-1 border-t border-gray-100 space-y-1">
+            <div className="flex justify-between items-center text-xs text-gray-400">
+              <span>공급가액</span>
+              <span>{vat.net.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center text-xs text-gray-400">
+              <span>부가세 (10%)</span>
+              <span>{vat.tax.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-base font-bold text-gray-800">최종 결제 금액</span>
+              <span className="text-2xl font-black text-amber-600">{finalPrice.toLocaleString()}원</span>
+            </div>
           </div>
         </div>
 

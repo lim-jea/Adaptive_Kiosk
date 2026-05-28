@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import { buildOrderPayload } from '../utils/orderPayload'
+import { splitVAT } from '../utils/price'
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 const PAYMENT_METHODS = [
   {
@@ -32,9 +36,11 @@ export default function ChildPaymentPage() {
 
   const [status, setStatus] = useState('idle')
   const [selectedMethod, setSelectedMethod] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
+  const vat = splitVAT(totalPrice)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -72,12 +78,14 @@ export default function ChildPaymentPage() {
       payload: {
         total_price: totalPrice,
         total_count: totalCount,
+        order_type: state.orderType,
         used_recommendation: state.cart.some((item) => item.fromRecommendation),
       },
     })
 
     setSelectedMethod(method)
     setStatus('processing')
+    setErrorMessage('')
 
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
@@ -85,9 +93,9 @@ export default function ChildPaymentPage() {
     const orderStartedAt = performance.now()
 
     try {
-      const res = await api.post('/api/v1/orders', {
-        session_uuid: state.sessionUuid,
-      })
+      const res = await api.post('/api/v1/orders', buildOrderPayload(state.sessionUuid, state.cart, {
+        orderType: state.orderType,
+      }))
 
       orderUuid = res.data.order_uuid
 
@@ -119,6 +127,9 @@ export default function ChildPaymentPage() {
         },
         source: 'system',
       })
+      setStatus('idle')
+      setErrorMessage('주문 저장에 실패했어요. 잠시 후 다시 눌러 주세요.')
+      return
     }
 
     setStatus('done')
@@ -165,13 +176,34 @@ export default function ChildPaymentPage() {
       </header>
 
       <div className="flex-1 px-5 py-6 space-y-5">
+        {DEMO_MODE && (
+          <div className="rounded-2xl px-4 py-3 bg-yellow-50 border-2 border-yellow-200 text-yellow-800 text-sm font-black text-center">
+            🧪 테스트 결제 모드 · 실제 결제는 발생하지 않아요
+          </div>
+        )}
         <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-sky-100">
           <p className="text-lg font-bold text-gray-500">총 결제 금액</p>
           <p className="text-4xl font-black text-sky-600 mt-2">
             {totalPrice.toLocaleString()}원
           </p>
-          <p className="text-base text-gray-400 mt-1">총 {totalCount}개 메뉴</p>
+          <div className="mt-3 pt-3 border-t border-sky-100 space-y-1 text-sm">
+            <div className="flex justify-between text-gray-400">
+              <span>공급가액</span>
+              <span>{vat.net.toLocaleString()}원</span>
+            </div>
+            <div className="flex justify-between text-gray-400">
+              <span>부가세 (10%)</span>
+              <span>{vat.tax.toLocaleString()}원</span>
+            </div>
+          </div>
+          <p className="text-base text-gray-400 mt-2">총 {totalCount}개 메뉴</p>
         </div>
+
+        {errorMessage && (
+          <div className="bg-red-50 border-2 border-red-200 text-red-700 rounded-3xl px-5 py-4 font-black">
+            {errorMessage}
+          </div>
+        )}
 
         <div className="bg-white rounded-3xl overflow-hidden shadow-sm border-2 border-sky-100">
           <div className="px-5 py-4 bg-sky-50 border-b border-sky-100">

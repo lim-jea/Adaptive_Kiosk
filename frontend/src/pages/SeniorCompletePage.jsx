@@ -1,15 +1,131 @@
-// 시니어 결제 완료 페이지 — 주문번호, 주차/스탬프 팝업, 설문 버튼
+// 시니어 결제 완료 페이지 — 주문번호, 주차/스탬프 팝업, 인라인 짧은 설문 (다른 연령대와 동일 11문항)
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import api from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { useTTS } from '../hooks/useTTS'
+import { formatOrderDisplayNo } from '../utils/orderDisplay'
+import { splitVAT } from '../utils/price'
 
 const TOTAL_STAMPS = 10
 
 function getSimulatedStamps() {
   return parseInt(sessionStorage.getItem('stamp_count') || '4', 10)
+}
+
+// ── 설문 상수 (다른 연령대 페이지와 동일 셋) ────────────────────────────────
+const RATING5 = [
+  { value: 1, label: '불만족' },
+  { value: 2, label: '비선호' },
+  { value: 3, label: '보통' },
+  { value: 4, label: '선호' },
+  { value: 5, label: '만족' },
+]
+const RATING5_COMPARE = [
+  { value: 1, label: '훨씬 어려움' },
+  { value: 2, label: '약간 어려움' },
+  { value: 3, label: '비슷' },
+  { value: 4, label: '약간 편함' },
+  { value: 5, label: '훨씬 편함' },
+]
+const RATING5_ACCURACY = [
+  { value: 1, label: '전혀 다름' },
+  { value: 2, label: '다름' },
+  { value: 3, label: '비슷' },
+  { value: 4, label: '정확' },
+  { value: 5, label: '매우 정확' },
+]
+const RATING5_PRIVACY = [
+  { value: 1, label: '매우 거부감' },
+  { value: 2, label: '약간 거부감' },
+  { value: 3, label: '보통' },
+  { value: 4, label: '거의 없음' },
+  { value: 5, label: '전혀 없음' },
+]
+const RATING5_INFLUENCE = [
+  { value: 1, label: '매우 방해' },
+  { value: 2, label: '방해' },
+  { value: 3, label: '영향 없음' },
+  { value: 4, label: '도움' },
+  { value: 5, label: '매우 도움' },
+]
+const GENDER_OPTIONS = [
+  { value: 'M', label: '남' },
+  { value: 'F', label: '여' },
+  { value: 'no_answer', label: '응답 안 함' },
+]
+const STUCK_OPTIONS = [
+  '얼굴 인식', '메뉴 찾기', '옵션 선택', '카트 확인',
+  '음성 주문', '결제', '추천 메뉴 이해', '도움말 호출',
+  '없음', '기타',
+]
+const EASY_MODE_OPTIONS = [
+  { value: 1, label: '사용' },
+  { value: 0, label: '안 함' },
+  { value: null, label: '모르겠음' },
+]
+
+const RATING_QUESTIONS = [
+  { id: 'q1',  title: '키오스크 이용이 전반적으로 편리했나요?',                    labels: RATING5 },
+  { id: 'q2',  title: '화면 글씨 크기가 적절했나요?',                              labels: RATING5 },
+  { id: 'q3',  title: '원하는 메뉴를 쉽게 찾을 수 있었나요?',                      labels: RATING5 },
+  { id: 'q6',  title: '주문을 완료하기까지의 과정이 전체적으로 쉬웠나요?',          labels: RATING5 },
+  { id: 'q7',  title: '다른 키오스크와 비교하면 어떠셨나요?',                       labels: RATING5_COMPARE, hasNoExperience: true },
+  { id: 'q9',  title: '얼굴 인식 속도가 빠르다고 느끼셨나요?',                      labels: RATING5 },
+  { id: 'q10', title: '인식된 나이대가 실제와 비슷했나요?',                         labels: RATING5_ACCURACY },
+  { id: 'q12', title: '카메라로 얼굴을 촬영하는 방식에 거부감은 없으셨나요?',       labels: RATING5_PRIVACY },
+  { id: 'q13', title: '추천된 메뉴가 본인 취향에 맞았나요?',                        labels: RATING5 },
+  { id: 'q14', title: '추천 메뉴가 다양했나요?',                                   labels: RATING5 },
+  { id: 'q17', title: '추천이 본인의 선택에 어떻게 작용했나요?',                    labels: RATING5_INFLUENCE },
+]
+
+const SECTIONS = [
+  { label: '전반적 사용 경험', ids: ['q1', 'q2', 'q3', 'q6', 'q7'] },
+  { label: '얼굴 인식',        ids: ['q9', 'q10', 'q12'] },
+  { label: '추천',             ids: ['q13', 'q14', 'q17'] },
+]
+
+// 시니어용 큰 글씨 / 큰 터치 타겟 RatingRow
+function RatingRow({ value, onChange, labels }) {
+  return (
+    <div className="grid grid-cols-5 gap-2">
+      {labels.map(({ value: v, label }) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`py-3 rounded-2xl text-sm font-semibold transition-all border-2
+            ${value === v
+              ? 'bg-amber-500 text-white border-amber-500 shadow-md'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'}`}
+        >
+          <div className="text-lg font-black">{v}</div>
+          <div className="text-xs mt-0.5 leading-tight">{label}</div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SingleChoice({ value, onChange, options }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`px-5 py-3 rounded-2xl text-base font-semibold transition-all border-2
+            ${value === opt.value
+              ? 'bg-amber-500 text-white border-amber-500'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 // 숫자 키패드 컴포넌트
@@ -49,26 +165,43 @@ export default function SeniorCompletePage() {
   const tts = useTTS({ rate: 0.65 })
   const ttsCalledRef = useRef(false)
 
-  const { paymentMethod, totalPrice, totalCount, isMembership } = location.state || {}
+  const { paymentMethod, totalPrice, totalCount, isMembership, orderUuid } = location.state || {}
+  const vat = splitVAT(totalPrice)
 
-  const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
+  const [orderNum] = useState(() => formatOrderDisplayNo(orderUuid) || String(Math.floor(Math.random() * 9000 + 1000)))
   const [toast, setToast] = useState(null)
 
   // 주차 등록 상태
   const [parkingDone, setParkingDone] = useState(false)
   const [showParkingPopup, setShowParkingPopup] = useState(false)
   const [carNumber, setCarNumber] = useState('')
-  
+
   // 스탬프 상태
   const [stampDone, setStampDone] = useState(false)
   const [showStampPopup, setShowStampPopup] = useState(false)
   const [stampMethod, setStampMethod] = useState(null) // null | 'phone' | 'card'
   const [phoneNumber, setPhoneNumber] = useState('')
-  
+
   const prevStamps = getSimulatedStamps()
   const earnedStamps = isMembership ? 2 : 1
   const newStamps = Math.min(TOTAL_STAMPS, prevStamps + earnedStamps)
   const isReward = newStamps >= TOTAL_STAMPS
+
+  // 의견 토글
+  const [surveyOpen, setSurveyOpen] = useState(false)
+  const [surveyDone, setSurveyDone] = useState(false)
+  const [surveySubmitting, setSurveySubmitting] = useState(false)
+
+  // 설문 응답 상태
+  const [respAge, setRespAge] = useState('')
+  const [respGender, setRespGender] = useState(null)
+  const [answers, setAnswers] = useState({})
+  const [q7NoExperience, setQ7NoExperience] = useState(false)
+  const [g1Choices, setG1Choices] = useState([])
+  const [easyMode, setEasyMode] = useState(undefined)
+
+  const startedAtRef = useRef(Date.now())
+  const sessionUuidRef = useRef(state.sessionUuid)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -102,14 +235,14 @@ export default function SeniorCompletePage() {
       }
     }
     endSession()
-  }, []) 
-  
+  }, [])
+
   useEffect(() => {
     if (ttsCalledRef.current) return
     ttsCalledRef.current = true
     tts.speak(`결제가 완료되었습니다. 주문번호는 ${orderNum}번입니다. 번호판에 번호가 뜨면 찾아가세요.`)
-  }, []) 
-  
+  }, [])
+
   const showToast = (icon, message) => {
     setToast({ icon, message })
     setTimeout(() => setToast(null), 3000)
@@ -153,8 +286,48 @@ export default function SeniorCompletePage() {
     tts.speak('스탬프 적립이 완료되었습니다.')
   }
 
+  const setAnswer = (id, labels) => (v) => {
+    const found = labels.find((opt) => opt.value === v)
+    setAnswers((prev) => ({ ...prev, [id]: { value: v, label: found?.label || null } }))
+  }
+
+  const getEasyModeAnswer = () => {
+    if (easyMode === undefined) return undefined
+    const found = EASY_MODE_OPTIONS.find((opt) => opt.value === easyMode)
+    return { value: easyMode, label: found?.label || null }
+  }
+
+  const toggleG1 = (opt) => {
+    setG1Choices((prev) =>
+      prev.includes(opt) ? prev.filter((x) => x !== opt) : [...prev, opt]
+    )
+  }
+
+  const handleSurveySubmit = async () => {
+    setSurveySubmitting(true)
+    try {
+      await api.post('/api/v1/survey/responses', {
+        session_uuid: sessionUuidRef.current,
+        status: 'completed',
+        resp_age: respAge === '' ? null : Number(respAge),
+        resp_gender: respGender,
+        resp_kiosk_freq: null,
+        answers: { ...answers, q22: getEasyModeAnswer() },
+        multi_choices: { g1: g1Choices },
+        free_texts: {},
+        q7_no_experience: q7NoExperience,
+        survey_snapshot: null,
+        duration_ms: Date.now() - startedAtRef.current,
+      })
+    } catch (err) {
+      console.warn('[survey] submit failed (ignored):', err.message)
+    }
+    setSurveyDone(true)
+    setSurveySubmitting(false)
+  }
+
   return (
-    <div className="min-h-screen bg-amber-50 flex flex-col items-center justify-center px-6 py-10">
+    <div className="min-h-screen bg-amber-50 flex flex-col items-center px-6 py-10">
 
       {/* 완료 아이콘 + 문구 */}
       <div className="text-6xl mb-4 animate-bounce">✅</div>
@@ -190,9 +363,19 @@ export default function SeniorCompletePage() {
             )
           })}
         </div>
-        <div className="border-t pt-3 mt-1 flex justify-between items-center">
-          <span className="text-xl font-bold text-gray-600">총 {totalCount}개</span>
-          <span className="text-2xl font-black text-amber-600">{totalPrice?.toLocaleString()}원</span>
+        <div className="border-t pt-3 mt-1 space-y-1">
+          <div className="flex justify-between text-base text-gray-400">
+            <span>공급가액</span>
+            <span>{vat.net.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between text-base text-gray-400">
+            <span>부가세 (10%)</span>
+            <span>{vat.tax.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-xl font-bold text-gray-600">총 {totalCount}개</span>
+            <span className="text-2xl font-black text-amber-600">{totalPrice?.toLocaleString()}원</span>
+          </div>
         </div>
       </div>
 
@@ -223,13 +406,141 @@ export default function SeniorCompletePage() {
         </button>
       </div>
 
-      {/* 설문 버튼 */}
-      <button
-        onClick={() => navigate('/survey')}
-        className="w-full max-w-sm py-7 bg-emerald-500 border-2 border-emerald-600 text-white font-black text-3xl rounded-2xl transition-transform shadow-lg hover:bg-emerald-600 active:scale-95 mb-5"
-      >
-        📝 설문 참여하기
-      </button>
+      {/* 의견 들려주기 토글 — 다른 연령대와 동일한 11문항 (시니어용 큰 글씨) */}
+      <div className="w-full max-w-sm rounded-3xl border-2 border-emerald-600 shadow-lg mb-5 overflow-hidden bg-emerald-500">
+        <button
+          onClick={() => !surveyDone && setSurveyOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-6 py-6 text-white"
+        >
+          <div className="flex items-center gap-4">
+            <span className="text-4xl">📝</span>
+            <div className="text-left">
+              <p className="font-black text-2xl">
+                {surveyDone ? '의견 제출 완료! 감사합니다 😊' : '의견 들려주기'}
+              </p>
+              {!surveyDone && (
+                <p className="text-base font-semibold text-emerald-50 mt-1">2~3분 · 서비스 개선에 반영됩니다</p>
+              )}
+            </div>
+          </div>
+          {!surveyDone && (
+            <span className="text-white text-3xl font-black transition-transform duration-200"
+              style={{ transform: surveyOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              ▾
+            </span>
+          )}
+        </button>
+
+        {/* 설문 본문 */}
+        {surveyOpen && !surveyDone && (
+          <div className="px-5 pb-6 space-y-6 pt-5 bg-white border-t border-emerald-100">
+
+            {/* 만 나이 */}
+            <div>
+              <p className="text-lg font-bold text-gray-800 mb-2">만 나이</p>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={respAge}
+                onChange={(e) => setRespAge(e.target.value)}
+                placeholder="예: 70"
+                className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-lg focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            {/* 성별 */}
+            <div>
+              <p className="text-lg font-bold text-gray-800 mb-2">성별</p>
+              <SingleChoice value={respGender} onChange={setRespGender} options={GENDER_OPTIONS} />
+            </div>
+
+            {/* 섹션별 rating 문항 */}
+            {SECTIONS.map((section) => (
+              <div key={section.label}>
+                <p className="text-sm font-black text-amber-600 uppercase tracking-wider mb-3 pb-1 border-b border-amber-100">
+                  {section.label}
+                </p>
+                <div className="space-y-5">
+                  {section.ids.map((id) => {
+                    const q = RATING_QUESTIONS.find((r) => r.id === id)
+                    if (!q) return null
+                    return (
+                      <div key={id}>
+                        <p className="text-base font-semibold text-gray-700 mb-2">{q.title}</p>
+                        {q.hasNoExperience && (
+                          <label className="flex items-center gap-2 mb-2 text-sm text-gray-500 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={q7NoExperience}
+                              onChange={(e) => setQ7NoExperience(e.target.checked)}
+                              className="rounded w-4 h-4"
+                            />
+                            비교 경험 없음
+                          </label>
+                        )}
+                        {(!q.hasNoExperience || !q7NoExperience) && (
+                          <RatingRow
+                            value={answers[id]?.value}
+                            onChange={setAnswer(id, q.labels)}
+                            labels={q.labels}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* G-1 막힌 단계 */}
+            <div>
+              <p className="text-sm font-black text-amber-600 uppercase tracking-wider mb-3 pb-1 border-b border-amber-100">
+                막힌 단계
+              </p>
+              <p className="text-base font-semibold text-gray-700 mb-2">
+                주문 중 어려움이 있었던 단계가 있다면 골라 주세요
+              </p>
+              <p className="text-sm text-gray-400 mb-2">여러 개 선택 가능</p>
+              <div className="flex flex-wrap gap-2">
+                {STUCK_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => toggleG1(opt)}
+                    className={`px-4 py-2.5 rounded-2xl text-sm font-semibold transition-all border-2
+                      ${g1Choices.includes(opt)
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'}`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* H-1 간편 모드 */}
+            <div>
+              <p className="text-sm font-black text-amber-600 uppercase tracking-wider mb-3 pb-1 border-b border-amber-100">
+                간편 모드
+              </p>
+              <p className="text-base font-semibold text-gray-700 mb-2">
+                큰 글씨와 음성 안내가 강화된 "간편 모드"를 안내받으면 사용해 보고 싶으신가요?
+              </p>
+              <SingleChoice value={easyMode} onChange={setEasyMode} options={EASY_MODE_OPTIONS} />
+            </div>
+
+            {/* 제출 */}
+            <button
+              onClick={handleSurveySubmit}
+              disabled={surveySubmitting}
+              className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-black text-xl rounded-2xl transition-colors"
+            >
+              {surveySubmitting ? '제출 중...' : '의견 제출하기'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* 처음으로 버튼 */}
       <button

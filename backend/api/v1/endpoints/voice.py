@@ -10,11 +10,15 @@ import base64
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from core.rate_limit import make_debounce
+from core.session_auth import assert_token_matches_session, require_valid_session_token
 from crud import chat as chat_crud
 from crud.session import get_session_by_uuid
 from schemas import (
@@ -62,12 +66,17 @@ router = APIRouter(prefix="/voice", tags=["Voice"])
 
 
 @router.post("/start", response_model=VoiceStartResponse)
-async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)):
+async def voice_start(
+    req: VoiceStartRequest,
+    db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
+):
     """음성 주문 시작.
 
     프런트가 화면 진입/재진입 시 반복 호출할 수 있어, 이미 진행 중인 attempt 가 있으면
     새 attempt 를 만들지 않고 그대로 재사용한다 (대화 이력 보존).
     """
+    assert_token_matches_session(req.session_uuid, x_session_token)
     t0 = time.perf_counter()
     session = await get_session_by_uuid(db, req.session_uuid)
     if not session:
@@ -128,8 +137,17 @@ async def voice_start(req: VoiceStartRequest, db: AsyncSession = Depends(get_db)
     )
 
 
-@router.post("/messages", response_model=VoiceMessageResponse)
-async def voice_message(req: VoiceMessageRequest, db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/messages",
+    response_model=VoiceMessageResponse,
+    dependencies=[Depends(make_debounce("voice/messages", min_interval=1.0, daily_cap=60))],
+)
+async def voice_message(
+    req: VoiceMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
+):
+    assert_token_matches_session(req.session_uuid, x_session_token)
     session = await get_session_by_uuid(db, req.session_uuid)
     if not session:
         raise HTTPException(
@@ -180,7 +198,9 @@ async def voice_messages_history(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
 ):
+    assert_token_matches_session(session_uuid, x_session_token)
     session = await get_session_by_uuid(db, session_uuid)
     if not session:
         raise HTTPException(
@@ -202,10 +222,17 @@ class VoiceTTSRequest(BaseModel):
     text: str
 
 
-@router.post("/tts")
+@router.post(
+    "/tts",
+    dependencies=[
+        Depends(require_valid_session_token),
+        Depends(make_debounce("voice/tts", min_interval=0.3, daily_cap=300)),
+    ],
+)
 async def voice_tts(req: VoiceTTSRequest):
     """텍스트 → Edge-TTS mp3 바이트 반환 (메모리 LRU 캐시).
-    실패/캐시 미스 + Edge 비활성 시 404 → 프런트는 브라우저 speechSynthesis 로 폴백."""
+    실패/캐시 미스 + Edge 비활성 시 404 → 프런트는 브라우저 speechSynthesis 로 폴백.
+    유효한 X-Session-Token 필수 + 세션당 0.3 초 debounce + 일일 300회 캡 (외부 API 비용 보호)."""
     audio = await synthesize_speech(req.text)
     if audio is None:
         raise HTTPException(
@@ -216,7 +243,12 @@ async def voice_tts(req: VoiceTTSRequest):
 
 
 @router.post("/end", response_model=VoiceEndResponse)
-async def voice_end(req: VoiceEndRequest, db: AsyncSession = Depends(get_db)):
+async def voice_end(
+    req: VoiceEndRequest,
+    db: AsyncSession = Depends(get_db),
+    x_session_token: Optional[str] = Header(default=None, alias="X-Session-Token"),
+):
+    assert_token_matches_session(req.session_uuid, x_session_token)
     session = await get_session_by_uuid(db, req.session_uuid)
     if not session:
         raise HTTPException(

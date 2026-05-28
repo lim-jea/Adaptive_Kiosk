@@ -5,6 +5,10 @@ import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { useTTS } from '../hooks/useTTS'
+import { buildOrderPayload } from '../utils/orderPayload'
+import { splitVAT } from '../utils/price'
+
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 const PAYMENT_METHODS = [
   {
@@ -38,9 +42,11 @@ export default function SeniorPaymentPage() {
 
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [status, setStatus] = useState('idle') // idle | processing | done
+  const [errorMessage, setErrorMessage] = useState('')
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
+  const vat = splitVAT(totalPrice)
 
   useEffect(() => {
     const enteredAt = Date.now()
@@ -87,11 +93,13 @@ export default function SeniorPaymentPage() {
       payload: {
         total_price: totalPrice,
         total_count: totalCount,
+        order_type: state.orderType,
         used_recommendation: state.cart.some((item) => item.fromRecommendation),
       },
     })
     setSelectedMethod(method.id)
     setStatus('processing')
+    setErrorMessage('')
 
     await tts.speak(`${method.label}로 결제를 시작합니다.`)
 
@@ -101,9 +109,9 @@ export default function SeniorPaymentPage() {
     const orderStartedAt = performance.now()
     try {
       // 주문 생성: 서버에 저장된 cart를 기준으로 생성
-      const res = await api.post('/api/v1/orders', {
-        session_uuid: state.sessionUuid,
-      })
+      const res = await api.post('/api/v1/orders', buildOrderPayload(state.sessionUuid, state.cart, {
+        orderType: state.orderType,
+      }))
       orderUuid = res.data.order_uuid
       logClientTiming('payment.createOrder', performance.now() - orderStartedAt, {
         order_uuid: orderUuid,
@@ -125,6 +133,9 @@ export default function SeniorPaymentPage() {
         payload: { message: err?.message || 'order_submit_failed' },
         source: 'system',
       })
+      setStatus('selecting')
+      setErrorMessage('주문 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      return
     }
 
     setStatus('done')
@@ -176,6 +187,11 @@ export default function SeniorPaymentPage() {
         </header>
 
         <div className="flex-1 px-4 py-6 space-y-5">
+          {DEMO_MODE && (
+            <div className="rounded-xl px-4 py-3 bg-yellow-50 border-2 border-yellow-200 text-yellow-800 text-base font-bold text-center">
+              🧪 테스트 결제 모드 · 실제 결제는 발생하지 않습니다
+            </div>
+          )}
           {/* 안내 문구 */}
           <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl px-5 py-4 text-center">
             <p className="text-2xl font-bold text-amber-700">주문하신 메뉴가 맞으신가요?</p>
@@ -208,9 +224,19 @@ export default function SeniorPaymentPage() {
                 )
               })}
             </div>
-            <div className="px-5 py-4 bg-amber-50 flex justify-between items-center border-t border-amber-100">
-              <span className="text-2xl font-bold text-gray-700">총 {totalCount}개</span>
-              <span className="text-3xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+            <div className="px-5 py-4 bg-amber-50 border-t border-amber-100 space-y-2">
+              <div className="flex justify-between items-center text-lg text-gray-500">
+                <span>공급가액</span>
+                <span>{vat.net.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center text-lg text-gray-500">
+                <span>부가세 (10%)</span>
+                <span>{vat.tax.toLocaleString()}원</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-amber-200">
+                <span className="text-2xl font-bold text-gray-700">총 {totalCount}개</span>
+                <span className="text-3xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+              </div>
             </div>
           </div>
         </div>
@@ -248,6 +274,11 @@ export default function SeniorPaymentPage() {
       </header>
 
       <div className="flex-1 px-4 py-6 space-y-5 pb-8">
+        {DEMO_MODE && (
+          <div className="rounded-xl px-4 py-3 bg-yellow-50 border-2 border-yellow-200 text-yellow-800 text-base font-bold text-center">
+            🧪 테스트 결제 모드 · 실제 결제는 발생하지 않습니다
+          </div>
+        )}
         {/* 안내 문구 */}
         <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl px-5 py-4 text-center">
           <p className="text-xl font-bold text-amber-700">결제 수단을 선택해 주세요</p>
@@ -255,10 +286,26 @@ export default function SeniorPaymentPage() {
         </div>
 
         {/* 총 금액 */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex justify-between items-center">
-          <span className="text-2xl font-bold text-gray-700">총 금액</span>
-          <span className="text-3xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 space-y-2">
+          <div className="flex justify-between items-center text-lg text-gray-500">
+            <span>공급가액</span>
+            <span>{vat.net.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between items-center text-lg text-gray-500">
+            <span>부가세 (10%)</span>
+            <span>{vat.tax.toLocaleString()}원</span>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+            <span className="text-2xl font-bold text-gray-700">총 금액</span>
+            <span className="text-3xl font-black text-amber-600">{totalPrice.toLocaleString()}원</span>
+          </div>
         </div>
+
+        {errorMessage && (
+          <div className="bg-red-50 border-2 border-red-200 rounded-2xl px-5 py-4 text-red-700 text-xl font-bold">
+            {errorMessage}
+          </div>
+        )}
 
         {/* 결제 수단 */}
         <div className="space-y-3">
