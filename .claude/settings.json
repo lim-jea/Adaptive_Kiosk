@@ -16,7 +16,14 @@
       "Bash(cp /Users/kyumin/.cloudflared/2c4c2223-8e93-4dd6-b2dd-47926baf11b7.json /Users/kyumin/Documents/GitHub/Adaptive_Kiosk/cloudflared/credentials.json && echo \"복사 완료\")",
       "Bash(cloudflared tunnel *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://adaptivekiosk.uk)",
-      "Bash(docker-compose ps *)"
+      "Bash(docker-compose ps *)",
+      "Bash(printenv)",
+      "Bash(sed -n '/^const RATING_QUESTIONS/,/^]/p' frontend/src/pages/CompletionPage.jsx)",
+      "Bash(sed -n '/^const RATING_QUESTIONS/,/^]/p' frontend/src/pages/ChildCompletePage.jsx)",
+      "Bash(sed -n '/^const RATING_QUESTIONS/,/^]/p' frontend/src/pages/SeniorCompletePage.jsx)",
+      "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/CompletionPage.jsx)",
+      "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/ChildCompletePage.jsx)",
+      "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/SeniorCompletePage.jsx)"
     ],
     "additionalDirectories": [
       "/Users/kyumin/.cloudflared"

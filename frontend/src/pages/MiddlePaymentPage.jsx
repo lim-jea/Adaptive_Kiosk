@@ -17,9 +17,9 @@ const PAYMENT_METHODS = [
     discount: null,
   },
   {
-    id: 'kakao_pay',
-    label: '카카오페이',
-    desc: '카카오페이로 간편 결제',
+    id: 'apple_pay',
+    label: '애플페이',
+    desc: 'Face ID / Touch ID로 결제',
     discount: null,
   },
   {
@@ -39,12 +39,6 @@ const PAYMENT_METHODS = [
     label: '통신사 할인',
     desc: 'SKT · KT · LG U+ 최대 20% 할인',
     discount: 0.2,
-  },
-  {
-    id: 'membership',
-    label: '멤버십 카드',
-    desc: '스탬프 2배 적립',
-    discount: null,
   },
 ]
 
@@ -179,10 +173,11 @@ export default function MiddlePaymentPage() {
           : method.label,
         totalPrice: discountedPrice,
         totalCount,
-        isMembership: method.id === 'membership',
         orderUuid,
-        discount,
-        originalPrice: totalPrice,
+        discountAmount: discount ? totalPrice - discountedPrice : 0,
+        discountLabel: discount && method.id === 'telecom'
+          ? `${selectedProvider?.label} 통신사 ${discount * 100}% 할인`
+          : null,
       },
     })
   }, [logger, navigate, state, totalCount, totalPrice, selectedProvider])
@@ -416,17 +411,6 @@ export default function MiddlePaymentPage() {
                     <div className="text-left">
                       <p className="font-bold">전화번호 입력</p>
                       <p className="text-xs font-normal" style={{ color: '#9ca3af' }}>등록된 번호로 인증</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setTelecomStep('scan')}
-                    className="w-full py-4 rounded-2xl border-2 font-bold flex items-center gap-4 px-5 active:scale-95 transition-all hover:opacity-80"
-                    style={{ borderColor: '#fde8d8', background: '#fff', color: '#374151' }}
-                  >
-                    <span className="text-3xl">💳</span>
-                    <div className="text-left">
-                      <p className="font-bold">멤버십 카드 스캔</p>
-                      <p className="text-xs font-normal" style={{ color: '#9ca3af' }}>카드 바코드를 카메라에</p>
                     </div>
                   </button>
                   <button

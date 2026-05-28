@@ -165,7 +165,7 @@ export default function SeniorCompletePage() {
   const tts = useTTS({ rate: 0.65 })
   const ttsCalledRef = useRef(false)
 
-  const { paymentMethod, totalPrice, totalCount, isMembership, orderUuid } = location.state || {}
+  const { paymentMethod, totalPrice, totalCount, orderUuid } = location.state || {}
   const vat = splitVAT(totalPrice)
 
   const [orderNum] = useState(() => formatOrderDisplayNo(orderUuid) || String(Math.floor(Math.random() * 9000 + 1000)))
@@ -179,11 +179,11 @@ export default function SeniorCompletePage() {
   // 스탬프 상태
   const [stampDone, setStampDone] = useState(false)
   const [showStampPopup, setShowStampPopup] = useState(false)
-  const [stampMethod, setStampMethod] = useState(null) // null | 'phone' | 'card'
+  const [stampMethod, setStampMethod] = useState(null) // null | 'phone'
   const [phoneNumber, setPhoneNumber] = useState('')
 
   const prevStamps = getSimulatedStamps()
-  const earnedStamps = isMembership ? 2 : 1
+  const earnedStamps = 1
   const newStamps = Math.min(TOTAL_STAMPS, prevStamps + earnedStamps)
   const isReward = newStamps >= TOTAL_STAMPS
 
@@ -195,6 +195,7 @@ export default function SeniorCompletePage() {
 
   // 설문 응답 상태
   const [respAge, setRespAge] = useState('')
+  const [agepadOpen, setAgepadOpen] = useState(false)
   const [respGender, setRespGender] = useState(null)
   const [answers, setAnswers] = useState({})
   const [q7NoExperience, setQ7NoExperience] = useState(false)
@@ -443,15 +444,27 @@ export default function SeniorCompletePage() {
             {/* 만 나이 */}
             <div>
               <p className="text-lg font-bold text-gray-800 mb-2">만 나이</p>
-              <input
-                type="number"
-                min="1"
-                max="120"
-                value={respAge}
-                onChange={(e) => setRespAge(e.target.value)}
-                placeholder="예: 70"
-                className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-lg focus:outline-none focus:border-amber-400"
-              />
+              <button
+                type="button"
+                onClick={() => setAgepadOpen((o) => !o)}
+                className={`w-full border-2 rounded-2xl px-4 py-3 text-lg text-left transition-colors
+                  ${agepadOpen ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}
+                  ${respAge ? 'text-gray-800 font-bold' : 'text-gray-400'}`}
+              >
+                {respAge ? `${respAge}세` : '터치하여 입력'}
+              </button>
+              {agepadOpen && (
+                <div className="mt-2">
+                  <NumPad value={respAge} onChange={(v) => setRespAge(v)} maxLength={3} />
+                  <button
+                    type="button"
+                    onClick={() => setAgepadOpen(false)}
+                    className="w-full mt-2 py-3 rounded-2xl bg-amber-500 text-white font-black text-xl"
+                  >
+                    확인
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 성별 */}
@@ -629,13 +642,6 @@ export default function SeniorCompletePage() {
                     <span className="text-3xl">📱</span>
                     <span>전화번호로 적립</span>
                   </button>
-                  <button
-                    onClick={() => setStampMethod('card')}
-                    className="w-full py-5 rounded-2xl border-2 border-gray-200 bg-white text-gray-700 text-xl font-bold hover:border-amber-400 hover:bg-amber-50 transition-all flex items-center gap-4 px-5"
-                  >
-                    <span className="text-3xl">💳</span>
-                    <span>멤버십 카드 스캔</span>
-                  </button>
                 </div>
                 <button
                   onClick={() => setShowStampPopup(false)}
@@ -683,35 +689,6 @@ export default function SeniorCompletePage() {
               </>
             )}
 
-            {/* 카드 스캔 */}
-            {stampMethod === 'card' && (
-              <>
-                <h2 className="text-2xl font-black text-gray-800 mb-1">멤버십 카드 스캔</h2>
-                <p className="text-base text-gray-400 mb-6">카드의 바코드를 카메라에 가져다 대주세요</p>
-
-                <div className="bg-gray-100 rounded-2xl h-40 flex items-center justify-center mb-6">
-                  <div className="text-center">
-                    <p className="text-5xl mb-2">📷</p>
-                    <p className="text-gray-400">카메라 준비 중...</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setStampMethod(null)}
-                    className="flex-1 py-4 rounded-2xl border-2 border-gray-300 text-gray-600 text-xl font-bold"
-                  >
-                    뒤로
-                  </button>
-                  <button
-                    onClick={handleStampConfirm}
-                    className="flex-1 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xl font-bold"
-                  >
-                    완료
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}

@@ -27,6 +27,12 @@ const PAYMENT_METHODS = [
     desc: 'Face ID로 결제해요',
     bg: '#111827',
   },
+  {
+    id: 'naver_pay',
+    label: '네이버페이',
+    desc: '네이버페이 포인트·머니 결제',
+    bg: '#03C75A',
+  },
 ]
 
 export default function ChildPaymentPage() {
