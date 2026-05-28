@@ -252,7 +252,7 @@ export default function RecommendationPanel({
       </div>
 
       {vertical ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
           {recommendations.map((rec, idx) => {
             const menuId = rec.menu_id || rec.id
             const menuName = rec.menu_name || rec.name
@@ -264,7 +264,7 @@ export default function RecommendationPanel({
               <button
                 key={menuId}
                 onClick={() => onSelectMenu && onSelectMenu(menuName, { menuId, fromRecommendation: true })}
-                className="group relative bg-white rounded-xl p-3 border-2 border-amber-200 hover:border-amber-500 active:scale-95 transition-all duration-200 text-left w-full"
+                className="group relative min-w-[220px] bg-white rounded-xl p-3 border-2 border-amber-200 hover:border-amber-500 active:scale-95 transition-all duration-200 text-left w-[78vw] max-w-[260px] lg:w-full lg:max-w-none lg:min-w-0"
               >
                 <div className="flex items-start gap-2 mb-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold mt-0.5">

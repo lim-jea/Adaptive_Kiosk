@@ -153,7 +153,6 @@ export default function CompletionPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
-  const [countdown, setCountdown] = useState(30)
   const [parkingDone, setParkingDone] = useState(false)
   const [parkingToast, setParkingToast] = useState(false)
   const [staffCalled, setStaffCalled] = useState(false)
@@ -173,16 +172,6 @@ export default function CompletionPage() {
 
   const startedAtRef = useRef(Date.now())
   const sessionUuidRef = useRef(state.sessionUuid)
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) { clearInterval(timer); handleGoHome(); return 0 }
-        return c - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGoHome = async () => {
     logger.log('navigation', 'completion', { actionName: 'go_home', targetType: 'button', targetLabel: 'home' })
@@ -449,9 +438,6 @@ export default function CompletionPage() {
         >
           처음으로
         </button>
-        <p className="text-center text-xs text-gray-400 mt-2">
-          {countdown}초 후 자동으로 처음 화면으로 이동합니다
-        </p>
       </div>
 
       {/* 주차 완료 토스트 */}

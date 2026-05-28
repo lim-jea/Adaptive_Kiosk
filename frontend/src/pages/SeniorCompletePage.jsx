@@ -52,7 +52,6 @@ export default function SeniorCompletePage() {
   const { paymentMethod, totalPrice, totalCount, isMembership } = location.state || {}
 
   const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
-  const [countdown, setCountdown] = useState(30)
   const [toast, setToast] = useState(null)
 
   // 주차 등록 상태
@@ -111,21 +110,6 @@ export default function SeniorCompletePage() {
     tts.speak(`결제가 완료되었습니다. 주문번호는 ${orderNum}번입니다. 번호판에 번호가 뜨면 찾아가세요.`)
   }, []) 
   
-  // 30초 카운트다운 → 홈
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(timer)
-          handleGoHome()
-          return 0
-        }
-        return c - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, []) 
-
   const showToast = (icon, message) => {
     setToast({ icon, message })
     setTimeout(() => setToast(null), 3000)
@@ -255,7 +239,6 @@ export default function SeniorCompletePage() {
         처음으로 돌아가기
       </button>
 
-      <p className="text-lg text-gray-400 mt-4">{countdown}초 후 자동으로 처음 화면으로 이동합니다</p>
 
       {/* 토스트 */}
       {toast && (

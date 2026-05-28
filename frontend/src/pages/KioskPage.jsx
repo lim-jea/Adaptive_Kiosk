@@ -527,9 +527,9 @@ export default function KioskPage() {
       </div>
 
       {/* 메뉴 그리드 + 추천 패널 */}
-      <div className={`flex-1 flex ${showSidebar ? 'flex-row' : 'flex-col'}`}>
+      <div className={`flex-1 flex flex-col ${showSidebar ? 'lg:flex-row' : ''}`}>
         {/* 왼쪽 — 메뉴 영역 */}
-        <div className="flex-1 p-4 pb-40">
+        <div className="order-2 flex-1 p-4 pb-40 lg:order-1">
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -540,7 +540,7 @@ export default function KioskPage() {
               {filteredMenus.length === 0 ? (
                 <p className="text-center text-gray-400 mt-12">해당 카테고리 메뉴가 없습니다</p>
               ) : (
-                <div className={`grid ${showSidebar ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'} gap-3`}>
+                <div className={`grid ${showSidebar ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'} gap-3`}>
                   {filteredMenus.map((menu) => (
                     <MenuCard
                       key={menu.id}
@@ -559,8 +559,8 @@ export default function KioskPage() {
 
         {/* 청년: 우측 세로 추천 패널 */}
         {showSidebar && (
-          <div className="w-72 flex-shrink-0 border-l border-amber-100 bg-amber-50/30">
-            <div className="sticky top-[104px] p-3 max-h-[calc(100vh-104px-80px)] overflow-y-auto">
+          <div className="order-1 w-full flex-shrink-0 border-b border-amber-100 bg-amber-50/30 lg:order-2 lg:w-72 lg:border-b-0 lg:border-l">
+            <div className="p-3 lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-104px-80px)] lg:overflow-y-auto">
               {!loading && (
                 <RecommendationPanel
                   gender={state.gender}

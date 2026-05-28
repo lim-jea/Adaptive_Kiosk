@@ -48,7 +48,6 @@ export default function MiddleCompletePage() {
   const { paymentMethod, totalPrice, totalCount, isMembership, orderUuid, discount, originalPrice } = location.state || {}
 
   const [orderNum] = useState(() => Math.floor(Math.random() * 900 + 100))
-  const [countdown, setCountdown] = useState(30)
   const [showStampAnim, setShowStampAnim] = useState(false)
 
   // 주차 팝업
@@ -101,16 +100,6 @@ export default function MiddleCompletePage() {
     const t = setTimeout(() => setShowStampAnim(true), 400)
     return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) { clearInterval(timer); handleGoHome(); return 0 }
-        return c - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
-  }, []) 
 
   const handleGoHome = async () => {
     logger.log('navigation', 'completion', { actionName: 'go_home', targetType: 'button', targetLabel: 'home' })
@@ -280,9 +269,6 @@ export default function MiddleCompletePage() {
         >
           처음으로 돌아가기
         </button>
-        <p className="text-center text-xs mt-2" style={{ color: '#9ca3af' }}>
-          {countdown}초 후 자동으로 처음 화면으로 이동합니다
-        </p>
       </div>
 
       {/* 주차 등록 팝업 */}
