@@ -1,4 +1,4 @@
-// 중장년 결제 페이지 — 다양한 결제 수단 + 통신사 할인 팝업
+// 중장년 결제 페이지 — 결제 수단 선택 + 할인 선택 팝업
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api, { logClientTiming } from '../utils/api'
@@ -14,82 +14,78 @@ const PAYMENT_METHODS = [
     id: 'card',
     label: '신용 / 체크카드',
     desc: 'IC칩 또는 마그네틱 결제',
-    discount: null,
   },
   {
     id: 'apple_pay',
     label: '애플페이',
     desc: 'Face ID / Touch ID로 결제',
-    discount: null,
   },
   {
     id: 'naver_pay',
     label: '네이버페이',
     desc: '네이버페이로 간편 결제',
-    discount: null,
   },
   {
     id: 'samsung_pay',
     label: '삼성페이',
     desc: '삼성페이로 간편 결제',
-    discount: null,
   },
   {
-    id: 'telecom',
-    label: '통신사 할인',
-    desc: 'SKT · KT · LG U+ 최대 20% 할인',
-    discount: 0.2,
+    id: 'discount',
+    label: '할인 선택',
+    desc: '임직원·SKT·LG·기프티콘 할인',
   },
 ]
 
-const TELECOM_PROVIDERS = [
-  { id: 'skt', label: 'SKT', color: '#E51937', icon: '📡' },
-  { id: 'kt', label: 'KT', color: '#BC1F2E', icon: '📶' },
-  { id: 'lg', label: 'LG U+', color: '#E4006B', icon: '📻' },
+const DISCOUNT_OPTIONS = [
+  {
+    id: 'employee',
+    label: '임직원 할인',
+    emoji: '👔',
+    desc: '임직원 사원증 바코드 인식',
+    color: 'bg-blue-50 border-blue-200 hover:border-blue-400',
+    discountRate: 0.2,
+  },
+  {
+    id: 'skt',
+    label: 'SKT 멤버십',
+    emoji: '📶',
+    desc: 'T멤버십 바코드 인식',
+    color: 'bg-red-50 border-red-200 hover:border-red-400',
+    discountRate: 0.2,
+  },
+  {
+    id: 'lg',
+    label: 'LG 멤버십',
+    emoji: '📡',
+    desc: 'LG U+ 멤버십 바코드 인식',
+    color: 'bg-pink-50 border-pink-200 hover:border-pink-400',
+    discountRate: 0.2,
+  },
+  {
+    id: 'gifticon',
+    label: '기프티콘',
+    emoji: '🎟️',
+    desc: '기프티콘 바코드 인식',
+    color: 'bg-amber-50 border-amber-200 hover:border-amber-400',
+    discountRate: 0,
+  },
 ]
-
-// 숫자 키패드
-function NumPad({ value, onChange, maxLength = 11 }) {
-  const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫']
-  return (
-    <div className="grid grid-cols-3 gap-2 mt-3">
-      {keys.map((key, i) => (
-        <button
-          key={i}
-          onClick={() => {
-            if (key === '⌫') onChange(value.slice(0, -1))
-            else if (key === '') return
-            else if (value.length < maxLength) onChange(value + key)
-          }}
-          disabled={key === ''}
-          className={`h-12 rounded-xl text-xl font-bold transition-all
-            ${key === '' ? 'invisible' : 'hover:opacity-80 active:scale-95'}
-            ${key === '⌫' ? 'text-red-400' : 'text-gray-700'}`}
-          style={{ background: key === '' ? 'transparent' : '#fff3ec', border: '1px solid #fde8d8' }}
-        >
-          {key}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 export default function MiddlePaymentPage() {
   const navigate = useNavigate()
-  const { state, dispatch, ACTIONS } = useSession()
+  const { state } = useSession()
   const logger = useLogger(state.sessionUuid)
 
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [status, setStatus] = useState('idle') // idle | processing | done
   const [errorMessage, setErrorMessage] = useState('')
 
-  // 통신사 할인 팝업 상태
-  const [showTelecomPopup, setShowTelecomPopup] = useState(false)
-  const [telecomStep, setTelecomStep] = useState('provider') // provider | method | phone | scan | confirm
-  const [selectedProvider, setSelectedProvider] = useState(null)
-  const [telecomMethod, setTelecomMethod] = useState(null) // phone | card | coupon
-  const [phoneNumber, setPhoneNumber] = useState('')
-  const [telecomDiscount, setTelecomDiscount] = useState(null)
+  // 할인 팝업 상태
+  const [showDiscountPopup, setShowDiscountPopup] = useState(false)
+  // 선택된 할인 옵션 (스캔 오버레이 및 결제에 사용)
+  const [scanningDiscount, setScanningDiscount] = useState(null)
+  const [selectedDiscount, setSelectedDiscount] = useState(null)
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
@@ -105,7 +101,10 @@ export default function MiddlePaymentPage() {
     }
   }, [logger, state.sessionUuid, totalCount, totalPrice])
 
-  const handlePay = useCallback(async (method, discountRate = null) => {
+  const handlePay = useCallback(async (method, discountOption = null) => {
+    const discount = discountOption?.discountRate ?? null
+    const discountedPrice = discount ? Math.floor(totalPrice * (1 - discount)) : totalPrice
+
     logger.log('payment', 'payment', {
       actionName: 'payment_method_select',
       targetType: 'payment_method',
@@ -113,12 +112,6 @@ export default function MiddlePaymentPage() {
       targetLabel: method.label,
       payload: { total_price: totalPrice, total_count: totalCount },
     })
-    setSelectedMethod(method.id)
-    setStatus('processing')
-    setErrorMessage('')
-
-    const discount = discountRate || method.discount
-    const discountedPrice = discount ? Math.floor(totalPrice * (1 - discount)) : totalPrice
     logger.log('payment', 'payment', {
       actionName: 'payment_start',
       targetType: 'payment_method',
@@ -130,25 +123,26 @@ export default function MiddlePaymentPage() {
         discount_amount: discount ? totalPrice - discountedPrice : 0,
         total_count: totalCount,
         discount_rate: discount || 0,
-        discount_type: discount ? (method.id === 'telecom' ? `telecom_${selectedProvider?.id || ''}` : method.id) : null,
+        discount_type: discountOption ? discountOption.id : null,
         order_type: state.orderType,
         used_recommendation: state.cart.some((item) => item.fromRecommendation),
       },
     })
+
+    setSelectedMethod(method.id)
+    setStatus('processing')
+    setErrorMessage('')
 
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     let orderUuid = null
     const orderStartedAt = performance.now()
     try {
-      const discountAmountForPayload = discount ? totalPrice - discountedPrice : 0
-      const discountTypeForPayload = discount
-        ? (method.id === 'telecom' ? `telecom_${selectedProvider?.id || ''}` : method.id)
-        : null
+      const discountAmount = discount ? totalPrice - discountedPrice : 0
       const res = await api.post('/api/v1/orders', buildOrderPayload(state.sessionUuid, state.cart, {
         orderType: state.orderType,
-        discountType: discountTypeForPayload,
-        discountAmount: discountAmountForPayload,
+        discountType: discountOption ? discountOption.id : null,
+        discountAmount,
       }))
       orderUuid = res.data.order_uuid
       logClientTiming('payment.createOrder', performance.now() - orderStartedAt, { order_uuid: orderUuid })
@@ -157,7 +151,6 @@ export default function MiddlePaymentPage() {
         session_uuid: state.sessionUuid,
       })
       console.error('주문 저장 실패:', err)
-
       setStatus('idle')
       setErrorMessage('주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.')
       return
@@ -168,41 +161,55 @@ export default function MiddlePaymentPage() {
     navigate('/middlecomplete', {
       replace: true,
       state: {
-        paymentMethod: method.id === 'telecom'
-          ? `${selectedProvider?.label} 통신사 할인`
+        paymentMethod: discountOption
+          ? `${discountOption.label} 할인`
           : method.label,
         totalPrice: discountedPrice,
         totalCount,
         orderUuid,
         discountAmount: discount ? totalPrice - discountedPrice : 0,
-        discountLabel: discount && method.id === 'telecom'
-          ? `${selectedProvider?.label} 통신사 ${discount * 100}% 할인`
+        discountLabel: discountOption && discount
+          ? `${discountOption.label} (${Math.round(discount * 100)}% 할인)`
           : null,
       },
     })
-  }, [logger, navigate, state, totalCount, totalPrice, selectedProvider])
+  }, [logger, navigate, state, totalCount, totalPrice])
 
-  // 통신사 할인 팝업 열기
-  const handleTelecomClick = () => {
-    setTelecomStep('provider')
-    setSelectedProvider(null)
-    setTelecomMethod(null)
-    setPhoneNumber('')
-    setTelecomDiscount(null)
-    setShowTelecomPopup(true)
+  // 할인 옵션 선택 → 스캔 오버레이 → 결제 페이지로 복귀 (할인 적용 상태)
+  const handleDiscountSelect = (option) => {
+    setShowDiscountPopup(false)
+    setScanningDiscount(option)
+    setTimeout(() => {
+      setScanningDiscount(null)
+      setSelectedDiscount(option)
+    }, 2000)
   }
 
-  // 통신사 할인 확정 후 결제
-  const handleTelecomConfirm = () => {
-    setShowTelecomPopup(false)
-    const telecomMethod = PAYMENT_METHODS.find((m) => m.id === 'telecom')
-    handlePay(telecomMethod, 0.2)
+  // 바코드 인식 중 오버레이
+  if (scanningDiscount) {
+    return (
+      <div className="fixed inset-0 bg-gray-900/95 flex flex-col items-center justify-center z-50">
+        <div className="text-7xl mb-6 animate-pulse">{scanningDiscount.emoji}</div>
+        <div className="relative w-48 h-1.5 bg-gray-700 rounded-full mb-8 overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-1/2 bg-amber-400 rounded-full animate-[scan_1s_ease-in-out_infinite]" />
+        </div>
+        <h2 className="text-2xl font-black text-white mb-2">바코드 인식 중</h2>
+        <p className="text-gray-400 text-sm">{scanningDiscount.label} 바코드를 인식하고 있어요</p>
+        <style>{`
+          @keyframes scan {
+            0%   { left: 0%;  width: 40%; }
+            50%  { left: 60%; width: 40%; }
+            100% { left: 0%;  width: 40%; }
+          }
+        `}</style>
+      </div>
+    )
   }
 
   // 결제 중 오버레이
   if (status === 'processing') {
     const method = PAYMENT_METHODS.find((m) => m.id === selectedMethod)
-    const discount = telecomDiscount || method?.discount
+    const discount = selectedDiscount?.discountRate ?? null
     const discountedPrice = discount ? Math.floor(totalPrice * (1 - discount)) : totalPrice
 
     return (
@@ -214,8 +221,8 @@ export default function MiddlePaymentPage() {
           style={{ borderColor: '#f4a261', borderTopColor: 'transparent' }} />
         <h2 className="text-2xl font-bold mb-2" style={{ color: '#374151' }}>결제 중...</h2>
         <p style={{ color: '#9ca3af' }}>
-          {selectedMethod === 'telecom'
-            ? `${selectedProvider?.label} 통신사 할인으로 처리하고 있어요`
+          {selectedMethod === 'discount'
+            ? `${selectedDiscount?.label} 할인으로 처리하고 있어요`
             : `${method?.label}으로 처리하고 있어요`}
         </p>
         {discount ? (
@@ -225,7 +232,7 @@ export default function MiddlePaymentPage() {
             </p>
             <p className="text-xl font-bold" style={{ color: '#f4a261' }}>
               {discountedPrice.toLocaleString()}원
-              <span className="text-sm ml-1">({discount * 100}% 할인)</span>
+              <span className="text-sm ml-1">({Math.round(discount * 100)}% 할인)</span>
             </p>
           </div>
         ) : (
@@ -287,64 +294,121 @@ export default function MiddlePaymentPage() {
           </div>
           <div className="px-4 py-3 space-y-1.5"
             style={{ background: '#fff3ec', borderTop: '1px solid #fde8d8' }}>
-            <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
-              <span>공급가액</span>
-              <span>{vat.net.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
-              <span>부가세 (10%)</span>
-              <span>{vat.tax.toLocaleString()}원</span>
-            </div>
-            <div className="flex justify-between items-center pt-1.5" style={{ borderTop: '1px solid #fde8d8' }}>
-              <span className="font-bold" style={{ color: '#6b7280' }}>총 {totalCount}개</span>
-              <span className="text-xl font-black" style={{ color: '#f4a261' }}>{totalPrice.toLocaleString()}원</span>
-            </div>
+            {selectedDiscount?.discountRate > 0 ? (
+              <>
+                <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
+                  <span>원래 금액</span>
+                  <span className="line-through">{totalPrice.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-bold" style={{ color: '#16a34a' }}>
+                  <span>{selectedDiscount.label} ({Math.round(selectedDiscount.discountRate * 100)}% 할인)</span>
+                  <span>-{Math.floor(totalPrice * selectedDiscount.discountRate).toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5" style={{ borderTop: '1px solid #fde8d8' }}>
+                  <span className="font-bold" style={{ color: '#6b7280' }}>총 {totalCount}개</span>
+                  <span className="text-xl font-black" style={{ color: '#f4a261' }}>
+                    {Math.floor(totalPrice * (1 - selectedDiscount.discountRate)).toLocaleString()}원
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
+                  <span>공급가액</span>
+                  <span>{vat.net.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between items-center text-xs" style={{ color: '#9ca3af' }}>
+                  <span>부가세 (10%)</span>
+                  <span>{vat.tax.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5" style={{ borderTop: '1px solid #fde8d8' }}>
+                  <span className="font-bold" style={{ color: '#6b7280' }}>총 {totalCount}개</span>
+                  <span className="text-xl font-black" style={{ color: '#f4a261' }}>{totalPrice.toLocaleString()}원</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {errorMessage && (
-          <div className="rounded-2x1 px-4 py-3 font-bold text-sm"
+          <div className="rounded-2xl px-4 py-3 font-bold text-sm"
             style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' }}>
             {errorMessage}
           </div>
         )}
 
-        {/* 통신사 할인 안내 */}
-        <div className="rounded-2xl px-4 py-3 flex items-center gap-3"
-          style={{ background: '#fff3ec', border: '1px solid #fde8d8' }}>
-          <span className="text-2xl">🎁</span>
-          <p className="text-sm font-medium" style={{ color: '#c2703a' }}>
-            통신사 멤버십으로 최대 20% 할인 받으세요!
+        {/* 할인 적용 배너 */}
+        {selectedDiscount && (
+          <div className="rounded-2xl px-4 py-3 flex items-center justify-between"
+            style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{selectedDiscount.emoji}</span>
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#15803d' }}>
+                  {selectedDiscount.label} 적용됨
+                </p>
+                {selectedDiscount.discountRate > 0 && (
+                  <p className="text-xs" style={{ color: '#16a34a' }}>
+                    {Math.round(selectedDiscount.discountRate * 100)}% 할인 →&nbsp;
+                    <span className="font-bold">
+                      {Math.floor(totalPrice * (1 - selectedDiscount.discountRate)).toLocaleString()}원
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setSelectedDiscount(null)}
+              className="text-xs font-bold px-2 py-1 rounded-lg"
+              style={{ color: '#6b7280', background: '#f3f4f6' }}
+            >
+              취소
+            </button>
+          </div>
+        )}
+
+        {/* 할인 선택 */}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider px-1 mb-3" style={{ color: '#9ca3af' }}>
+            할인 수단
           </p>
+          <button
+            onClick={() => setShowDiscountPopup(true)}
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
+            style={{ background: '#fffbeb', borderColor: '#fcd34d', color: '#374151' }}
+          >
+            <span className="text-2xl">🎟️</span>
+            <div className="text-left flex-1">
+              <p className="font-bold text-base" style={{ color: '#92400e' }}>할인 선택</p>
+              <p className="text-xs mt-0.5" style={{ color: '#b45309' }}>임직원·SKT·LG·기프티콘 할인</p>
+            </div>
+            <span className="text-xl flex-shrink-0 opacity-60">›</span>
+          </button>
+        </div>
+
+        {/* 구분선 */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: '#fde8d8' }} />
+          <p className="text-xs font-bold" style={{ color: '#d1a07a' }}>결제 수단</p>
+          <div className="flex-1 h-px" style={{ background: '#fde8d8' }} />
         </div>
 
         {/* 결제 수단 */}
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wider px-1 mb-3" style={{ color: '#9ca3af' }}>
-            결제 수단을 선택해주세요
-          </p>
-          <div className="space-y-2">
-            {PAYMENT_METHODS.map((method) => (
-              <button
-                key={method.id}
-                onClick={() => method.id === 'telecom' ? handleTelecomClick() : handlePay(method)}
-                className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
-                style={{ background: '#fff', borderColor: '#e5e7eb', color: '#374151' }}
-              >
-                <div className="text-left flex-1">
-                  <p className="font-bold text-base">{method.label}</p>
-                  <p className="text-xs mt-0.5 opacity-80">{method.desc}</p>
-                </div>
-                {method.discount && (
-                  <span className="text-sm font-black px-2 py-1 rounded-full flex-shrink-0"
-                    style={{ background: 'rgba(255,255,255,0.3)' }}>
-                    -{method.discount * 100}%
-                  </span>
-                )}
-                <span className="text-xl flex-shrink-0 opacity-60">›</span>
-              </button>
-            ))}
-          </div>
+        <div className="space-y-2">
+          {PAYMENT_METHODS.filter((m) => m.id !== 'discount').map((method) => (
+            <button
+              key={method.id}
+              onClick={() => handlePay(method, selectedDiscount)}
+              className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
+              style={{ background: '#fff', borderColor: '#e5e7eb', color: '#374151' }}
+            >
+              <div className="text-left flex-1">
+                <p className="font-bold text-base">{method.label}</p>
+                <p className="text-xs mt-0.5 opacity-80">{method.desc}</p>
+              </div>
+              <span className="text-xl flex-shrink-0 opacity-60">›</span>
+            </button>
+          ))}
         </div>
 
         <p className="text-center text-xs mt-4" style={{ color: '#9ca3af' }}>
@@ -352,212 +416,56 @@ export default function MiddlePaymentPage() {
         </p>
       </div>
 
-      {/* 통신사 할인 팝업 */}
-      {showTelecomPopup && (
+      {/* 할인 선택 팝업 */}
+      {showDiscountPopup && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-6"
-          onClick={() => setShowTelecomPopup(false)}
+          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
+          onClick={() => setShowDiscountPopup(false)}
         >
           <div
-            className="rounded-3xl w-full max-w-sm p-6"
+            className="w-full max-w-lg rounded-t-3xl p-6 pb-8"
             style={{ background: '#fff8f3' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Step 1 — 통신사 선택 */}
-            {telecomStep === 'provider' && (
-              <>
-                <h2 className="text-xl font-black mb-1" style={{ color: '#374151' }}>통신사 선택</h2>
-                <p className="text-sm mb-5" style={{ color: '#9ca3af' }}>이용 중인 통신사를 선택해 주세요</p>
-                <div className="flex flex-col gap-3">
-                  {TELECOM_PROVIDERS.map((provider) => (
-                    <button
-                      key={provider.id}
-                      onClick={() => { setSelectedProvider(provider); setTelecomStep('method') }}
-                      className="w-full py-4 rounded-2xl font-bold text-white text-lg flex items-center gap-3 px-5 active:scale-95 transition-all"
-                      style={{ background: provider.color }}
-                    >
-                      <span className="text-2xl">{provider.icon}</span>
-                      <span>{provider.label}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-black" style={{ color: '#374151' }}>할인 선택</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#9ca3af' }}>적용할 할인 수단을 선택해 주세요</p>
+              </div>
+              <button
+                onClick={() => setShowDiscountPopup(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {DISCOUNT_OPTIONS.map((option) => (
                 <button
-                  onClick={() => setShowTelecomPopup(false)}
-                  className="w-full mt-4 py-3 rounded-2xl font-bold border-2"
-                  style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
+                  key={option.id}
+                  onClick={() => handleDiscountSelect(option)}
+                  className={`relative flex flex-col items-center justify-center min-h-[120px] py-5 px-3 rounded-2xl border-2 active:scale-95 transition-all bg-white ${option.color}`}
                 >
-                  취소
-                </button>
-              </>
-            )}
-
-            {/* Step 2 — 인증 방법 선택 */}
-            {telecomStep === 'method' && (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <button onClick={() => setTelecomStep('provider')} style={{ color: '#9ca3af' }}>←</button>
-                  <h2 className="text-xl font-black" style={{ color: '#374151' }}>
-                    {selectedProvider?.label} 할인 인증
-                  </h2>
-                </div>
-                <p className="text-sm mb-5" style={{ color: '#9ca3af' }}>인증 방법을 선택해 주세요</p>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => setTelecomStep('phone')}
-                    className="w-full py-4 rounded-2xl border-2 font-bold flex items-center gap-4 px-5 active:scale-95 transition-all hover:opacity-80"
-                    style={{ borderColor: '#fde8d8', background: '#fff', color: '#374151' }}
-                  >
-                    <span className="text-3xl">📱</span>
-                    <div className="text-left">
-                      <p className="font-bold">전화번호 입력</p>
-                      <p className="text-xs font-normal" style={{ color: '#9ca3af' }}>등록된 번호로 인증</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setTelecomStep('scan')}
-                    className="w-full py-4 rounded-2xl border-2 font-bold flex items-center gap-4 px-5 active:scale-95 transition-all hover:opacity-80"
-                    style={{ borderColor: '#fde8d8', background: '#fff', color: '#374151' }}
-                  >
-                    <span className="text-3xl">🎫</span>
-                    <div className="text-left">
-                      <p className="font-bold">쿠폰 스캔</p>
-                      <p className="text-xs font-normal" style={{ color: '#9ca3af' }}>할인 쿠폰을 카메라에</p>
-                    </div>
-                  </button>
-                </div>
-                <button
-                  onClick={() => setShowTelecomPopup(false)}
-                  className="w-full mt-4 py-3 rounded-2xl font-bold border-2"
-                  style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
-                >
-                  취소
-                </button>
-              </>
-            )}
-
-            {/* Step 3a — 전화번호 입력 */}
-            {telecomStep === 'phone' && (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <button onClick={() => setTelecomStep('method')} style={{ color: '#9ca3af' }}>←</button>
-                  <h2 className="text-xl font-black" style={{ color: '#374151' }}>전화번호 입력</h2>
-                </div>
-                <p className="text-sm mb-3" style={{ color: '#9ca3af' }}>
-                  {selectedProvider?.label} 가입 전화번호를 입력해 주세요
-                </p>
-                <div className="rounded-2xl px-4 py-3 text-center" style={{ background: '#fff3ec' }}>
-                  <p className="text-2xl font-black tracking-widest" style={{ color: '#374151' }}>
-                    {phoneNumber
-                      ? phoneNumber.replace(/(\d{3})(\d{0,4})(\d{0,4})/, (_, a, b, c) => [a, b, c].filter(Boolean).join('-'))
-                      : '010-0000-0000'}
-                  </p>
-                </div>
-                <NumPad value={phoneNumber} onChange={setPhoneNumber} maxLength={11} />
-                <div className="flex gap-3 mt-4">
-                  <button
-                    onClick={() => { setTelecomStep('method'); setPhoneNumber('') }}
-                    className="flex-1 py-3 rounded-2xl border-2 font-bold"
-                    style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
-                  >
-                    뒤로
-                  </button>
-                  <button
-                    onClick={() => setTelecomStep('confirm')}
-                    disabled={phoneNumber.length < 10}
-                    className="flex-1 py-3 rounded-2xl font-bold text-white transition-colors"
-                    style={{
-                      background: phoneNumber.length >= 10 ? '#f4a261' : '#e5e7eb',
-                      color: phoneNumber.length >= 10 ? '#fff' : '#9ca3af',
-                    }}
-                  >
-                    인증
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Step 3b — 바코드 스캔 */}
-            {telecomStep === 'scan' && (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <button onClick={() => setTelecomStep('method')} style={{ color: '#9ca3af' }}>←</button>
-                  <h2 className="text-xl font-black" style={{ color: '#374151' }}>바코드 스캔</h2>
-                </div>
-                <p className="text-sm mb-4" style={{ color: '#9ca3af' }}>
-                  카드나 쿠폰의 바코드를 카메라에 가져다 대주세요
-                </p>
-                <div className="rounded-2xl h-44 flex items-center justify-center mb-4"
-                  style={{ background: '#fff3ec', border: '2px dashed #f4a261' }}>
-                  <div className="text-center">
-                    <p className="text-5xl mb-2">📷</p>
-                    <p className="text-sm" style={{ color: '#f4a261' }}>카메라 준비 중...</p>
-                    <p className="text-xs mt-1" style={{ color: '#9ca3af' }}>바코드를 화면 중앙에 맞춰주세요</p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setTelecomStep('method')}
-                    className="flex-1 py-3 rounded-2xl border-2 font-bold"
-                    style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
-                  >
-                    뒤로
-                  </button>
-                  <button
-                    onClick={() => setTelecomStep('confirm')}
-                    className="flex-1 py-3 rounded-2xl font-bold text-white"
-                    style={{ background: '#f4a261' }}
-                  >
-                    인식 완료
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Step 4 — 할인 확인 */}
-            {telecomStep === 'confirm' && (
-              <>
-                <h2 className="text-xl font-black mb-1" style={{ color: '#374151' }}>할인 확인</h2>
-                <p className="text-sm mb-5" style={{ color: '#9ca3af' }}>
-                  {selectedProvider?.label} 멤버십 할인이 적용됩니다
-                </p>
-
-                <div className="rounded-2xl p-5 mb-5" style={{ background: '#fff3ec', border: '1px solid #fde8d8' }}>
-                  <div className="flex justify-between items-center mb-2">
-                    <span style={{ color: '#9ca3af' }}>원래 금액</span>
-                    <span className="line-through" style={{ color: '#9ca3af' }}>{totalPrice.toLocaleString()}원</span>
-                  </div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span style={{ color: '#f4a261' }}>통신사 할인 (20%)</span>
-                    <span className="font-bold" style={{ color: '#f4a261' }}>
-                      -{Math.floor(totalPrice * 0.2).toLocaleString()}원
+                  {option.discountRate > 0 && (
+                    <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                      {Math.round(option.discountRate * 100)}% 할인
                     </span>
-                  </div>
-                  <div className="border-t pt-2 flex justify-between items-center" style={{ borderColor: '#fde8d8' }}>
-                    <span className="font-black text-lg" style={{ color: '#374151' }}>최종 결제 금액</span>
-                    <span className="font-black text-2xl" style={{ color: '#f4a261' }}>
-                      {Math.floor(totalPrice * 0.8).toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
+                  )}
+                  <span className="text-3xl mb-2">{option.emoji}</span>
+                  <span className="font-bold text-sm text-gray-800">{option.label}</span>
+                  <span className="text-xs text-gray-400 mt-1 text-center leading-relaxed">{option.desc}</span>
+                </button>
+              ))}
+            </div>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setTelecomStep('method')}
-                    className="flex-1 py-3 rounded-2xl border-2 font-bold"
-                    style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={handleTelecomConfirm}
-                    className="flex-1 py-3 rounded-2xl font-bold text-white"
-                    style={{ background: '#f4a261' }}
-                  >
-                    결제하기
-                  </button>
-                </div>
-              </>
-            )}
+            <button
+              onClick={() => setShowDiscountPopup(false)}
+              className="w-full py-3 rounded-2xl font-bold border-2"
+              style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
+            >
+              취소
+            </button>
           </div>
         </div>
       )}

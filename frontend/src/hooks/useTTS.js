@@ -38,8 +38,18 @@ export function useTTS({ lang = 'ko-KR', rate = 0.8, pitch = 1.0 } = {}) {
   }, [supported])
 
   useEffect(() => () => {
+    // 토큰 증가로 in-flight 백엔드 TTS 응답이 unmount 후 재생되는 것을 방지
+    speakTokenRef.current += 1
+    if (audioResolveRef.current) {
+      try { audioResolveRef.current(false) } catch {}
+      audioResolveRef.current = null
+    }
+    if (audioRef.current) {
+      try { audioRef.current.pause() } catch {}
+      try { audioRef.current.src = '' } catch {}
+      audioRef.current = null
+    }
     if (supported) window.speechSynthesis.cancel()
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
   }, [supported])
 
   // 매직 넘버로 오디오 포맷 자동 감지 (WAV / MP3 모두 지원).

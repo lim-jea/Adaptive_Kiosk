@@ -312,6 +312,7 @@ export default function SeniorKioskPage() {
       })
       setOptionMenu(null)
       if (optionMenu.editSource !== 'cart_panel') {
+        tts.cancel()
         navigate('/cart-review')
       }
       return
@@ -374,8 +375,9 @@ export default function SeniorKioskPage() {
       targetLabel: 'payment',
       payload: { total_price: totalPrice, total_count: totalCount },
     })
+    tts.cancel()
     navigate('/seniorpayment')
-  }, [logger, navigate, state.cart.length, state.sessionUuid, totalCount, totalPrice])
+  }, [logger, navigate, tts, state.cart.length, state.sessionUuid, totalCount, totalPrice])
 
   const handleBack = useCallback(() => {
     logger.log('navigation', 'kiosk', {
@@ -383,8 +385,9 @@ export default function SeniorKioskPage() {
       targetType: 'button',
       targetLabel: 'home',
     })
+    tts.cancel()
     navigate('/')
-  }, [logger, navigate])
+  }, [logger, navigate, tts])
 
   // ─── 음성 주문 통합 ─────────────────────────────────────────────────
   // 액션 핸들러는 비동기 fetch 도중 cart가 바뀌어도 항상 최신 cart를 보도록 ref 사용
@@ -428,7 +431,7 @@ export default function SeniorKioskPage() {
           setCartOpen(true)
         } else if (action.target === 'payment') {
           // 음성으로 결제 이동 — 카트 비어 있으면 이동 안 함
-          if (cartRef.current.length > 0) navigate('/seniorpayment')
+          if (cartRef.current.length > 0) { tts.cancel(); navigate('/seniorpayment') }
           else console.warn('[voice] cart empty, payment navigation skipped')
         }
         break
@@ -551,7 +554,7 @@ export default function SeniorKioskPage() {
       case 'place_order': {
         setOptionMenu(null)
         setOptionPreview([])
-        if (cartRef.current.length > 0) navigate('/seniorpayment')
+        if (cartRef.current.length > 0) { tts.cancel(); navigate('/seniorpayment') }
         break
       }
       case 'scroll': {
@@ -1022,7 +1025,12 @@ function SeniorOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
                           ? 'border-amber-500 bg-amber-50 text-amber-700'
                           : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
                     >
-                      <span className="text-xl font-bold">{item.name}</span>
+                      <span className="text-xl font-bold">
+                        {item.name}
+                        {item.name === 'Tall' && <span className="ml-2 text-base font-normal text-gray-400">(작은 사이즈)</span>}
+                        {item.name === 'Grande' && <span className="ml-2 text-base font-normal text-gray-400">(중간 사이즈)</span>}
+                        {item.name === 'Venti' && <span className="ml-2 text-base font-normal text-gray-400">(큰 사이즈)</span>}
+                      </span>
                       {item.extra_price > 0 && (
                         <span className="text-lg text-gray-400">+{item.extra_price.toLocaleString()}원</span>
                       )}
