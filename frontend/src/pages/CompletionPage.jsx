@@ -167,6 +167,7 @@ export default function CompletionPage() {
   const [surveyOpen, setSurveyOpen] = useState(false)
   const [surveyDone, setSurveyDone] = useState(false)
   const [surveySubmitting, setSurveySubmitting] = useState(false)
+  const [surveyError, setSurveyError] = useState('')
 
   // 설문 응답 상태
   const [respAge, setRespAge] = useState('')
@@ -227,6 +228,7 @@ export default function CompletionPage() {
 
   const handleSurveySubmit = async () => {
     setSurveySubmitting(true)
+    setSurveyError('')
     try {
       await api.post('/api/v1/survey/responses', {
         session_uuid: sessionUuidRef.current,
@@ -241,11 +243,14 @@ export default function CompletionPage() {
         survey_snapshot: null,
         duration_ms: Date.now() - startedAtRef.current,
       })
+      setSurveyDone(true)
+      setSurveyOpen(false)
     } catch (err) {
-      console.warn('[survey] submit failed (ignored):', err.message)
+      console.warn('[survey] submit failed:', err.message)
+      setSurveyError('의견 저장에 실패했습니다. 잠시 후 다시 눌러주세요.')
+    } finally {
+      setSurveySubmitting(false)
     }
-    setSurveyDone(true)
-    setSurveySubmitting(false)
   }
 
   return (
@@ -431,6 +436,10 @@ export default function CompletionPage() {
                 </p>
                 <SingleChoice value={easyMode} onChange={setEasyMode} options={EASY_MODE_OPTIONS} />
               </div>
+
+              {surveyError && (
+                <p className="text-sm font-bold text-red-600 text-center">{surveyError}</p>
+              )}
 
               {/* 제출 */}
               <button

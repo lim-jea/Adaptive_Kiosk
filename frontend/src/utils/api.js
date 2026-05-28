@@ -28,7 +28,7 @@ export function clearSessionToken() {
   } catch { /* ignore */ }
 }
 
-function getSessionToken() {
+export function getSessionToken() {
   try {
     const token = sessionStorage.getItem(SESSION_TOKEN_KEY)
     if (!token) return null

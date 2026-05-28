@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../utils/api'
+import api, { getSessionToken } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 
 // 5단계 만족 라벨 (사용자 합의)
@@ -337,7 +337,7 @@ export default function SurveyPage() {
   const buildPayloadRef = useRef(buildPayload)
   useEffect(() => { buildPayloadRef.current = buildPayload })
 
-  // 디바운스 2000ms — 응답 한 번에 평균 2~4회 호출. 페이지 이탈 시 sendBeacon 으로 추가 안전망.
+  // 디바운스 2000ms — 응답 한 번에 평균 2~4회 호출. 페이지 이탈 시 keepalive fetch 로 추가 안전망.
   const saveDebouncedRef = useRef(null)
   useEffect(() => {
     if (!sessionUuidRef.current || isFinalizedRef.current) return
@@ -359,9 +359,22 @@ export default function SurveyPage() {
       try {
         // ref 를 통해 항상 최신 응답 상태를 직렬화 (빈 응답으로 덮어쓰는 사고 방지).
         const payload = JSON.stringify(buildPayloadRef.current('partial'))
-        const blob = new Blob([payload], { type: 'application/json' })
         const baseURL = api.defaults.baseURL || ''
-        navigator.sendBeacon(`${baseURL}/api/v1/survey/responses`, blob)
+        const token = getSessionToken()
+        if (!token) return
+        const headers = {
+          'Content-Type': 'application/json',
+          'X-Session-Token': token,
+        }
+        if (sessionUuidRef.current) {
+          headers['X-Session-UUID'] = sessionUuidRef.current
+        }
+        fetch(`${baseURL}/api/v1/survey/responses`, {
+          method: 'POST',
+          headers,
+          body: payload,
+          keepalive: true,
+        }).catch(() => {})
       } catch { /* ignore */ }
     }
     window.addEventListener('beforeunload', handler)
