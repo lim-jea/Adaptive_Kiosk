@@ -6,7 +6,7 @@ import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
-import { getPaymentVisual } from '../utils/paymentVisuals'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -395,15 +395,11 @@ export default function MiddlePaymentPage() {
         </div>
 
         {/* 결제 수단 */}
-        <div className="grid grid-cols-2 gap-3">
-          {PAYMENT_METHODS.filter((m) => m.id !== 'discount').map((method) => (
-            <MiddlePaymentMethodButton
-              key={method.id}
-              method={method}
-              onClick={() => handlePay(method, selectedDiscount)}
-            />
-          ))}
-        </div>
+        <PaymentMethodGrid
+          methods={PAYMENT_METHODS.filter((m) => m.id !== 'discount')}
+          onSelect={(method) => handlePay(method, selectedDiscount)}
+          variant="middle"
+        />
 
         <p className="text-center text-xs mt-4" style={{ color: '#9ca3af' }}>
           결제 수단을 탭하면 바로 결제가 시작됩니다
@@ -464,25 +460,5 @@ export default function MiddlePaymentPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function MiddlePaymentMethodButton({ method, onClick }) {
-  const visual = getPaymentVisual(method.id)
-  return (
-    <button
-      onClick={onClick}
-      className="min-h-[132px] px-3 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md flex flex-col items-center justify-center text-center"
-      style={{ background: '#fff', borderColor: '#e5e7eb', color: '#374151' }}
-    >
-      <div
-        className="w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-black shadow-sm"
-        style={{ background: visual.bg, color: visual.fg }}
-      >
-        {visual.icon || visual.mark}
-      </div>
-      <p className="font-black text-base mt-3 leading-tight">{method.label}</p>
-      <p className="text-xs mt-1 opacity-70 leading-tight">{method.desc}</p>
-    </button>
   )
 }

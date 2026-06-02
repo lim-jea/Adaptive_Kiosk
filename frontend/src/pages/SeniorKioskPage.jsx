@@ -8,6 +8,7 @@ import { useSession } from '../store/sessionStore.jsx'
 import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import { useLogger } from '../hooks/useLogger'
 import VoiceOverlay from '../components/VoiceOverlay'
+import CartScrollHint from '../components/CartScrollHint'
 import { useTTS } from '../hooks/useTTS.js'
 
 function normalizeOptionIds(optionIds = []) {
@@ -677,7 +678,7 @@ export default function SeniorKioskPage() {
 
             {/* 왼쪽 — 장바구니. 클릭하면 펼치고, 펼친 뒤에는 내부 스크롤 */}
             <div
-              className={`flex-1 border-r-2 border-gray-200 bg-gray-50 ${cartOpen ? 'overflow-y-auto' : 'overflow-x-auto'}`}
+              className={`relative flex-1 border-r-2 border-gray-200 bg-gray-50 ${cartOpen ? 'overflow-y-auto' : 'overflow-x-auto'}`}
               onClick={() => setCartOpen(true)}
             >
               <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 px-4 py-2 border-b border-gray-200">
@@ -714,6 +715,7 @@ export default function SeniorKioskPage() {
                   />
                 ))}
               </div>
+              <CartScrollHint visible={cartOpen && state.cart.length > 2} />
             </div>
 
             {/* 오른쪽 — 총금액 + 결제버튼 */}

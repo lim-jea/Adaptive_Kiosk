@@ -8,14 +8,18 @@ import LiveTranscript from './LiveTranscript'
 export default function VoiceOverlay({ voice, isSimpleMode, onClose, onCallStaff }) {
   const { status, interim, lastUserText, lastResponseText, sttSupported, error, start, stop } = voice
   const [callingStaff, setCallingStaff] = useState(false)
+  const [staffCallLocked, setStaffCallLocked] = useState(false)
   const isActive = status !== 'idle' && status !== 'ended'
   const big = isSimpleMode
   const actionSize = big ? 'min-h-[64px] px-5 text-xl' : 'min-h-[52px] px-4 text-base'
 
   const handleCallStaff = () => {
+    if (staffCallLocked) return
     onCallStaff?.()
     setCallingStaff(true)
+    setStaffCallLocked(true)
     setTimeout(() => setCallingStaff(false), 2200)
+    setTimeout(() => setStaffCallLocked(false), 3000)
   }
 
   return (
@@ -63,7 +67,9 @@ export default function VoiceOverlay({ voice, isSimpleMode, onClose, onCallStaff
             </button>
             <button
               onClick={handleCallStaff}
+              disabled={staffCallLocked}
               className={`rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center gap-2 font-black
+                disabled:opacity-70 disabled:cursor-not-allowed
                 ${big ? 'h-16 px-6 text-xl' : 'h-12 px-4 text-sm'}`}
               title="직원 호출"
             >
@@ -86,7 +92,9 @@ export default function VoiceOverlay({ voice, isSimpleMode, onClose, onCallStaff
             </button>
             <button
               onClick={handleCallStaff}
+              disabled={staffCallLocked}
               className={`rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center gap-2 font-black
+                disabled:opacity-70 disabled:cursor-not-allowed
                 ${actionSize}`}
               title="직원 호출"
             >

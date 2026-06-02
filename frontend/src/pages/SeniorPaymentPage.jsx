@@ -7,7 +7,7 @@ import { useLogger } from '../hooks/useLogger'
 import { useTTS } from '../hooks/useTTS'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
-import { getPaymentVisual } from '../utils/paymentVisuals'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 const TOTAL_STAMPS = 10
@@ -587,15 +587,11 @@ export default function SeniorPaymentPage() {
         </div>
 
         {/* 결제 수단 */}
-        <div className="grid grid-cols-2 gap-3">
-          {PAYMENT_METHODS.filter((m) => m.id !== 'discount').map((method) => (
-            <SeniorPaymentMethodButton
-              key={method.id}
-              method={method}
-              onClick={() => handlePay(method, selectedDiscount)}
-            />
-          ))}
-        </div>
+        <PaymentMethodGrid
+          methods={PAYMENT_METHODS.filter((m) => m.id !== 'discount')}
+          onSelect={(method) => handlePay(method, selectedDiscount)}
+          variant="senior"
+        />
       </div>
 
       {/* 할인 선택 팝업 */}
@@ -650,24 +646,5 @@ export default function SeniorPaymentPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function SeniorPaymentMethodButton({ method, onClick }) {
-  const visual = getPaymentVisual(method.id)
-  return (
-    <button
-      onClick={onClick}
-      className="min-h-[170px] px-4 py-5 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all shadow-sm hover:shadow-md hover:border-gray-300 flex flex-col items-center justify-center text-center"
-    >
-      <div
-        className="w-20 h-20 rounded-3xl flex items-center justify-center text-3xl font-black shadow-md"
-        style={{ background: visual.bg, color: visual.fg }}
-      >
-        {visual.icon || visual.mark}
-      </div>
-      <p className="font-black text-2xl mt-4 leading-tight">{method.label}</p>
-      <p className="text-base mt-1 text-gray-400 leading-tight">{method.desc}</p>
-    </button>
   )
 }

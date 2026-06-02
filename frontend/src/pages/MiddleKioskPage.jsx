@@ -9,6 +9,7 @@ import { useVoiceOrder } from '../hooks/useVoiceOrder.js'
 import { useLogger } from '../hooks/useLogger.js'
 import VoiceOverlay from '../components/VoiceOverlay.jsx'
 import RecommendationPanel from '../components/RecommendationPanel.jsx'
+import CartScrollHint from '../components/CartScrollHint'
 import { shouldShowRecommendation } from '../utils/recommendation'
 
 // 중장년 선호 메뉴 순서
@@ -695,19 +696,22 @@ export default function MiddleKioskPage() {
       {/* 하단 장바구니 바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-20">
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-gray-50">
-            {state.cart.map((item) => (
-              <MiddleCartRow
-                key={item.cartItemId}
-                item={item}
-                onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
-                onEditOptions={handleEditCartFromPanel}
-              />
-            ))}
-            <div className="px-4 py-2 flex justify-between text-sm font-bold text-gray-700 bg-white">
-              <span>합계</span>
-              <span className="text-amber-600">{totalPrice.toLocaleString()}원</span>
+          <div className="relative border-b bg-gray-50">
+            <div className="max-h-[190px] overflow-y-auto divide-y">
+              {state.cart.map((item) => (
+                <MiddleCartRow
+                  key={item.cartItemId}
+                  item={item}
+                  onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                  onEditOptions={handleEditCartFromPanel}
+                />
+              ))}
+              <div className="px-4 py-2 flex justify-between text-sm font-bold text-gray-700 bg-white">
+                <span>합계</span>
+                <span className="text-amber-600">{totalPrice.toLocaleString()}원</span>
+              </div>
             </div>
+            <CartScrollHint visible={state.cart.length > 2} />
           </div>
         )}
 

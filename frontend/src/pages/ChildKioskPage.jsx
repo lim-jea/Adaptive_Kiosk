@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api, { logClientTiming } from '../utils/api'
 import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
+import CartScrollHint from '../components/CartScrollHint'
 
 function normalizeOptionIds(optionIds = []) {
   return [...optionIds].map(Number).filter(Boolean).sort((a, b) => a - b)
@@ -444,20 +445,23 @@ export default function ChildKioskPage() {
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-sky-100 shadow-lg z-20">
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-sky-50">
-            {state.cart.map((item) => (
-              <ChildCartRow
-                key={item.cartItemId}
-                item={item}
-                onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
-                onEditOptions={handleEditCartFromPanel}
-              />
-            ))}
+          <div className="relative border-b bg-sky-50">
+            <div className="max-h-[190px] overflow-y-auto divide-y">
+              {state.cart.map((item) => (
+                <ChildCartRow
+                  key={item.cartItemId}
+                  item={item}
+                  onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                  onEditOptions={handleEditCartFromPanel}
+                />
+              ))}
 
-            <div className="px-4 py-3 flex justify-between text-lg font-black bg-white">
-              <span className="text-gray-700">합계</span>
-              <span className="text-sky-600">{totalPrice.toLocaleString()}원</span>
+              <div className="px-4 py-3 flex justify-between text-lg font-black bg-white">
+                <span className="text-gray-700">합계</span>
+                <span className="text-sky-600">{totalPrice.toLocaleString()}원</span>
+              </div>
             </div>
+            <CartScrollHint visible={state.cart.length > 2} label="아래에 메뉴가 더 있어요" />
           </div>
         )}
 

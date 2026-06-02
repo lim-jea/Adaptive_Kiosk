@@ -5,7 +5,7 @@ import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
-import { getPaymentVisual } from '../utils/paymentVisuals'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -242,32 +242,8 @@ export default function ChildPaymentPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {PAYMENT_METHODS.map((method) => (
-            <ChildPaymentMethodButton key={method.id} method={method} onClick={() => handlePay(method)} />
-          ))}
-        </div>
+        <PaymentMethodGrid methods={PAYMENT_METHODS} onSelect={handlePay} variant="child" />
       </div>
     </div>
-  )
-}
-
-function ChildPaymentMethodButton({ method, onClick }) {
-  const visual = getPaymentVisual(method.id)
-  return (
-    <button
-      onClick={onClick}
-      className="min-h-[150px] rounded-3xl px-3 py-5 text-white flex flex-col items-center justify-center text-center active:scale-95 transition-all shadow-md"
-      style={{ background: method.bg }}
-    >
-      <div
-        className="w-16 h-16 rounded-3xl flex items-center justify-center text-2xl font-black bg-white/95 shadow-sm"
-        style={{ color: visual.bg }}
-      >
-        {visual.icon || visual.mark}
-      </div>
-      <p className="text-xl font-black mt-3 leading-tight">{method.label}</p>
-      <p className="text-xs opacity-85 mt-1 leading-tight">{method.desc}</p>
-    </button>
   )
 }

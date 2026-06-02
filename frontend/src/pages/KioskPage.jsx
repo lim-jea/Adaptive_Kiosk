@@ -9,6 +9,7 @@ import { useVoiceOrder } from '../hooks/useVoiceOrder'
 import { useLogger } from '../hooks/useLogger'
 import VoiceOverlay from '../components/VoiceOverlay'
 import RecommendationPanel from '../components/RecommendationPanel'
+import CartScrollHint from '../components/CartScrollHint'
 import { shouldShowRecommendation } from '../utils/recommendation'
 
 function normalizeOptionIds(optionIds = []) {
@@ -692,19 +693,22 @@ export default function KioskPage() {
         )}
 
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-gray-50">
-            {state.cart.map((item) => (
-              <CartRow
-                key={item.cartItemId}
-                item={item}
-                onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
-                onEditOptions={handleEditCartFromPanel}
-              />
-            ))}
-            <div className="px-4 py-2 flex justify-between text-sm font-bold text-gray-700 bg-white">
-              <span>합계</span>
-              <span className="text-amber-600">{totalPrice.toLocaleString()}원</span>
+          <div className="relative border-b bg-gray-50">
+            <div className="max-h-[190px] overflow-y-auto divide-y">
+              {state.cart.map((item) => (
+                <CartRow
+                  key={item.cartItemId}
+                  item={item}
+                  onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
+                  onEditOptions={handleEditCartFromPanel}
+                />
+              ))}
+              <div className="px-4 py-2 flex justify-between text-sm font-bold text-gray-700 bg-white">
+                <span>합계</span>
+                <span className="text-amber-600">{totalPrice.toLocaleString()}원</span>
+              </div>
             </div>
+            <CartScrollHint visible={state.cart.length > 2} />
           </div>
         )}
 

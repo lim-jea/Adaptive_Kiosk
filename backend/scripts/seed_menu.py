@@ -583,24 +583,19 @@ async def _update_menu_images_if_missing(db: AsyncSession) -> int:
     return updated
 
 
-async def _remove_obsolete_menu_options(db: AsyncSession) -> int:
-    """Remove option groups that no longer match the category mapping."""
-    menu_rows = (await db.execute(select(Menu.id, Menu.category))).all()
-    removed = 0
-    for menu_id, category in menu_rows:
-        allowed_groups = CATEGORY_OPTION_MAP.get(category, [])
-        if not allowed_groups:
-            continue
-        result = await db.execute(
-            delete(MenuOption).where(
-                MenuOption.menu_id == menu_id,
-                MenuOption.group_name.notin_(allowed_groups),
-            )
+async def _remove_obsolete_tea_sweetness_options(db: AsyncSession) -> int:
+    """Remove the tea sweetness option that was previously seeded by mistake."""
+    tea_menu_ids = select(Menu.id).where(Menu.category == "티")
+    result = await db.execute(
+        delete(MenuOption).where(
+            MenuOption.menu_id.in_(tea_menu_ids),
+            MenuOption.group_name == "당도",
         )
-        removed += result.rowcount or 0
+    )
+    removed = result.rowcount or 0
     if removed:
         await db.commit()
-        logger.info("Removed obsolete menu options: %d rows", removed)
+        logger.info("Removed obsolete tea sweetness options: %d rows", removed)
     return removed
 
 
@@ -638,5 +633,5 @@ async def seed_menu_data(db: AsyncSession) -> None:
     else:
         logger.info("Menu seed data already exists. Skipping.")
 
-    await _remove_obsolete_menu_options(db)
+    await _remove_obsolete_tea_sweetness_options(db)
     await _update_menu_images_if_missing(db)
