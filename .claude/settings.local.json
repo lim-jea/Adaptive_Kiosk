@@ -36,7 +36,9 @@
       "Bash(cd \"/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk\" && grep -rn \"@router\\\\.\\\\\\(post\\\\|put\\\\|delete\\\\|patch\\\\\\)\" backend/api/v1/endpoints/ --include=\"*.py\" | grep -v __pycache__)",
       "Read(//c/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk/backend/api/v1/**)",
       "Bash(cd \"/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk\" && wc -l frontend/src/pages/CompletionPage.jsx frontend/src/pages/ChildCompletePage.jsx)",
-      "Read(//c/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk/frontend/src/pages/**)"
+      "Read(//c/c/Users/jeayy/Desktop/26년도 산학협력캡스톤/Adaptive_Kiosk/frontend/src/pages/**)",
+      "Bash(ls \"c:/Users/jeayy/Desktop/26년도 산학협력캡스톤/\" 2>&1 | head -30)",
+      "Read(//c/Users/jeayy/Desktop/26년도 산학협력캡스톤/**)"
     ]
   }
 }

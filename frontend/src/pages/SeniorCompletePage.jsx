@@ -177,7 +177,7 @@ export default function SeniorCompletePage() {
   const [carNumber, setCarNumber] = useState('')
 
   // 스탬프 상태
-  const [stampDone, setStampDone] = useState(false)
+  const [stampDone, setStampDone] = useState(sessionStorage.getItem('stamp_before_payment_done') === '1')
   const [showStampPopup, setShowStampPopup] = useState(false)
   const [stampMethod, setStampMethod] = useState(null) // null | 'phone'
   const [phoneNumber, setPhoneNumber] = useState('')

@@ -6,6 +6,7 @@ import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -406,22 +407,11 @@ export default function MiddlePaymentPage() {
         </div>
 
         {/* 결제 수단 */}
-        <div className="space-y-2">
-          {PAYMENT_METHODS.filter((m) => m.id !== 'discount').map((method) => (
-            <button
-              key={method.id}
-              onClick={() => handlePay(method, selectedDiscount)}
-              className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
-              style={{ background: '#fff', borderColor: '#e5e7eb', color: '#374151' }}
-            >
-              <div className="text-left flex-1">
-                <p className="font-bold text-base">{method.label}</p>
-                <p className="text-xs mt-0.5 opacity-80">{method.desc}</p>
-              </div>
-              <span className="text-xl flex-shrink-0 opacity-60">›</span>
-            </button>
-          ))}
-        </div>
+        <PaymentMethodGrid
+          methods={PAYMENT_METHODS.filter((m) => m.id !== 'discount')}
+          onSelect={(method) => handlePay(method, selectedDiscount)}
+          variant="middle"
+        />
 
         <p className="text-center text-xs mt-4" style={{ color: '#9ca3af' }}>
           결제 수단을 탭하면 바로 결제가 시작됩니다

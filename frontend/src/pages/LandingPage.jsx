@@ -38,6 +38,8 @@ export default function LandingPage() {
     setSessionToken(access_token, expires_in)
     dispatch({ type: ACTIONS.SET_SESSION, payload: { sessionUuid: session_uuid } })
     sessionStorage.setItem('session_uuid', session_uuid)
+    sessionStorage.removeItem('stamp_before_payment_done')
+    sessionStorage.removeItem('stamp_before_payment_skipped')
     logger.log('session', 'landing', { actionName: 'session_start', source: 'system', payload: { session_uuid } })
     logger.flush(session_uuid).catch(() => {})
     return session_uuid
@@ -159,14 +161,14 @@ export default function LandingPage() {
             disabled={loading}
             className="
               relative w-full py-9 px-6
-              rounded-3xl overflow-hidden
+              rounded-3xl overflow-hidden border-4 border-yellow-200
               disabled:opacity-60 disabled:cursor-not-allowed
-              active:scale-95 transition-transform duration-150
+              active:scale-95 transition-all duration-150
               flex flex-col items-center gap-3
             "
             style={{
-              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 60%, #b45309 100%)',
-              boxShadow: '0 0 40px rgba(245,158,11,0.45), 0 8px 32px rgba(0,0,0,0.4)',
+              background: 'linear-gradient(135deg, #fde047 0%, #f59e0b 48%, #ea580c 100%)',
+              boxShadow: '0 0 0 6px rgba(254,240,138,0.22), 0 0 56px rgba(250,204,21,0.62), 0 12px 36px rgba(0,0,0,0.45)',
             }}
           >
             {/* 배경 광택 효과 */}
@@ -177,15 +179,15 @@ export default function LandingPage() {
 
             <span className="text-6xl relative z-10 drop-shadow-md">📷</span>
             <span className="text-white text-2xl font-black tracking-wide relative z-10">
-              {loading && !loadingGroup ? '시작 중...' : '얼굴 인식으로 시작'}
+              {loading && !loadingGroup ? '시작 중...' : '눌러서 얼굴 인식 시작'}
             </span>
-            <span className="text-amber-100/75 text-sm relative z-10">
-              카메라로 연령대를 자동 분석합니다
+            <span className="text-white/90 text-sm font-bold relative z-10">
+              버튼을 누르면 카메라 화면으로 이동합니다
             </span>
 
             {/* 하단 안내 배지 */}
-            <div className="relative z-10 mt-1 px-3 py-1 bg-black/20 rounded-full">
-              <span className="text-amber-200/80 text-xs">이미지는 즉시 삭제 · 개인정보 미저장</span>
+            <div className="relative z-10 mt-1 px-4 py-1.5 bg-black/25 rounded-full border border-white/20">
+              <span className="text-white/90 text-xs font-bold">촬영 이미지는 즉시 삭제 · 개인정보 미저장</span>
             </div>
           </button>
         </div>

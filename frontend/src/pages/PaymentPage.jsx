@@ -7,6 +7,7 @@ import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { getCompleteRoute } from '../utils/routes'
 import { splitVAT } from '../utils/price'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -309,23 +310,7 @@ export default function PaymentPage() {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-3">
                 결제 수단
               </p>
-              <div className="space-y-2">
-                {PAYMENT_METHODS.map((method) => (
-                  <button
-                    key={method.id}
-                    onClick={() => handlePay(method)}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md hover:border-gray-300"
-                  >
-                    <div className="text-left flex-1">
-                      <p className="font-bold text-base">{method.label}</p>
-                      <p className="text-xs mt-0.5 text-gray-400">
-                        {method.desc}
-                      </p>
-                    </div>
-                    <span className="text-xl flex-shrink-0 text-gray-300">›</span>
-                  </button>
-                ))}
-              </div>
+              <PaymentMethodGrid methods={PAYMENT_METHODS} onSelect={handlePay} />
             </div>
             <button
               onClick={handleCallStaff}
@@ -351,19 +336,7 @@ export default function PaymentPage() {
       {isChild && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-2xl px-4 pt-4 pb-6">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">결제 수단 선택</p>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {PAYMENT_METHODS.map((method) => (
-              <button
-                key={method.id}
-                onClick={() => handlePay(method)}
-                className="flex items-center gap-2 px-3 py-3 rounded-xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all duration-150 hover:border-gray-300"
-              >
-                <div className="text-left">
-                  <p className="font-bold text-sm">{method.label}</p>
-                </div>
-              </button>
-            ))}
-          </div>
+          <PaymentMethodGrid methods={PAYMENT_METHODS} onSelect={handlePay} compact className="mb-3 gap-2" />
           <button
             onClick={handleCallStaff}
             className="

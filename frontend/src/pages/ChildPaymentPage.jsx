@@ -5,6 +5,7 @@ import { useSession } from '../store/sessionStore.jsx'
 import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
+import PaymentMethodGrid from '../components/PaymentMethodGrid'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -241,22 +242,7 @@ export default function ChildPaymentPage() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          {PAYMENT_METHODS.map((method) => (
-            <button
-              key={method.id}
-              onClick={() => handlePay(method)}
-              className="w-full rounded-3xl px-5 py-5 text-white flex items-center gap-4 active:scale-95 transition-all shadow-md"
-              style={{ background: method.bg }}
-            >
-              <div className="text-left flex-1">
-                <p className="text-2xl font-black">{method.label}</p>
-                <p className="text-sm opacity-80">{method.desc}</p>
-              </div>
-              <span className="text-3xl">›</span>
-            </button>
-          ))}
-        </div>
+        <PaymentMethodGrid methods={PAYMENT_METHODS} onSelect={handlePay} variant="child" />
       </div>
     </div>
   )
