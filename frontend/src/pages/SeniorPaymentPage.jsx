@@ -202,6 +202,12 @@ export default function SeniorPaymentPage() {
 
   // 할인 옵션 선택 → 스캔 오버레이 → 결제 페이지로 복귀 (할인 적용 상태)
   const handleDiscountSelect = (option) => {
+    logger.log('click', 'payment', {
+      actionName: 'discount_select',
+      targetType: 'button',
+      targetLabel: option.id,
+      payload: { discount_rate: option.discountRate, total_price: totalPrice },
+    })
     setShowDiscountPopup(false)
     setScanningDiscount(option)
     setTimeout(() => {
@@ -429,7 +435,10 @@ export default function SeniorPaymentPage() {
               </div>
             </div>
             <button
-              onClick={() => setSelectedDiscount(null)}
+              onClick={() => {
+                logger.log('click', 'payment', { actionName: 'discount_remove', targetType: 'button', targetLabel: selectedDiscount?.id })
+                setSelectedDiscount(null)
+              }}
               className="text-base font-bold px-3 py-2 rounded-xl text-gray-500 bg-gray-100"
             >
               취소
@@ -441,7 +450,10 @@ export default function SeniorPaymentPage() {
         <div>
           <p className="text-sm font-bold uppercase tracking-wider px-1 mb-3 text-gray-400">할인 수단</p>
           <button
-            onClick={() => setShowDiscountPopup(true)}
+            onClick={() => {
+              logger.log('click', 'payment', { actionName: 'discount_popup_open', targetType: 'button', targetLabel: 'discount' })
+              setShowDiscountPopup(true)
+            }}
             className="w-full flex items-center gap-5 px-6 py-6 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md bg-amber-50 border-amber-300"
           >
             <span className="text-4xl">🎟️</span>
@@ -521,7 +533,10 @@ export default function SeniorPaymentPage() {
             </div>
 
             <button
-              onClick={() => setShowDiscountPopup(false)}
+              onClick={() => {
+                logger.log('click', 'payment', { actionName: 'discount_popup_cancel', targetType: 'button', targetLabel: 'cancel' })
+                setShowDiscountPopup(false)
+              }}
               className="w-full py-4 rounded-2xl font-bold border-2 border-gray-300 text-gray-500 text-xl"
             >
               취소

@@ -177,6 +177,12 @@ export default function MiddlePaymentPage() {
 
   // 할인 옵션 선택 → 스캔 오버레이 → 결제 페이지로 복귀 (할인 적용 상태)
   const handleDiscountSelect = (option) => {
+    logger.log('click', 'payment', {
+      actionName: 'discount_select',
+      targetType: 'button',
+      targetLabel: option.id,
+      payload: { discount_rate: option.discountRate, total_price: totalPrice },
+    })
     setShowDiscountPopup(false)
     setScanningDiscount(option)
     setTimeout(() => {
@@ -358,7 +364,10 @@ export default function MiddlePaymentPage() {
               </div>
             </div>
             <button
-              onClick={() => setSelectedDiscount(null)}
+              onClick={() => {
+                logger.log('click', 'payment', { actionName: 'discount_remove', targetType: 'button', targetLabel: selectedDiscount?.id })
+                setSelectedDiscount(null)
+              }}
               className="text-xs font-bold px-2 py-1 rounded-lg"
               style={{ color: '#6b7280', background: '#f3f4f6' }}
             >
@@ -373,7 +382,10 @@ export default function MiddlePaymentPage() {
             할인 수단
           </p>
           <button
-            onClick={() => setShowDiscountPopup(true)}
+            onClick={() => {
+              logger.log('click', 'payment', { actionName: 'discount_popup_open', targetType: 'button', targetLabel: 'discount' })
+              setShowDiscountPopup(true)
+            }}
             className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 active:scale-95 transition-all shadow-sm hover:shadow-md"
             style={{ background: '#fffbeb', borderColor: '#fcd34d', color: '#374151' }}
           >
@@ -460,7 +472,10 @@ export default function MiddlePaymentPage() {
             </div>
 
             <button
-              onClick={() => setShowDiscountPopup(false)}
+              onClick={() => {
+                logger.log('click', 'payment', { actionName: 'discount_popup_cancel', targetType: 'button', targetLabel: 'cancel' })
+                setShowDiscountPopup(false)
+              }}
               className="w-full py-3 rounded-2xl font-bold border-2"
               style={{ borderColor: '#fde8d8', color: '#9ca3af' }}
             >
