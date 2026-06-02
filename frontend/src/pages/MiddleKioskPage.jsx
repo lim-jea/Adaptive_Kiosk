@@ -33,6 +33,15 @@ function sameOptionSelection(item, optionItemIds = []) {
   return left.every((value, index) => value === right[index])
 }
 
+function getOptionDisplayName(name) {
+  const sizeNames = {
+    Tall: '소형 355ml',
+    Grande: '기본 473ml',
+    Venti: '대형 591ml',
+  }
+  return sizeNames[name] || name
+}
+
 export default function MiddleKioskPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
@@ -44,7 +53,7 @@ export default function MiddleKioskPage() {
   const [loading, setLoading] = useState(true)
   const [optionMenu, setOptionMenu] = useState(null)
   const [optionPreview, setOptionPreview] = useState([])  // 음성으로 미리 선택된 옵션 ID
-  const [cartOpen, setCartOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(true)
   const [voiceFlash, setVoiceFlash] = useState(null)      // 'category:커피' 등 잠깐 하이라이트
   const flashTimerRef = useRef(null)
   const cartLoadedRef = useRef(false)
@@ -328,6 +337,7 @@ export default function MiddleKioskPage() {
       return
     }
     dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
+    setCartOpen(true)
     setOptionMenu(null)
   }, [optionMenu, logger, dispatch, ACTIONS, navigate])
 
@@ -461,7 +471,7 @@ export default function MiddleKioskPage() {
             for (const it of g.items || []) {
               if (action.option_item_ids?.includes(it.id)) {
                 optionItems.push({ option_item_id: it.id })
-                optionLabels.push(it.name)
+                optionLabels.push(getOptionDisplayName(it.name))
                 extra += it.extra_price
               }
             }
@@ -588,6 +598,14 @@ export default function MiddleKioskPage() {
     if (menu) handleMenuClick(menu, { fromRecommendation: true, ...meta })
   }
 
+  const handleCallStaff = useCallback(() => {
+    logger.log('click', 'kiosk', {
+      actionName: 'call_staff',
+      targetType: 'button',
+      targetLabel: 'call_staff',
+    })
+  }, [logger])
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 헤더 */}
@@ -626,7 +644,7 @@ export default function MiddleKioskPage() {
       {/* 메뉴 그리드 + 추천 패널 */}
       <div className={`flex-1 flex flex-col ${showSidebar ? 'lg:flex-row' : ''}`}>
         {/* 왼쪽 — 메뉴 영역 */}
-        <div className="order-2 flex-1 p-4 pb-40 lg:order-1">
+        <div className="order-2 flex-1 p-4 pt-20 pb-40 lg:order-1">
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -677,7 +695,7 @@ export default function MiddleKioskPage() {
       {/* 하단 장바구니 바 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-20">
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-56 overflow-y-auto border-b divide-y bg-gray-50">
+          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-gray-50">
             {state.cart.map((item) => (
               <MiddleCartRow
                 key={item.cartItemId}
@@ -735,7 +753,7 @@ export default function MiddleKioskPage() {
       </div>
 
       {/* 음성 주문 오버레이 */}
-      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />
+      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} onCallStaff={handleCallStaff} />
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (
@@ -962,7 +980,7 @@ function MiddleOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
     for (const g of menu.option_groups || []) {
       for (const itemId of selections[g.id] || []) {
         const oi = g.items.find((i) => i.id === itemId)
-        if (oi) { selectedOptionIds.push(itemId); optionLabels.push(oi.name) }
+        if (oi) { selectedOptionIds.push(itemId); optionLabels.push(getOptionDisplayName(oi.name)) }
       }
     }
     onLog?.({
@@ -1059,7 +1077,7 @@ function MiddleOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
                           }}
                         >
                           <span className="text-3xl">{isHot ? '☕' : '🧊'}</span>
-                          <span>{item.name}</span>
+                          <span>{getOptionDisplayName(item.name)}</span>
                           {item.extra_price > 0 && (
                             <span className="text-xs" style={{ color: '#9ca3af' }}>+{item.extra_price.toLocaleString()}원</span>
                           )}
@@ -1082,7 +1100,7 @@ function MiddleOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
                             color: isSelected ? '#c2703a' : '#6b7280',
                           }}
                         >
-                          <span className="font-bold">{item.name}</span>
+                          <span className="font-bold">{getOptionDisplayName(item.name)}</span>
                           {item.extra_price > 0 && (
                             <span className="text-xs mt-0.5" style={{ color: '#9ca3af' }}>+{item.extra_price.toLocaleString()}원</span>
                           )}

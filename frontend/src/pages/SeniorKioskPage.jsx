@@ -25,6 +25,15 @@ function sameOptionSelection(item, optionItemIds = []) {
   return left.every((value, index) => value === right[index])
 }
 
+function getOptionDisplayName(name) {
+  const sizeNames = {
+    Tall: '소형 355ml',
+    Grande: '기본 473ml',
+    Venti: '대형 591ml',
+  }
+  return sizeNames[name] || name
+}
+
 export default function SeniorKioskPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
@@ -37,7 +46,7 @@ export default function SeniorKioskPage() {
   const [loading, setLoading] = useState(true)
   const [optionMenu, setOptionMenu] = useState(null)
   const [optionPreview, setOptionPreview] = useState([])  // 음성으로 미리 선택된 옵션 ID
-  const [cartOpen, setCartOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(true)
   const [voiceFlash, setVoiceFlash] = useState(null)      // 'category:커피' 등 잠깐 하이라이트
   const flashTimerRef = useRef(null)
   const cartLoadedRef = useRef(false)
@@ -318,6 +327,7 @@ export default function SeniorKioskPage() {
       return
     }
     dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
+    setCartOpen(true)
     setOptionMenu(null)
 
 
@@ -466,7 +476,7 @@ export default function SeniorKioskPage() {
             for (const it of g.items || []) {
               if (action.option_item_ids?.includes(it.id)) {
                 optionItems.push({ option_item_id: it.id })
-                optionLabels.push(it.name)
+                optionLabels.push(getOptionDisplayName(it.name))
                 extra += it.extra_price
               }
             }
@@ -582,6 +592,15 @@ export default function SeniorKioskPage() {
   })
   voiceRef.current = voice
 
+  const handleCallStaff = useCallback(() => {
+    logger.log('click', 'kiosk', {
+      actionName: 'call_staff',
+      targetType: 'button',
+      targetLabel: 'call_staff',
+    })
+    tts.speak('직원을 호출했습니다. 잠시만 기다려 주세요.')
+  }, [logger, tts])
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
 
@@ -617,7 +636,7 @@ export default function SeniorKioskPage() {
       </div>
 
       {/* 메뉴 그리드 */}
-      <div className={`flex-1 p-4 ${state.cart.length === 0 ? 'pb-16' : 'pb-56'}`}>
+      <div className={`flex-1 p-4 pt-24 ${state.cart.length === 0 ? 'pb-24' : cartOpen ? 'pb-[330px]' : 'pb-60'}`}>
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <div className="w-10 h-10 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -645,21 +664,47 @@ export default function SeniorKioskPage() {
         {state.cart.length === 0 ? (
           // 비어있을 때 — 작게
           <div className="px-4 py-4 flex items-center justify-center">
-            <div className="bg-gray-200 rounded-full px-10 py-3 w-full text-center">
-              <p className="text-xl text-gray-400 font-bold">메뉴를 선택해 주세요</p>
+            <div className="bg-gray-200 rounded-2xl px-10 py-4 w-full text-center border border-gray-300">
+              <p className="text-xl text-gray-500 font-bold">메뉴를 선택하면 장바구니에 바로 보입니다</p>
             </div>
           </div>
         ) : (
-          // 담겼을 때 — 좌우 분할
-          <div className="flex" style={{ minHeight: '140px', maxHeight: '200px' }}>
+          // 담겼을 때 — 기본 노출, 필요하면 위로 펼쳐 내부 스크롤
+          <div
+            className="flex"
+            style={{ minHeight: cartOpen ? '260px' : '150px', maxHeight: cartOpen ? '300px' : '210px' }}
+          >
 
-            {/* 왼쪽 — 장바구니 가로 스크롤 */}
-            <div className="flex-1 overflow-x-auto border-r-2 border-gray-200 bg-gray-50">
-              <div className="flex gap-3 px-3 py-3 h-full items-center" style={{ minWidth: 'max-content' }}>
+            {/* 왼쪽 — 장바구니. 클릭하면 펼치고, 펼친 뒤에는 내부 스크롤 */}
+            <div
+              className={`flex-1 border-r-2 border-gray-200 bg-gray-50 ${cartOpen ? 'overflow-y-auto' : 'overflow-x-auto'}`}
+              onClick={() => setCartOpen(true)}
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 px-4 py-2 border-b border-gray-200">
+                <div>
+                  <p className="text-sm font-black text-gray-500">장바구니</p>
+                  <p className="text-xs text-gray-400">총 {totalCount}개 메뉴</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setCartOpen((open) => !open)
+                  }}
+                  className="rounded-full border border-gray-300 px-3 py-1 text-sm font-bold text-gray-600 bg-white"
+                >
+                  {cartOpen ? '접기' : '펼치기'}
+                </button>
+              </div>
+              <div
+                className={`${cartOpen ? 'flex flex-col gap-2 p-3' : 'flex gap-3 px-3 py-3 items-center'}`}
+                style={cartOpen ? undefined : { minWidth: 'max-content' }}
+              >
                 {state.cart.map((item) => (
                   <SeniorCartCard
                     key={item.cartItemId}
                     item={item}
+                    expanded={cartOpen}
                     onQtyChange={(delta) => handleQtyChange(item.cartItemId, delta)}
                     onEditOptions={handleEditCartFromPanel}
                     onRemove={() => dispatch({
@@ -682,7 +727,7 @@ export default function SeniorKioskPage() {
               <button
                 onClick={handleOrder}
                 style={{ minHeight: '80px' }}
-                className="w-full text-2xl font-bold bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white transition-colors"
+                className="w-full text-2xl font-black bg-green-600 hover:bg-green-700 active:bg-green-800 text-white transition-colors shadow-lg shadow-green-200"
               >
                 결제하기
               </button>
@@ -699,7 +744,7 @@ export default function SeniorKioskPage() {
       )}
 
       {/* 음성 주문 오버레이 */}
-      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />
+      <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} onCallStaff={handleCallStaff} />
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (
@@ -786,7 +831,66 @@ function MenuCard({ menu, cartCount, onClick }) {
 }
 
 /** 장바구니 카드 */
-function SeniorCartCard({ item, onQtyChange, onRemove, onEditOptions }) {
+function SeniorCartCard({ item, expanded = false, onQtyChange, onRemove, onEditOptions }) {
+  if (expanded) {
+    return (
+      <div className="flex items-center gap-3 bg-white rounded-2xl border-2 border-gray-200 p-3">
+        {item.menuImageUrl
+          ? <img
+              src={item.menuImageUrl}
+              alt={item.displayName}
+              className="w-14 h-14 rounded-xl object-cover flex-shrink-0"
+              onError={(e) => {
+                e.target.style.display = 'none'
+                e.target.nextSibling.style.display = 'flex'
+              }}
+            />
+          : null}
+        <div
+          className="w-14 h-14 rounded-xl bg-amber-50 items-center justify-center text-3xl flex-shrink-0"
+          style={{ display: item.menuImageUrl ? 'none' : 'flex' }}
+        >
+          {item.menuEmoji || '🍽️'}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-black text-gray-800 truncate">{item.displayName}</p>
+          {(item.optionLabels || []).length > 0 && (
+            <p className="text-sm text-gray-400 truncate">{item.optionLabels.join(' · ')}</p>
+          )}
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => onQtyChange(-1)}
+              className="w-8 h-8 rounded-full border-2 border-gray-300 text-gray-600 font-bold"
+            >
+              −
+            </button>
+            <span className="w-7 text-center text-lg font-black text-gray-800">{item.quantity}</span>
+            <button
+              onClick={() => onQtyChange(1)}
+              className="w-8 h-8 rounded-full bg-amber-500 text-white font-bold"
+            >
+              +
+            </button>
+            {onEditOptions && (
+              <button
+                onClick={() => onEditOptions(item)}
+                className="px-3 h-8 rounded-full border border-amber-300 text-amber-600 text-xs font-bold hover:bg-amber-50"
+              >
+                옵션
+              </button>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onRemove}
+          className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 font-bold flex items-center justify-center hover:bg-red-100 hover:text-red-500"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div
       className="flex flex-col items-center bg-white rounded-3xl border-2 border-gray-200 p-3 gap-2"
@@ -939,7 +1043,7 @@ function SeniorOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
         const oi = g.items.find((i) => i.id === itemId)
         if (oi) {
           selectedOptionIds.push(itemId)
-          optionLabels.push(oi.name)
+          optionLabels.push(getOptionDisplayName(oi.name))
         }
       }
     }
@@ -1026,10 +1130,7 @@ function SeniorOptionModal({ menu, previewSelections = [], initialQuantity = 1, 
                           : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
                     >
                       <span className="text-xl font-bold">
-                        {item.name}
-                        {item.name === 'Tall' && <span className="ml-2 text-base font-normal text-gray-400">(작은 사이즈)</span>}
-                        {item.name === 'Grande' && <span className="ml-2 text-base font-normal text-gray-400">(중간 사이즈)</span>}
-                        {item.name === 'Venti' && <span className="ml-2 text-base font-normal text-gray-400">(큰 사이즈)</span>}
+                        {getOptionDisplayName(item.name)}
                       </span>
                       {item.extra_price > 0 && (
                         <span className="text-lg text-gray-400">+{item.extra_price.toLocaleString()}원</span>

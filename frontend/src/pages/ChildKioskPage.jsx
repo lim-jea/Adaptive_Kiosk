@@ -18,7 +18,7 @@ export default function ChildKioskPage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [loading, setLoading] = useState(true)
   const [optionMenu, setOptionMenu] = useState(null)
-  const [cartOpen, setCartOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(true)
 
   const cartLoadedRef = useRef(false)
   const lastSyncedCartRef = useRef('')
@@ -444,7 +444,7 @@ export default function ChildKioskPage() {
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-sky-100 shadow-lg z-20">
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-56 overflow-y-auto border-b divide-y bg-sky-50">
+          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-sky-50">
             {state.cart.map((item) => (
               <ChildCartRow
                 key={item.cartItemId}

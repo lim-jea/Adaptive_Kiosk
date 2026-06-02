@@ -7,6 +7,7 @@ import { useLogger } from '../hooks/useLogger'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { getCompleteRoute } from '../utils/routes'
 import { splitVAT } from '../utils/price'
+import { getPaymentVisual } from '../utils/paymentVisuals'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
 
@@ -309,21 +310,9 @@ export default function PaymentPage() {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest px-1 mb-3">
                 결제 수단
               </p>
-              <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-3">
                 {PAYMENT_METHODS.map((method) => (
-                  <button
-                    key={method.id}
-                    onClick={() => handlePay(method)}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md hover:border-gray-300"
-                  >
-                    <div className="text-left flex-1">
-                      <p className="font-bold text-base">{method.label}</p>
-                      <p className="text-xs mt-0.5 text-gray-400">
-                        {method.desc}
-                      </p>
-                    </div>
-                    <span className="text-xl flex-shrink-0 text-gray-300">›</span>
-                  </button>
+                  <PaymentMethodButton key={method.id} method={method} onClick={() => handlePay(method)} />
                 ))}
               </div>
             </div>
@@ -353,15 +342,7 @@ export default function PaymentPage() {
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">결제 수단 선택</p>
           <div className="grid grid-cols-2 gap-2 mb-3">
             {PAYMENT_METHODS.map((method) => (
-              <button
-                key={method.id}
-                onClick={() => handlePay(method)}
-                className="flex items-center gap-2 px-3 py-3 rounded-xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all duration-150 hover:border-gray-300"
-              >
-                <div className="text-left">
-                  <p className="font-bold text-sm">{method.label}</p>
-                </div>
-              </button>
+              <PaymentMethodButton key={method.id} method={method} compact onClick={() => handlePay(method)} />
             ))}
           </div>
           <button
@@ -381,5 +362,25 @@ export default function PaymentPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function PaymentMethodButton({ method, compact = false, onClick }) {
+  const visual = getPaymentVisual(method.id)
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-[0.98] transition-all duration-150 shadow-sm hover:shadow-md hover:border-gray-300 flex flex-col items-center justify-center text-center
+        ${compact ? 'min-h-[104px] px-2 py-3' : 'min-h-[132px] px-3 py-4'}`}
+    >
+      <div
+        className={`rounded-2xl flex items-center justify-center font-black shadow-sm ${compact ? 'w-12 h-12 text-lg' : 'w-16 h-16 text-xl'}`}
+        style={{ background: visual.bg, color: visual.fg }}
+      >
+        {visual.icon || visual.mark}
+      </div>
+      <p className={`font-black mt-3 ${compact ? 'text-sm' : 'text-base'}`}>{method.label}</p>
+      {!compact && <p className="text-xs mt-1 text-gray-400 leading-tight">{method.desc}</p>}
+    </button>
   )
 }

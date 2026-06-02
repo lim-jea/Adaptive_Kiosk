@@ -9,7 +9,7 @@
 import json
 import logging
 
-from sqlalchemy import inspect, or_, select, text
+from sqlalchemy import delete, inspect, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from model import Menu, MenuOption
@@ -119,7 +119,7 @@ CATEGORY_OPTION_MAP = {
     "커피": ["사이즈", "샷 추가", "시럽"],
     "달콤한커피": ["사이즈", "온도", "샷 추가", "시럽"],
     "블렌디드": ["사이즈", "휘핑크림", "당도"],
-    "티": ["사이즈", "온도", "당도"],
+    "티": ["사이즈", "온도"],
     "달콤한티": ["사이즈", "당도"],
     "에이드": ["사이즈", "당도"],
     "스무디": ["사이즈", "당도"],
@@ -135,7 +135,7 @@ MENU_IMAGES = {
     "따뜻한 카페라떼": "https://images.unsplash.com/photo-1561047029-3000c68339ca?w=400&h=400&fit=crop&auto=format",
     "아이스 카페라떼": "https://images.unsplash.com/photo-1578314675249-a6910f80cc4e?w=400&h=400&fit=crop&auto=format",
     "카푸치노": "https://images.unsplash.com/photo-1572442388796-11668a67e53d?w=400&h=400&fit=crop&auto=format",
-    "콜드브루": "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&h=400&fit=crop&auto=format",
+    "콜드브루": "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=400&h=400&fit=crop&auto=format",
     "콜드브루 라떼": "https://images.unsplash.com/photo-1592663527359-cf6642f54cff?w=400&h=400&fit=crop&auto=format",
     "드립 커피": "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=400&h=400&fit=crop&auto=format",
     "바닐라 라떼": "https://images.unsplash.com/photo-1534778101976-62847782c213?w=400&h=400&fit=crop&auto=format",
@@ -583,6 +583,27 @@ async def _update_menu_images_if_missing(db: AsyncSession) -> int:
     return updated
 
 
+async def _remove_obsolete_menu_options(db: AsyncSession) -> int:
+    """Remove option groups that no longer match the category mapping."""
+    menu_rows = (await db.execute(select(Menu.id, Menu.category))).all()
+    removed = 0
+    for menu_id, category in menu_rows:
+        allowed_groups = CATEGORY_OPTION_MAP.get(category, [])
+        if not allowed_groups:
+            continue
+        result = await db.execute(
+            delete(MenuOption).where(
+                MenuOption.menu_id == menu_id,
+                MenuOption.group_name.notin_(allowed_groups),
+            )
+        )
+        removed += result.rowcount or 0
+    if removed:
+        await db.commit()
+        logger.info("Removed obsolete menu options: %d rows", removed)
+    return removed
+
+
 async def seed_menu_data(db: AsyncSession) -> None:
     tables = set(await _get_table_names(db))
 
@@ -617,4 +638,5 @@ async def seed_menu_data(db: AsyncSession) -> None:
     else:
         logger.info("Menu seed data already exists. Skipping.")
 
+    await _remove_obsolete_menu_options(db)
     await _update_menu_images_if_missing(db)

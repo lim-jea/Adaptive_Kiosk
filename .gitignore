@@ -76,3 +76,5 @@ backend/uv.lock
 
 
 cloudflared/credentials.json
+
+/analysis/*

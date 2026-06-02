@@ -26,6 +26,15 @@ function sameOptionSelection(item, optionItemIds = []) {
   return left.every((value, index) => value === right[index])
 }
 
+function getOptionDisplayName(name) {
+  const sizeNames = {
+    Tall: '소형 355ml',
+    Grande: '기본 473ml',
+    Venti: '대형 591ml',
+  }
+  return sizeNames[name] || name
+}
+
 export default function KioskPage() {
   const navigate = useNavigate()
   const { state, dispatch, ACTIONS } = useSession()
@@ -37,7 +46,7 @@ export default function KioskPage() {
   const [loading, setLoading] = useState(true)
   const [optionMenu, setOptionMenu] = useState(null)
   const [optionPreview, setOptionPreview] = useState([])  // 음성으로 미리 선택된 옵션 ID
-  const [cartOpen, setCartOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(true)
   const [voiceFlash, setVoiceFlash] = useState(null)      // 'category:커피' 등 잠깐 하이라이트
   const flashTimerRef = useRef(null)
   const cartLoadedRef = useRef(false)
@@ -313,6 +322,7 @@ export default function KioskPage() {
       return
     }
     dispatch({ type: ACTIONS.ADD_TO_CART, payload: newItem })
+    setCartOpen(true)
     setOptionMenu(null)
   }, [optionMenu, logger, dispatch, ACTIONS, navigate])
 
@@ -446,7 +456,7 @@ export default function KioskPage() {
             for (const it of g.items || []) {
               if (action.option_item_ids?.includes(it.id)) {
                 optionItems.push({ option_item_id: it.id })
-                optionLabels.push(it.name)
+                optionLabels.push(getOptionDisplayName(it.name))
                 extra += it.extra_price
               }
             }
@@ -575,6 +585,14 @@ export default function KioskPage() {
     if (menu) handleMenuClick(menu, { fromRecommendation: true, ...meta })
   }
 
+  const handleCallStaff = useCallback(() => {
+    logger.log('click', 'kiosk', {
+      actionName: 'call_staff',
+      targetType: 'button',
+      targetLabel: 'call_staff',
+    })
+  }, [logger])
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* 헤더 */}
@@ -611,7 +629,7 @@ export default function KioskPage() {
       {/* 메뉴 그리드 + 추천 패널 */}
       <div className={`flex-1 flex flex-col ${showSidebar ? 'lg:flex-row' : ''}`}>
         {/* 왼쪽 — 메뉴 영역 */}
-        <div className="order-2 flex-1 p-4 pb-40 lg:order-1">
+        <div className="order-2 flex-1 p-4 pt-20 pb-40 lg:order-1">
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -674,7 +692,7 @@ export default function KioskPage() {
         )}
 
         {cartOpen && state.cart.length > 0 && (
-          <div className="max-h-56 overflow-y-auto border-b divide-y bg-gray-50">
+          <div className="max-h-[190px] overflow-y-auto border-b divide-y bg-gray-50">
             {state.cart.map((item) => (
               <CartRow
                 key={item.cartItemId}
@@ -746,7 +764,7 @@ export default function KioskPage() {
       </div>
 
       {/* 음성 주문 오버레이 — 어린이는 하단 바에 마이크 통합되므로 제외 */}
-      {!isChild && <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} />}
+      {!isChild && <VoiceOverlay voice={voice} isSimpleMode={state.isSimpleMode} onCallStaff={handleCallStaff} />}
 
       {/* 옵션 선택 모달 */}
       {optionMenu && (
@@ -973,7 +991,7 @@ function OptionModal({ menu, previewSelections = [], initialQuantity = 1, editin
         const oi = g.items.find((i) => i.id === itemId)
         if (oi) {
           selectedOptionIds.push(itemId)
-          optionLabels.push(oi.name)
+          optionLabels.push(getOptionDisplayName(oi.name))
         }
       }
     }
@@ -1081,7 +1099,7 @@ function OptionModal({ menu, previewSelections = [], initialQuantity = 1, editin
                           ? 'border-amber-500 bg-amber-50 text-amber-700'
                           : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'}`}
                     >
-                      <span className="font-bold">{item.name}</span>
+                      <span className="font-bold">{getOptionDisplayName(item.name)}</span>
                       {item.extra_price > 0 && (
                         <span className="text-xs text-gray-400 mt-0.5">
                           +{item.extra_price.toLocaleString()}원

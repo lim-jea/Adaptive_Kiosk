@@ -189,11 +189,12 @@ export default function CameraPage() {
         onClick={handleCapture}
         disabled={isCapturing || !!error}
         className="
-          mt-8 min-h-[56px] px-12 py-4
+          relative z-20 mt-8 min-h-[56px] px-12 py-4
           bg-amber-500 hover:bg-amber-600 active:bg-amber-700
           disabled:bg-gray-600 disabled:cursor-not-allowed
           text-white text-lg font-bold
-          rounded-2xl shadow-lg
+          rounded-2xl shadow-2xl shadow-black/40
+          ring-4 ring-white/90 border-2 border-amber-200
           transition-colors duration-150
           w-64
         "
@@ -213,7 +214,15 @@ export default function CameraPage() {
           navigate('/')
         }}
         disabled={isCapturing}
-        className="mt-4 text-gray-400 hover:text-gray-200 text-sm py-2 px-4"
+        className="
+          relative z-20 mt-4 min-h-[44px] px-6 py-2.5
+          rounded-xl bg-white/95 hover:bg-white
+          text-gray-700 hover:text-gray-900 text-sm font-bold
+          border-2 border-gray-200 ring-2 ring-white/70
+          shadow-lg shadow-black/25
+          disabled:opacity-60 disabled:cursor-not-allowed
+          transition-colors duration-150
+        "
       >
         ← 돌아가기
       </button>

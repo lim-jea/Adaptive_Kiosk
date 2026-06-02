@@ -7,8 +7,14 @@ import { useLogger } from '../hooks/useLogger'
 import { useTTS } from '../hooks/useTTS'
 import { buildOrderPayload } from '../utils/orderPayload'
 import { splitVAT } from '../utils/price'
+import { getPaymentVisual } from '../utils/paymentVisuals'
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== 'false'
+const TOTAL_STAMPS = 10
+
+function getSimulatedStamps() {
+  return parseInt(sessionStorage.getItem('stamp_count') || '4', 10)
+}
 
 const PAYMENT_METHODS = [
   {
@@ -88,9 +94,15 @@ export default function SeniorPaymentPage() {
   const [showDiscountPopup, setShowDiscountPopup] = useState(false)
   const [scanningDiscount, setScanningDiscount] = useState(null)
   const [selectedDiscount, setSelectedDiscount] = useState(null)
+  const [stampDone, setStampDone] = useState(sessionStorage.getItem('stamp_before_payment_done') === '1')
+  const [stampSkipped, setStampSkipped] = useState(sessionStorage.getItem('stamp_before_payment_skipped') === '1')
+  const [showStampPopup, setShowStampPopup] = useState(false)
+  const [phoneNumber, setPhoneNumber] = useState('')
 
   const totalPrice = state.cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const totalCount = state.cart.reduce((sum, item) => sum + item.quantity, 0)
+  const prevStamps = getSimulatedStamps()
+  const newStamps = Math.min(TOTAL_STAMPS, prevStamps + 1)
   const vat = splitVAT(totalPrice)
 
   useEffect(() => {
@@ -211,6 +223,46 @@ export default function SeniorPaymentPage() {
     }, 2000)
   }
 
+  const handleProceedToPayment = () => {
+    if (!stampDone && !stampSkipped) {
+      setShowStampPopup(true)
+      return
+    }
+    setStatus('selecting')
+  }
+
+  const handleStampConfirm = () => {
+    if (phoneNumber.length < 10) return
+    sessionStorage.setItem('stamp_count', String(newStamps >= TOTAL_STAMPS ? 0 : newStamps))
+    sessionStorage.setItem('stamp_before_payment_done', '1')
+    sessionStorage.removeItem('stamp_before_payment_skipped')
+    logger.log('click', 'payment', {
+      actionName: 'stamp_register',
+      targetType: 'button',
+      targetLabel: 'stamp_register_before_payment',
+      payload: { stamp_count: newStamps },
+    })
+    setStampDone(true)
+    setStampSkipped(false)
+    setShowStampPopup(false)
+    setPhoneNumber('')
+    tts.speak('스탬프 적립이 완료되었습니다. 결제를 진행해 주세요.')
+  }
+
+  const handleStampSkip = () => {
+    sessionStorage.setItem('stamp_before_payment_skipped', '1')
+    sessionStorage.removeItem('stamp_before_payment_done')
+    logger.log('click', 'payment', {
+      actionName: 'stamp_skip',
+      targetType: 'button',
+      targetLabel: 'stamp_skip_before_payment',
+    })
+    setStampSkipped(true)
+    setShowStampPopup(false)
+    setPhoneNumber('')
+    setStatus('selecting')
+  }
+
   // 바코드 인식 중 오버레이
   if (scanningDiscount) {
     return (
@@ -289,6 +341,36 @@ export default function SeniorPaymentPage() {
             <p className="text-lg text-amber-600 mt-1">확인 후 결제를 진행해 주세요</p>
           </div>
 
+          <div className={`rounded-2xl border-2 px-5 py-5 shadow-sm
+            ${stampDone
+              ? 'bg-green-50 border-green-300'
+              : stampSkipped
+                ? 'bg-gray-50 border-gray-200'
+                : 'bg-blue-50 border-blue-300'}`}
+          >
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">{stampDone ? '✅' : '⭐'}</span>
+              <div className="flex-1">
+                <p className={`text-2xl font-black ${stampDone ? 'text-green-700' : 'text-blue-800'}`}>
+                  {stampDone ? '스탬프 적립 완료' : stampSkipped ? '스탬프 적립 건너뜀' : '결제 전 스탬프 적립'}
+                </p>
+                <p className="text-base text-gray-500 mt-1">
+                  {stampDone
+                    ? `${newStamps}/${TOTAL_STAMPS}개가 모였습니다.`
+                    : '전화번호로 적립하고 결제를 진행할 수 있어요.'}
+                </p>
+              </div>
+              {!stampDone && (
+                <button
+                  onClick={() => setShowStampPopup(true)}
+                  className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xl font-black"
+                >
+                  적립하기
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b bg-gray-50">
               <p className="text-xl font-bold text-gray-500">주문 내역</p>
@@ -335,12 +417,56 @@ export default function SeniorPaymentPage() {
             수정하기
           </button>
           <button
-            onClick={() => setStatus('selecting')}
-            className="flex-1 py-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-2xl font-bold transition-colors"
+            onClick={handleProceedToPayment}
+            className="flex-1 py-6 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-2xl font-black transition-colors shadow-lg shadow-green-200"
           >
-            결제하기
+            {stampDone || stampSkipped ? '결제하기' : '스탬프 확인 후 결제'}
           </button>
         </div>
+        {showStampPopup && (
+          <div
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-6"
+            onClick={() => setShowStampPopup(false)}
+          >
+            <div
+              className="bg-white rounded-3xl w-full max-w-sm p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2 className="text-2xl font-black text-gray-800 mb-1">스탬프 적립</h2>
+              <p className="text-base text-gray-400 mb-4">전화번호를 입력하면 결제 전에 스탬프가 적립됩니다.</p>
+
+              <input
+                value={phoneNumber}
+                onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, '').slice(0, 11))}
+                inputMode="numeric"
+                placeholder="010-0000-0000"
+                className="w-full rounded-2xl bg-gray-100 px-4 py-4 text-center text-3xl font-black text-gray-800 tracking-wider outline-none focus:ring-4 focus:ring-blue-200"
+              />
+              <p className="text-center text-gray-400 text-sm mt-2">
+                현재 {prevStamps}/{TOTAL_STAMPS}개 · 적립 후 {newStamps}/{TOTAL_STAMPS}개
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mt-5">
+                <button
+                  onClick={handleStampSkip}
+                  className="py-4 rounded-2xl border-2 border-gray-300 text-gray-600 text-xl font-bold"
+                >
+                  건너뛰기
+                </button>
+                <button
+                  onClick={handleStampConfirm}
+                  disabled={phoneNumber.length < 10}
+                  className={`py-4 rounded-2xl text-xl font-bold transition-colors
+                    ${phoneNumber.length >= 10
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                >
+                  적립
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -461,19 +587,13 @@ export default function SeniorPaymentPage() {
         </div>
 
         {/* 결제 수단 */}
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
           {PAYMENT_METHODS.filter((m) => m.id !== 'discount').map((method) => (
-            <button
+            <SeniorPaymentMethodButton
               key={method.id}
+              method={method}
               onClick={() => handlePay(method, selectedDiscount)}
-              className="w-full flex items-center gap-5 px-6 py-6 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all shadow-sm hover:shadow-md hover:border-gray-300"
-            >
-              <div className="text-left flex-1">
-                <p className="font-bold text-2xl">{method.label}</p>
-                <p className="text-lg mt-1 text-gray-400">{method.desc}</p>
-              </div>
-              <span className="text-3xl flex-shrink-0 text-gray-300">›</span>
-            </button>
+            />
           ))}
         </div>
       </div>
@@ -530,5 +650,24 @@ export default function SeniorPaymentPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function SeniorPaymentMethodButton({ method, onClick }) {
+  const visual = getPaymentVisual(method.id)
+  return (
+    <button
+      onClick={onClick}
+      className="min-h-[170px] px-4 py-5 rounded-2xl border-2 bg-white text-gray-800 border-gray-200 active:scale-95 transition-all shadow-sm hover:shadow-md hover:border-gray-300 flex flex-col items-center justify-center text-center"
+    >
+      <div
+        className="w-20 h-20 rounded-3xl flex items-center justify-center text-3xl font-black shadow-md"
+        style={{ background: visual.bg, color: visual.fg }}
+      >
+        {visual.icon || visual.mark}
+      </div>
+      <p className="font-black text-2xl mt-4 leading-tight">{method.label}</p>
+      <p className="text-base mt-1 text-gray-400 leading-tight">{method.desc}</p>
+    </button>
   )
 }

@@ -1,48 +1,44 @@
 import { useEffect, useState } from 'react'
 import api from '../utils/api'
 
-function formatPercent(value) {
-  const num = Number(value)
-  if (!Number.isFinite(num)) return '0.0%'
-  return `${(num * 100).toFixed(1)}%`
-}
-
 function buildCompactReasoning(rec, mode) {
   if (!rec?.reasoning) {
     return mode === 'CF'
-      ? '장바구니와의 연관도와 현재 프로필을 함께 반영했어요.'
-      : '현재 조건에서 많이 선택된 메뉴예요.'
+      ? '함께 고르기 좋은 메뉴예요.'
+      : '많이 선택한 메뉴예요.'
   }
 
   const breakdown = rec.cf_breakdown || {}
   if (mode === 'CF') {
     if (Number(breakdown.cart_support_count) > 0) {
-      return `장바구니 ${breakdown.cart_support_count}개 메뉴 근거를 반영했어요.`
+      return '장바구니 메뉴와 잘 어울려요.'
     }
-    return '현재 프로필과 전체 선호도를 함께 반영했어요.'
-  }
-
-  const percentMatch = rec.reasoning.match(/약 ([0-9.]+)%/)
-  if (percentMatch) {
-    return `현재 조건에서 선택 비중 ${percentMatch[1]}%`
+    return '현재 조건에서 잘 맞는 메뉴예요.'
   }
   return '현재 조건에서 많이 선택된 메뉴예요.'
+}
+
+function recommendationLevel(score) {
+  const value = Number(score) || 0
+  if (value >= 0.65) return '매우 높음'
+  if (value >= 0.35) return '높음'
+  return '좋음'
 }
 
 function buildScoreSummary(rec, mode) {
   const breakdown = rec?.cf_breakdown || {}
   if (mode === 'CF') {
     return [
-      { label: '기본', value: formatPercent(breakdown.base_score) },
-      { label: '장바구니', value: formatPercent(breakdown.cart_cf_score) },
-      { label: '최종', value: `${(Number(rec?.final_score || 0) * 100).toFixed(1)}점` },
+      { label: '추천도', value: recommendationLevel(rec?.final_score || rec?.score) },
+      { label: '어울림', value: Number(breakdown.cart_support_count) > 0 ? '높음' : '좋음' },
+      { label: '선택 경향', value: '반영' },
     ]
   }
 
   return [
-    { label: '선택 비중', value: formatPercent(rec?.popularity) },
-    { label: '트렌드', value: `${Number(rec?.trend_weight || rec?.trend_score || 1).toFixed(2)}x` },
-    { label: '최종', value: `${(Number(rec?.final_score || rec?.score || 0) * 100).toFixed(1)}점` },
+    { label: '추천도', value: recommendationLevel(rec?.final_score || rec?.score) },
+    { label: '선택 경향', value: '높음' },
+    { label: '지금 인기', value: Number(rec?.trend_weight || rec?.trend_score || 1) > 1 ? '반영' : '보통' },
   ]
 }
 
@@ -246,9 +242,6 @@ export default function RecommendationPanel({
         <h2 className={`font-bold text-amber-900 ${vertical ? 'text-base' : 'text-xl'}`}>
           {vertical ? 'AI 추천' : 'AI 추천 음료'}
         </h2>
-        <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded font-semibold ml-auto">
-          {mode}
-        </span>
       </div>
 
       {vertical ? (
@@ -256,7 +249,6 @@ export default function RecommendationPanel({
           {recommendations.map((rec, idx) => {
             const menuId = rec.menu_id || rec.id
             const menuName = rec.menu_name || rec.name
-            const trendWeight = rec.trend_weight || rec.trend_score || 1.0
             const compactReason = buildCompactReasoning(rec, mode)
             const scoreSummary = buildScoreSummary(rec, mode)
 
@@ -287,13 +279,8 @@ export default function RecommendationPanel({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
-                    {mode === 'CF' ? '장바구니 반영' : '상황 기반'}
+                  추천 메뉴
                   </span>
-                  {Number(trendWeight) > 1.0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 font-semibold">
-                      트렌드 {Number(trendWeight).toFixed(1)}x
-                    </span>
-                  )}
                 </div>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none" />
               </button>
@@ -306,7 +293,6 @@ export default function RecommendationPanel({
             const menuId = rec.menu_id || rec.id
             const menuName = rec.menu_name || rec.name
             const finalScore = rec.final_score || rec.score || 0
-            const trendWeight = rec.trend_weight || rec.trend_score || 1.0
             const breakdown = rec.cf_breakdown || {}
             const compactReason = buildCompactReasoning(rec, mode)
             const scoreSummary = buildScoreSummary(rec, mode)
@@ -336,22 +322,17 @@ export default function RecommendationPanel({
                 </div>
                 {mode === 'CF' && Number(breakdown.cart_support_count) > 0 && (
                   <p className="mt-2 text-[11px] text-amber-700">
-                    장바구니 {breakdown.cart_support_count}개 메뉴 근거 반영
+                    장바구니 메뉴와 잘 어울려요
                   </p>
                 )}
                 <div className="mt-3 flex items-center justify-between text-xs text-amber-700">
                   <span className="px-2 py-1 rounded-full bg-amber-100 font-semibold">
-                    {mode === 'CF' ? '장바구니 반영' : '상황 기반'}
+                    추천 메뉴
                   </span>
-                  {Number(trendWeight) > 1.0 && (
-                    <span className="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold">
-                      트렌드 {Number(trendWeight).toFixed(2)}x
-                    </span>
-                  )}
                 </div>
                 <div className="mt-3 pt-2 border-t border-amber-100 flex items-center justify-between text-sm text-amber-700">
-                  <span className="font-medium">{mode === 'CF' ? '종합 점수' : '추천 점수'}</span>
-                  <span className="font-bold text-amber-600">{(Number(finalScore) * 100).toFixed(1)}점</span>
+                  <span className="font-medium">추천도</span>
+                  <span className="font-bold text-amber-600">{recommendationLevel(finalScore)}</span>
                 </div>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none" />
               </button>
@@ -361,7 +342,7 @@ export default function RecommendationPanel({
       )}
 
       <p className={`text-amber-700 text-center font-medium ${vertical ? 'text-xs mt-2' : 'text-sm mt-3'}`}>
-        {mode === 'CF' ? '장바구니와 잘 어울리는 메뉴를 추천합니다.' : '현재 조건에서 많이 고른 메뉴를 추천합니다.'}
+        고르기 쉬운 추천 메뉴를 먼저 보여드립니다.
       </p>
     </div>
   )
