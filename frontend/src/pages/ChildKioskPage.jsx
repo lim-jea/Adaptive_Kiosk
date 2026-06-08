@@ -401,24 +401,7 @@ export default function ChildKioskPage() {
         <div className="w-16" />
       </header>
 
-      <div className="bg-white border-b flex overflow-x-auto sticky top-[64px] z-10">
-        <ChildCategoryTab
-          label="전체"
-          active={activeCategory === 'all'}
-          onClick={() => handleCategoryChange('all')}
-        />
-
-        {categories.map((category) => (
-          <ChildCategoryTab
-            key={category.id}
-            label={category.name}
-            active={activeCategory === category.name}
-            onClick={() => handleCategoryChange(category.name)}
-          />
-        ))}
-      </div>
-
-      <div className="flex-1 p-4 pb-40">
+      <div className="flex-1 p-4 pb-44">
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <div className="w-12 h-12 border-4 border-sky-400 border-t-transparent rounded-full animate-spin" />
@@ -444,6 +427,23 @@ export default function ChildKioskPage() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t-4 border-sky-100 shadow-lg z-20">
+        {/* 카테고리 탭 — 최하단 */}
+        <div className="flex overflow-x-auto border-b-2 border-sky-100">
+          <ChildCategoryTab
+            label="전체"
+            active={activeCategory === 'all'}
+            onClick={() => handleCategoryChange('all')}
+          />
+          {categories.map((category) => (
+            <ChildCategoryTab
+              key={category.id}
+              label={category.name}
+              active={activeCategory === category.name}
+              onClick={() => handleCategoryChange(category.name)}
+            />
+          ))}
+        </div>
+
         {cartOpen && state.cart.length > 0 && (
           <div className="relative border-b bg-sky-50">
             <div className="max-h-[190px] overflow-y-auto divide-y">

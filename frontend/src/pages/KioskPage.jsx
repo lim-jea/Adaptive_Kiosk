@@ -605,7 +605,37 @@ export default function KioskPage() {
           <span className="text-lg">☕</span>
           <h1 className="text-base font-black text-white tracking-widest">BREW AI</h1>
         </div>
-        <div className="w-10" />
+        {!isChild ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                const active = voice.status !== 'idle' && voice.status !== 'ended'
+                if (active) voice.stop()
+                else voice.start()
+              }}
+              disabled={!voice.sttSupported}
+              title={voice.sttSupported ? '음성 주문' : '음성 인식 미지원'}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-colors
+                ${voice.status !== 'idle' && voice.status !== 'ended'
+                  ? 'bg-amber-400/30 border-amber-300/50 text-amber-200 animate-pulse'
+                  : voice.sttSupported
+                    ? 'bg-white/10 border-white/20 text-amber-200 hover:bg-white/20'
+                    : 'bg-white/5 border-white/10 text-white/30 cursor-not-allowed'}`}
+            >
+              <span>{voice.status === 'listening' ? '🔴' : '🎤'}</span>
+              <span>음성</span>
+            </button>
+            <button
+              onClick={handleCallStaff}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white/10 border border-white/20 text-amber-200 hover:bg-white/20 transition-colors"
+            >
+              <span>🔔</span>
+              <span>직원</span>
+            </button>
+          </div>
+        ) : (
+          <div className="w-10" />
+        )}
       </header>
 
       {/* 카테고리 탭 (동적) */}
@@ -630,7 +660,7 @@ export default function KioskPage() {
       {/* 메뉴 그리드 + 추천 패널 */}
       <div className={`flex-1 flex flex-col ${showSidebar ? 'lg:flex-row' : ''}`}>
         {/* 왼쪽 — 메뉴 영역 */}
-        <div className="order-2 flex-1 p-4 pt-20 pb-40 lg:order-1">
+        <div className="order-2 flex-1 px-4 pt-2 pb-40 lg:pt-4 lg:order-1">
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -661,7 +691,7 @@ export default function KioskPage() {
         {/* 청년: 우측 세로 추천 패널 */}
         {showSidebar && (
           <div className="order-1 w-full flex-shrink-0 border-b border-amber-100 bg-amber-50/30 lg:order-2 lg:w-72 lg:border-b-0 lg:border-l">
-            <div className="p-3 lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-104px-80px)] lg:overflow-y-auto">
+            <div className="px-3 pt-3 pb-0 lg:p-3 lg:sticky lg:top-[104px] lg:max-h-[calc(100vh-104px-80px)] lg:overflow-y-auto">
               {!loading && (
                 <RecommendationPanel
                   gender={state.gender}

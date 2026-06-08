@@ -22,6 +22,8 @@ export default function VoiceOverlay({ voice, isSimpleMode, onClose, onCallStaff
     setTimeout(() => setStaffCallLocked(false), 3000)
   }
 
+  if (!isActive && !error && !callingStaff) return null
+
   return (
     <div className={`fixed z-[60] pointer-events-none
       ${big
@@ -51,59 +53,30 @@ export default function VoiceOverlay({ voice, isSimpleMode, onClose, onCallStaff
           직원을 호출했습니다. 잠시만 기다려 주세요.
         </div>
       )}
-      <div className="flex gap-3 pointer-events-auto justify-center items-center">
-        {isActive ? (
-          <>
-            {/* 현재 상태 아이콘 — 마이크 켜짐/안내 중/생각 중 표시 */}
-            <StatusBadge status={status} big={big} />
-            {/* 종료 버튼 */}
-            <button
-              onClick={() => { stop(); onClose?.() }}
-              className={`rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg flex items-center justify-center
-                ${big ? 'w-16 h-16 text-2xl' : 'w-12 h-12 text-lg'}`}
-              title="음성 주문 종료"
-            >
-              &#9209;
-            </button>
-            <button
-              onClick={handleCallStaff}
-              disabled={staffCallLocked}
-              className={`rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center gap-2 font-black
-                disabled:opacity-70 disabled:cursor-not-allowed
-                ${big ? 'h-16 px-6 text-xl' : 'h-12 px-4 text-sm'}`}
-              title="직원 호출"
-            >
-              <span>🔔</span>
-              <span>직원 호출</span>
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={start}
-              disabled={!sttSupported}
-              className={`rounded-full shadow-lg flex items-center justify-center gap-2 font-black
-                ${sttSupported ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-gray-200 text-gray-400'}
-                ${actionSize}`}
-              title={sttSupported ? '음성 주문 시작' : '이 브라우저는 음성 인식을 지원하지 않아요'}
-            >
-              <span className={big ? 'text-3xl' : 'text-2xl'}>&#127908;</span>
-              <span>음성 주문</span>
-            </button>
-            <button
-              onClick={handleCallStaff}
-              disabled={staffCallLocked}
-              className={`rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center gap-2 font-black
-                disabled:opacity-70 disabled:cursor-not-allowed
-                ${actionSize}`}
-              title="직원 호출"
-            >
-              <span className={big ? 'text-3xl' : 'text-2xl'}>🔔</span>
-              <span>직원 호출</span>
-            </button>
-          </>
-        )}
-      </div>
+      {isActive && (
+        <div className="flex gap-3 pointer-events-auto justify-center items-center">
+          <StatusBadge status={status} big={big} />
+          <button
+            onClick={() => { stop(); onClose?.() }}
+            className={`rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg flex items-center justify-center
+              ${big ? 'w-16 h-16 text-2xl' : 'w-12 h-12 text-lg'}`}
+            title="음성 주문 종료"
+          >
+            &#9209;
+          </button>
+          <button
+            onClick={handleCallStaff}
+            disabled={staffCallLocked}
+            className={`rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center justify-center gap-2 font-black
+              disabled:opacity-70 disabled:cursor-not-allowed
+              ${big ? 'h-16 px-6 text-xl' : 'h-12 px-4 text-sm'}`}
+            title="직원 호출"
+          >
+            <span>🔔</span>
+            <span>직원 호출</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

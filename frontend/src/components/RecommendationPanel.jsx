@@ -20,25 +20,31 @@ function buildCompactReasoning(rec, mode) {
 
 function recommendationLevel(score) {
   const value = Number(score) || 0
-  if (value >= 0.65) return '매우 높음'
-  if (value >= 0.35) return '높음'
-  return '좋음'
+  if (value >= 0.65) return '매우추천'
+  if (value >= 0.35) return '추천'
+  return '보통'
 }
 
-function buildScoreSummary(rec, mode) {
+function cartSupportLevel(count) {
+  if (count >= 2) return '매우추천'
+  if (count >= 1) return '추천'
+  return '보통'
+}
+
+function buildScoreSummary(rec, mode, hasCartItems) {
   const breakdown = rec?.cf_breakdown || {}
   if (mode === 'CF') {
     return [
       { label: '추천도', value: recommendationLevel(rec?.final_score || rec?.score) },
-      { label: '어울림', value: Number(breakdown.cart_support_count) > 0 ? '높음' : '좋음' },
-      { label: '선택 경향', value: '반영' },
+      { label: '어울림', value: cartSupportLevel(Number(breakdown.cart_support_count)) },
+      { label: '장바구니', value: hasCartItems ? '반영' : '미반영' },
     ]
   }
 
   return [
     { label: '추천도', value: recommendationLevel(rec?.final_score || rec?.score) },
-    { label: '선택 경향', value: '높음' },
-    { label: '지금 인기', value: Number(rec?.trend_weight || rec?.trend_score || 1) > 1 ? '반영' : '보통' },
+    { label: '어울림', value: cartSupportLevel(Number(breakdown.cart_support_count)) },
+    { label: '장바구니', value: hasCartItems ? '반영' : '미반영' },
   ]
 }
 
@@ -250,7 +256,7 @@ export default function RecommendationPanel({
             const menuId = rec.menu_id || rec.id
             const menuName = rec.menu_name || rec.name
             const compactReason = buildCompactReasoning(rec, mode)
-            const scoreSummary = buildScoreSummary(rec, mode)
+            const scoreSummary = buildScoreSummary(rec, mode, cartItems.length > 0)
 
             return (
               <button
@@ -295,7 +301,7 @@ export default function RecommendationPanel({
             const finalScore = rec.final_score || rec.score || 0
             const breakdown = rec.cf_breakdown || {}
             const compactReason = buildCompactReasoning(rec, mode)
-            const scoreSummary = buildScoreSummary(rec, mode)
+            const scoreSummary = buildScoreSummary(rec, mode, cartItems.length > 0)
 
             return (
               <button

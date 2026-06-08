@@ -136,15 +136,47 @@ export default function LandingPage() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
 
         {/* 로고 — 1.5초 안에 5번 연속 탭하면 관리자 로그인 진입 (손님에게는 보이지 않는 히든 동작) */}
-        <div className="text-center mb-8">
-          <div
-            onClick={handleLogoTap}
-            className="w-20 h-20 rounded-full bg-amber-500 flex items-center justify-center shadow-2xl shadow-amber-900/50 mb-4 mx-auto select-none"
+        <div className="text-center mb-8" onClick={handleLogoTap} style={{ cursor: 'default' }}>
+          <svg
+            width="110"
+            height="110"
+            viewBox="0 0 110 110"
+            xmlns="http://www.w3.org/2000/svg"
+            className="mx-auto mb-3 select-none"
+            style={{ filter: 'drop-shadow(0 8px 24px rgba(245,158,11,0.5))' }}
           >
-            <span className="text-4xl">☕</span>
-          </div>
-          <h1 className="text-4xl font-black text-white tracking-widest">BREW AI</h1>
-          <p className="text-amber-400 text-sm font-medium tracking-widest mt-1">CAFÉ & ROASTERY</p>
+            {/* 외곽 원형 배지 */}
+            <circle cx="55" cy="55" r="52" fill="url(#bgGrad)" />
+            <circle cx="55" cy="55" r="52" fill="none" stroke="#f59e0b" strokeWidth="2.5" opacity="0.7" />
+            <circle cx="55" cy="55" r="46" fill="none" stroke="#fde047" strokeWidth="1" opacity="0.35" />
+
+            {/* 커피 컵 몸체 */}
+            <path d="M34 48 L38 76 Q38 80 42 80 L68 80 Q72 80 72 76 L76 48 Z" fill="#1a0800" stroke="#f59e0b" strokeWidth="1.5" />
+            {/* 컵 상단 테두리 */}
+            <rect x="32" y="44" width="46" height="6" rx="3" fill="#f59e0b" />
+            {/* 컵 손잡이 */}
+            <path d="M72 55 Q84 55 84 63 Q84 71 72 71" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" />
+            {/* 커피 액체 */}
+            <path d="M38 50 L72 50 L70 70 Q70 72 68 72 L42 72 Q40 72 40 70 Z" fill="#7c3a00" opacity="0.7" />
+            {/* 컵 하이라이트 */}
+            <path d="M42 54 Q44 60 43 68" stroke="#f59e0b" strokeWidth="1.2" fill="none" opacity="0.4" strokeLinecap="round" />
+
+            {/* 스팀 연기 */}
+            <path d="M44 40 Q42 34 44 28 Q46 22 44 16" fill="none" stroke="#fde047" strokeWidth="2" strokeLinecap="round" opacity="0.75" />
+            <path d="M55 38 Q53 32 55 26 Q57 20 55 14" fill="none" stroke="#fde047" strokeWidth="2" strokeLinecap="round" opacity="0.75" />
+            <path d="M66 40 Q64 34 66 28 Q68 22 66 16" fill="none" stroke="#fde047" strokeWidth="2" strokeLinecap="round" opacity="0.75" />
+
+            {/* 그라디언트 정의 */}
+            <defs>
+              <radialGradient id="bgGrad" cx="40%" cy="35%" r="65%">
+                <stop offset="0%" stopColor="#3b1a08" />
+                <stop offset="100%" stopColor="#1a0800" />
+              </radialGradient>
+            </defs>
+          </svg>
+
+          <h1 className="text-4xl font-black text-white tracking-widest select-none">BREW AI</h1>
+          <p className="text-amber-400 text-sm font-medium tracking-widest mt-1 select-none">CAFÉ & ROASTERY</p>
         </div>
 
         {/* 에러 */}
@@ -177,7 +209,6 @@ export default function LandingPage() {
               style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.15) 0%, transparent 60%)' }}
             />
 
-            <span className="text-6xl relative z-10 drop-shadow-md">📷</span>
             <span className="text-white text-2xl font-black tracking-wide relative z-10">
               {loading && !loadingGroup ? '시작 중...' : '눌러서 얼굴 인식 시작'}
             </span>

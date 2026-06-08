@@ -606,19 +606,45 @@ export default function SeniorKioskPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
 
       {/* 헤더 */}
-      <header className="bg-gradient-to-r from-amber-950 to-amber-900 px-4 py-4 flex items-center justify-between sticky top-0 z-10 shadow-lg">
-        <button onClick={handleBack} className="text-amber-400 hover:text-amber-200 p-2 -ml-2 text-xl font-bold">
+      <header className="bg-gradient-to-r from-amber-950 to-amber-900 px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-lg">
+        <button onClick={handleBack} className="text-amber-400 hover:text-amber-200 p-2 -ml-2 text-lg font-bold">
           ← 뒤로
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-2xl">☕</span>
-          <h1 className="text-xl font-black text-white tracking-widest">BREW AI</h1>
+          <span className="text-xl">☕</span>
+          <h1 className="text-lg font-black text-white tracking-widest">BREW AI</h1>
         </div>
-        <div className="w-16" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const active = voice.status !== 'idle' && voice.status !== 'ended'
+              if (active) voice.stop()
+              else voice.start()
+            }}
+            disabled={!voice.sttSupported}
+            title={voice.sttSupported ? '음성 주문' : '음성 인식 미지원'}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-black shadow-md transition-colors
+              ${voice.status !== 'idle' && voice.status !== 'ended'
+                ? 'bg-amber-600 text-white animate-pulse'
+                : voice.sttSupported
+                  ? 'bg-amber-500 hover:bg-amber-400 text-white'
+                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'}`}
+          >
+            <span className="text-base">🎤</span>
+            <span>음성주문</span>
+          </button>
+          <button
+            onClick={handleCallStaff}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-black bg-blue-600 hover:bg-blue-500 text-white shadow-md transition-colors"
+          >
+            <span className="text-base">🔔</span>
+            <span>직원호출</span>
+          </button>
+        </div>
       </header>
 
       {/* 카테고리 탭 */}
-      <div className="bg-white border-b flex overflow-x-auto sticky top-[64px] z-10">
+      <div className="bg-white border-b flex overflow-x-auto sticky top-[56px] z-10">
         <SeniorCategoryTab
           label="전체"
           active={activeCategory === 'all'}
