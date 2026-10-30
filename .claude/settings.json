@@ -24,7 +24,9 @@
       "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/CompletionPage.jsx)",
       "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/ChildCompletePage.jsx)",
       "Bash(sed -n '/설문 본문\\\\|G-1\\\\|H-1\\\\|만 나이\\\\|성별\\\\|간편 모드\\\\|막힌 단계/p' frontend/src/pages/SeniorCompletePage.jsx)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(cd /Users/kyumin/Documents/GitHub/Adaptive_Kiosk/backend && echo \"== imports ==\"; grep -rhE '^\\\\s*\\(import|from\\) +\\(torch|torchvision|timm|insightface|onnxruntime|cv2|numpy|pandas|sklearn|scipy|google|httpx|PIL|mediapipe|facenet_pytorch|ultralytics|transformers|jose|jwt|bcrypt|passlib|cryptography|slowapi|aiomysql|redis\\)\\\\b' --include='*.py' . | sed -E 's/^\\\\s+//' | sort | uniq -c | sort -rn | head -50; echo \"== gemini models ==\"; grep -rnoE 'gemini-[a-z0-9.\\\\-]+' --include='*.py' . | sort -u | head; echo \"== vision/face model refs ==\"; grep -nE 'pth|resnet|mobilenet|efficientnet|buffalo|FaceAnalysis|insightface|timm\\\\.|torchvision\\\\.models|mock|MOCK' services/vision_service.py services/face_service.py | head -50; echo \"== rec libs ==\"; grep -nE '^\\(import|from\\) ' services/recommendation_service.py services/trend_service.py | head -30; echo \"== frontend browser APIs ==\"; cd ../frontend/src && grep -rlE 'SpeechRecognition' . ; grep -rlE 'speechSynthesis' .; grep -rlE 'getUserMedia' .; grep -rlE 'crypto\\\\.subtle|CryptoJS' .)",
+      "Read(//Users/kyumin/Documents/GitHub/frontend/**)"
     ],
     "additionalDirectories": [
       "/Users/kyumin/.cloudflared"
